@@ -1,0 +1,31 @@
+#
+# deployspec.yml
+#
+
+version: 0.2
+
+#env:
+#  variables:
+
+phases:
+  install:
+    runtime-versions:
+      golang: 1.15
+#    commands:
+
+  pre_build:
+    commands:
+      - latest_build=$(aws --region=$AWS_REGION ssm get-parameter --name /containers/$CONTAINER_IMAGE/latest | grep "Value" | awk -F\" '{print $4}')
+      - git clone https://$GITLAB_USER:$GITLAB_TOKEN@gitlab.com/uvalib/build-deploy-scripts.git
+
+  build:
+    commands:
+      - $CODEBUILD_SRC_DIR/build-deploy-scripts/dpg-jobs-ws/deploy.ksh "aws-cicd" development $latest_build
+      - sh $CODEBUILD_SRC_DIR/pipeline/wait_for_version.sh $TC_ENDPOINT $latest_build 300
+
+#  post_build:
+#    commands:
+
+#
+# end of file
+#
