@@ -1,0 +1,25 @@
+.DS_Store
+log/*.*
+*.log
+tmp/*
+*~
+*.bak
+*.swp
+bin
+# Ignore application configuration
+/config.yml
+dist/
+.idea
+env.*
+/pkg
+node_modules/
+yarn.lock
+run.sh
+backend/db/dev.sh
+dev_db.sh
+dev_connect.sh
+local_db.sh
+to_prod_db.sh
+to_dev_db.sh
+frontend/yarn_start.sh
+.vscode
