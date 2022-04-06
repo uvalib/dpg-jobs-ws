@@ -39,13 +39,14 @@ CMD scripts/entry.sh
 # Move in necessary assets
 COPY package/data/container_bash_profile /home/libsnlocal/.profile
 COPY package/scripts/entry.sh $APP_HOME/scripts/entry.sh
-COPY --from=builder /build/bin/imagingsvc.linux $APP_HOME/bin/imagingsvc
-COPY --from=builder /build/bin/public $APP_HOME/bin/public
-COPY --from=builder /build/bin/data $APP_HOME/bin/data
+COPY --from=builder /build/bin/dpg-jobs-ws.linux $APP_HOME/bin/dpg-jobs-ws
+#COPY --from=builder /build/bin/public $APP_HOME/bin/public
+#COPY --from=builder /build/bin/data $APP_HOME/bin/data
 
 # Ensure permissions are correct
-RUN chown libsnlocal:lb-digiserv /home/libsnlocal/.profile $APP_HOME/scripts/entry.sh $APP_HOME/bin/imagingsvc && chmod 755 /home/libsnlocal/.profile $APP_HOME/scripts/entry.sh $APP_HOME/bin/imagingsvc
-RUN chown -R libsnlocal:lb-digiserv $APP_HOME/bin/public $APP_HOME/bin/data && chmod -R 755 $APP_HOME/bin/public $APP_HOME/bin/data
+RUN chown libsnlocal:lb-digiserv /home/libsnlocal/.profile $APP_HOME/scripts/entry.sh $APP_HOME/bin/dpg-jobs-ws && chmod 755 /home/libsnlocal/.profile $APP_HOME/scripts/entry.sh $APP_HOME/bin/dpg-jobs-ws
+#RUN chown -R libsnlocal:lb-digiserv $APP_HOME/bin/public $APP_HOME/bin/data && chmod -R 755 $APP_HOME/bin/public $APP_HOME/bin/data
+RUN chown -R libsnlocal:lb-digiserv $APP_HOME/bin && chmod -R 755 $APP_HOME/bin
 
 # Add the build tag
 ARG BUILD_TAG
