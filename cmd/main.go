@@ -34,6 +34,8 @@ func main() {
 	router.GET("/favicon.ico", svc.ignoreFavicon)
 	router.GET("/version", svc.getVersion)
 	router.GET("/healthcheck", svc.healthCheck)
+
+	router.POST("/orders/:id/check", svc.checkOrderReady)
 	// api := router.Group("/api")
 	// {
 

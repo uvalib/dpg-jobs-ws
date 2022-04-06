@@ -2,10 +2,13 @@ package main
 
 import (
 	"fmt"
+	"io/ioutil"
 	"log"
+	"net"
 	"net/http"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	_ "github.com/go-sql-driver/mysql"
@@ -21,6 +24,14 @@ type ServiceContext struct {
 	IIIFDir       string
 	ProcessingDir string
 	DeliveryDir   string
+	TrackSysURL   string
+	HTTPClient    *http.Client
+}
+
+// RequestError contains http status code and message for a failed HTTP request
+type RequestError struct {
+	StatusCode int
+	Message    string
 }
 
 // InitializeService sets up the service context for all API handlers
@@ -30,6 +41,7 @@ func InitializeService(version string, cfg *ServiceConfig) *ServiceContext {
 		IIIFDir:       cfg.IIIFDir,
 		DeliveryDir:   cfg.DeliveryDir,
 		ProcessingDir: cfg.ProcessingDir,
+		TrackSysURL:   cfg.TrackSysURL,
 	}
 
 	log.Printf("INFO: connecting to DB...")
@@ -41,6 +53,26 @@ func InitializeService(version string, cfg *ServiceConfig) *ServiceContext {
 	}
 	ctx.GDB = gdb
 	log.Printf("INFO: DB Connection established")
+
+	log.Printf("INFO: create HTTP client...")
+	defaultTransport := &http.Transport{
+		Proxy: http.ProxyFromEnvironment,
+		DialContext: (&net.Dialer{
+			Timeout:   5 * time.Second,
+			KeepAlive: 600 * time.Second,
+		}).DialContext,
+		ForceAttemptHTTP2:     true,
+		MaxIdleConns:          100,
+		MaxIdleConnsPerHost:   100,
+		IdleConnTimeout:       90 * time.Second,
+		TLSHandshakeTimeout:   10 * time.Second,
+		ExpectContinueTimeout: 1 * time.Second,
+	}
+	ctx.HTTPClient = &http.Client{
+		Transport: defaultTransport,
+		Timeout:   5 * time.Second,
+	}
+	log.Printf("INFO: HTTP Client created")
 
 	return &ctx
 }
@@ -85,4 +117,48 @@ func (svc *ServiceContext) healthCheck(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, hcMap)
+}
+
+func (svc *ServiceContext) getRequest(url string) ([]byte, *RequestError) {
+	log.Printf("POST request: %s", url)
+	startTime := time.Now()
+	req, _ := http.NewRequest("GET", url, nil)
+	httpClient := svc.HTTPClient
+	rawResp, rawErr := httpClient.Do(req)
+	resp, err := handleAPIResponse(url, rawResp, rawErr)
+	elapsedNanoSec := time.Since(startTime)
+	elapsedMS := int64(elapsedNanoSec / time.Millisecond)
+
+	if err != nil {
+		log.Printf("ERROR: Failed response from GET %s - %d:%s. Elapsed Time: %d (ms)",
+			url, err.StatusCode, err.Message, elapsedMS)
+	} else {
+		log.Printf("Successful response from POST %s. Elapsed Time: %d (ms)", url, elapsedMS)
+	}
+	return resp, err
+}
+
+func handleAPIResponse(logURL string, resp *http.Response, err error) ([]byte, *RequestError) {
+	if err != nil {
+		status := http.StatusBadRequest
+		errMsg := err.Error()
+		if strings.Contains(err.Error(), "Timeout") {
+			status = http.StatusRequestTimeout
+			errMsg = fmt.Sprintf("%s timed out", logURL)
+		} else if strings.Contains(err.Error(), "connection refused") {
+			status = http.StatusServiceUnavailable
+			errMsg = fmt.Sprintf("%s refused connection", logURL)
+		}
+		return nil, &RequestError{StatusCode: status, Message: errMsg}
+	} else if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
+		defer resp.Body.Close()
+		bodyBytes, _ := ioutil.ReadAll(resp.Body)
+		status := resp.StatusCode
+		errMsg := string(bodyBytes)
+		return nil, &RequestError{StatusCode: status, Message: errMsg}
+	}
+
+	defer resp.Body.Close()
+	bodyBytes, _ := ioutil.ReadAll(resp.Body)
+	return bodyBytes, nil
 }

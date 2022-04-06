@@ -30,6 +30,7 @@ type ServiceConfig struct {
 	ProcessingDir string
 	DeliveryDir   string
 	LogDir        string
+	TrackSysURL   string
 }
 
 // LoadConfiguration will load the service configuration from the commandline
@@ -39,12 +40,12 @@ func LoadConfiguration() *ServiceConfig {
 	var cfg ServiceConfig
 	flag.IntVar(&cfg.Port, "port", 8080, "API service port (default 8080)")
 
-	// Key directories
 	flag.StringVar(&cfg.ArchiveDir, "archive", "", "Archive directory")
 	flag.StringVar(&cfg.DeliveryDir, "delivery", "", "Delivery directory")
 	flag.StringVar(&cfg.IIIFDir, "iiif", "", "IIIF directory")
 	flag.StringVar(&cfg.ProcessingDir, "work", "", "Processing directory")
 	flag.StringVar(&cfg.LogDir, "logs", "", "Logging directory")
+	flag.StringVar(&cfg.TrackSysURL, "tsapi", "https://tracksys-api-ws.internal.lib.virginia.edu", "URL for TrackSys API")
 
 	// DB connection params
 	flag.StringVar(&cfg.DB.Host, "dbhost", "", "Database host")
@@ -84,6 +85,7 @@ func LoadConfiguration() *ServiceConfig {
 	}
 
 	log.Printf("[CONFIG] port          = [%d]", cfg.Port)
+	log.Printf("[CONFIG] tsapi         = [%s]", cfg.TrackSysURL)
 	log.Printf("[CONFIG] dbhost        = [%s]", cfg.DB.Host)
 	log.Printf("[CONFIG] dbport        = [%d]", cfg.DB.Port)
 	log.Printf("[CONFIG] dbname        = [%s]", cfg.DB.Name)
