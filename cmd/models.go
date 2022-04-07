@@ -28,7 +28,10 @@ type customer struct {
 type invoice struct {
 	ID          int64
 	OrderID     int64
+	DateInvoice time.Time
 	DateFeePaid *time.Time
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
 }
 
 type metadata struct {

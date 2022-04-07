@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"text/template"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"gopkg.in/gomail.v2"
@@ -75,7 +76,7 @@ func (svc *ServiceContext) sendFeesEmail(c *gin.Context) {
 	}
 	svc.logInfo(js, "Start send fees email...")
 	var o order
-	err = svc.GDB.Preload("Customer").First(&o, orderID).Error
+	err = svc.GDB.Preload("Customer").Preload("Invoices").First(&o, orderID).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			svc.logFatal(js, fmt.Sprintf("order %d not found", orderID))
@@ -109,14 +110,34 @@ func (svc *ServiceContext) sendFeesEmail(c *gin.Context) {
 		To:      []string{o.Customer.Email},
 		From:    svc.SMTP.Sender,
 		ReplyTo: svc.SMTP.Sender,
-		Body:    o.Email,
+		Body:    renderedEmail.String(),
 	}
 	err = svc.sendEmail(&req)
 	if err != nil {
 		svc.logFatal(js, fmt.Sprintf("Unable to send fees email: %s", err.Error()))
 		return
 	}
+	svc.logInfo(js, "Fee estimate email sent to customer.")
+	now := time.Now()
 
+	// If an invoice does not yet exist for this order, create one
+	if len(o.Invoices) == 0 {
+		inv := invoice{OrderID: o.ID, DateInvoice: time.Now(), CreatedAt: now, UpdatedAt: now}
+		err = svc.GDB.Create(&inv).Error
+		if err != nil {
+			svc.logError(js, fmt.Sprintf("Unable to create invoice: %s", err.Error()))
+		}
+		svc.logInfo(js, "A new invoice has been created")
+	} else {
+		svc.logInfo(js, "An invoice already exists for this order; not creating another.")
+	}
+
+	if o.OrderStatus != "await_fee" {
+		svc.GDB.Model(o).Select("date_fee_estimate_sent_to_customer", "order_status").
+			Updates(order{DateFeeEstimateSentToCustomer: &now, OrderStatus: "await_fee"})
+	}
+
+	svc.logInfo(js, "Order status and date fee estimate sent to customer have been updated.")
 	svc.jobDone(js)
 	c.String(http.StatusOK, "done")
 }
