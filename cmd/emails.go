@@ -62,10 +62,22 @@ func (svc *ServiceContext) sendOrderEmail(c *gin.Context) {
 	c.String(http.StatusOK, "done")
 }
 
+func (svc *ServiceContext) sendFeesEmail(c *gin.Context) {
+	orderIDStr := c.Param("id")
+	orderID, _ := strconv.ParseInt(orderIDStr, 10, 64)
+	js, err := svc.createJobStatus("SendFeeEstimateToCustomer", "Order", orderID)
+	if err != nil {
+		log.Printf("ERROR: unable to create job js: %s", err.Error())
+		c.String(http.StatusInternalServerError, err.Error())
+		return
+	}
+	svc.logInfo(js, "Start send order email...")
+}
+
 func (svc *ServiceContext) sendEmail(request *emailRequest) error {
 	mail := gomail.NewMessage()
 	mail.SetHeader("MIME-version", "1.0")
-	mail.SetHeader("Content-Type", "text/plain; charset=\"UTF-8\"")
+	mail.SetHeader("Content-Type", "text/html; charset=\"UTF-8\"")
 	mail.SetHeader("Subject", request.Subject)
 	mail.SetHeader("To", request.To...)
 	mail.SetHeader("From", request.From)

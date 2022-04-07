@@ -37,9 +37,10 @@ func main() {
 
 	router.POST("/orders/:id/check", svc.checkOrderReady)
 	router.POST("/orders/:id/pdf", svc.createOrderPDF)
+	router.GET("/orders/:id/pdf", svc.viewOrderPDF)
 	router.POST("/orders/:id/email", svc.createOrderEmail)
 	router.POST("/orders/:id/email/send", svc.sendOrderEmail)
-	router.GET("/orders/:id/pdf", svc.viewOrderPDF)
+	router.POST("/orders/:id/fees", svc.sendFeesEmail)
 
 	portStr := fmt.Sprintf(":%d", cfg.Port)
 	log.Printf("INFO: start service v%s on port %s", version, portStr)
