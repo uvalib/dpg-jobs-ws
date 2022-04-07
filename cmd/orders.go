@@ -23,6 +23,67 @@ import (
 	"gorm.io/gorm"
 )
 
+func (svc *ServiceContext) viewOrderPDF(c *gin.Context) {
+	orderIDStr := c.Param("id")
+	orderID, _ := strconv.ParseInt(orderIDStr, 10, 64)
+
+	var o order
+	err := svc.GDB.Preload("Customer").Preload("Customer.AcademicStatus").
+		Preload("Invoices").Preload("Units").Preload("Units.IntendedUse").
+		Preload("Units.Metadata").Preload("Units.MasterFiles").First(&o, orderID).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			log.Printf("ERROR: order %d not found", orderID)
+			c.String(http.StatusNotFound, fmt.Sprintf("order %d not found", orderID))
+		} else {
+			log.Printf("ERROR: unable to load order %d: %s", orderID, err.Error())
+			c.String(http.StatusInternalServerError, err.Error())
+		}
+		return
+	}
+
+	m := svc.generateOrderPDF(&o)
+	pdf, pErr := m.Output()
+	if pErr != nil {
+		log.Printf("ERROR: unable to generate PDF data: %s", pErr.Error())
+		c.String(http.StatusInternalServerError, pErr.Error())
+		return
+	}
+	c.Data(http.StatusOK, "application/pdf", pdf.Bytes())
+}
+
+func (svc *ServiceContext) createOrderPDF(c *gin.Context) {
+	orderIDStr := c.Param("id")
+	orderID, _ := strconv.ParseInt(orderIDStr, 10, 64)
+	js, err := svc.createJobStatus("CreateOrderPDF", "Order", orderID)
+
+	var o order
+	err = svc.GDB.Preload("Customer").Preload("Customer.AcademicStatus").
+		Preload("Invoices").Preload("Units").Preload("Units.IntendedUse").
+		Preload("Units.Metadata").Preload("Units.MasterFiles").First(&o, orderID).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			svc.logFatal(js, fmt.Sprintf("order %d not found", orderID))
+			c.String(http.StatusNotFound, fmt.Sprintf("order %d not found", orderID))
+		} else {
+			svc.logFatal(js, fmt.Sprintf("unable to load order %d: %s", orderID, err.Error()))
+			c.String(http.StatusInternalServerError, err.Error())
+		}
+		return
+	}
+
+	svc.logInfo(js, "Create order PDF...")
+	err = svc.createPDFDeliverable(js, &o)
+	if err != nil {
+		svc.logFatal(js, fmt.Sprintf("Unable to generate PDF: %s", err.Error()))
+		c.String(http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	svc.jobDone(js)
+	c.String(http.StatusOK, "done")
+}
+
 func (svc *ServiceContext) checkOrderReady(c *gin.Context) {
 	orderIDStr := c.Param("id")
 	orderID, _ := strconv.ParseInt(orderIDStr, 10, 64)
@@ -122,7 +183,7 @@ func (svc *ServiceContext) checkOrderReady(c *gin.Context) {
 	}
 
 	svc.logInfo(js, "Order has passed QA")
-	err = svc.generateOrderPDF(js, &o)
+	err = svc.createPDFDeliverable(js, &o)
 	if err != nil {
 		svc.logFatal(js, fmt.Sprintf("Unable to generate PDF: %s", err.Error()))
 		c.String(http.StatusInternalServerError, err.Error())
@@ -139,8 +200,28 @@ func (svc *ServiceContext) checkOrderReady(c *gin.Context) {
 	c.String(http.StatusOK, "done")
 }
 
-func (svc *ServiceContext) generateOrderPDF(js *jobStatus, order *order) error {
+func (svc *ServiceContext) createPDFDeliverable(js *jobStatus, o *order) error {
 	svc.logInfo(js, "Create order PDF...")
+	m := svc.generateOrderPDF(o)
+	dir := path.Join(svc.DeliveryDir, fmt.Sprintf("order_%d", o.ID))
+	if _, err := os.Stat(dir); os.IsNotExist(err) {
+		log.Printf("INFO: create pdf output directory %s", dir)
+		err := os.Mkdir(dir, 0777)
+		if err != nil {
+			return err
+		}
+	}
+	pdfFile := path.Join(dir, fmt.Sprintf("%d.pdf", o.ID))
+	err := m.OutputFileAndClose(pdfFile)
+	if err != nil {
+		return err
+	}
+
+	svc.logInfo(js, fmt.Sprintf("PDF created at %s", pdfFile))
+	return nil
+}
+
+func (svc *ServiceContext) generateOrderPDF(order *order) pdf.Maroto {
 	ltGrey := color.Color{
 		Red:   220,
 		Green: 220,
@@ -222,22 +303,7 @@ func (svc *ServiceContext) generateOrderPDF(js *jobStatus, order *order) error {
 		})
 	}
 
-	dir := path.Join(svc.DeliveryDir, fmt.Sprintf("order_%d", order.ID))
-	if _, err := os.Stat(dir); os.IsNotExist(err) {
-		log.Printf("INFO: create pdf output directory %s", dir)
-		err := os.Mkdir(dir, 0777)
-		if err != nil {
-			return err
-		}
-	}
-	pdfFile := path.Join(dir, fmt.Sprintf("%d.pdf", order.ID))
-	err := m.OutputFileAndClose(pdfFile)
-	if err != nil {
-		return err
-	}
-
-	svc.logInfo(js, fmt.Sprintf("PDF created at %s", pdfFile))
-	return nil
+	return m
 }
 
 func addPDFLine(m pdf.Maroto) {

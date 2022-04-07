@@ -36,10 +36,8 @@ func main() {
 	router.GET("/healthcheck", svc.healthCheck)
 
 	router.POST("/orders/:id/check", svc.checkOrderReady)
-	// api := router.Group("/api")
-	// {
-
-	// }
+	router.POST("/orders/:id/pdf", svc.createOrderPDF)
+	router.GET("/orders/:id/pdf", svc.viewOrderPDF)
 
 	portStr := fmt.Sprintf(":%d", cfg.Port)
 	log.Printf("INFO: start service v%s on port %s", version, portStr)
