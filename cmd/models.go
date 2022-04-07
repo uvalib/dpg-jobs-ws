@@ -77,6 +77,7 @@ type order struct {
 	Fee                            sql.NullFloat64
 	Invoices                       []invoice `gorm:"foreignKey:OrderID"`
 	Units                          []unit    `gorm:"foreignKey:OrderID"`
+	Email                          string
 	DateRequestSubmitted           time.Time
 	DateCustomerNotified           *time.Time
 	DatePatronDeliverablesComplete *time.Time

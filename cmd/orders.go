@@ -1,14 +1,18 @@
 package main
 
 import (
+	"bytes"
 	"encoding/xml"
 	"errors"
 	"fmt"
+	"io/ioutil"
 	"log"
 	"net/http"
 	"os"
 	"path"
 	"strconv"
+	"strings"
+	"text/template"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -172,7 +176,7 @@ func (svc *ServiceContext) generateOrderPDF(js *jobStatus, order *order) error {
 	addPDFTextRow(m, fmt.Sprintf("Order ID: %d", order.ID), 15, consts.Right)
 
 	// define the message to the user
-	addPDFTextRow(m, fmt.Sprintf("Dear %s %s, ", order.Customer.FirstName, order.Customer.LastName), 15, consts.Left)
+	addPDFTextRow(m, fmt.Sprintf("Dear %s %s, ", order.Customer.FirstName, order.Customer.LastName), 10, consts.Left)
 	msg := fmt.Sprintf("On %s you placed an order with the Digital Production Group ", order.DateRequestSubmitted.Format("January 2, 2006"))
 	msg += fmt.Sprintf("of the University of Virginia, Charlottesville, VA. Your request comprised %d items. ", len(order.Units))
 	msg += "Below you will find a description of your digital order and how to cite the material for publication."
@@ -358,7 +362,58 @@ func (svc *ServiceContext) getCitation(md *metadata) string {
 	return citation
 }
 
-func (svc *ServiceContext) generateOrderEmail(js *jobStatus, order *order) error {
+func (svc *ServiceContext) generateOrderEmail(js *jobStatus, o *order) error {
+	svc.logInfo(js, "Create email for order")
+	type MailData struct {
+		FirstName     string
+		LastName      string
+		Fee           *float64
+		DatePaid      string
+		DeliveryFiles []string
+	}
+	data := MailData{
+		FirstName:     o.Customer.FirstName,
+		LastName:      o.Customer.LastName,
+		DeliveryFiles: make([]string, 0),
+	}
+	if o.Fee.Valid {
+		data.Fee = &o.Fee.Float64
+		for _, inv := range o.Invoices {
+			if inv.DateFeePaid != nil {
+				data.DatePaid = inv.DateFeePaid.Format("2006-01-02")
+				break
+			}
+		}
+	}
+	deliveryDir := path.Join(svc.DeliveryDir, fmt.Sprintf("order_%d", o.ID))
+	data.DeliveryFiles = append(data.DeliveryFiles, fmt.Sprintf("http://digiservdelivery.lib.virginia.edu/order_%d/%d.pdf", o.ID, o.ID))
+	files, err := ioutil.ReadDir(deliveryDir)
+	if err != nil {
+		svc.logError(js, fmt.Sprintf("Unable to get deliverable zip file list: %s", err.Error()))
+	} else {
+		// strip off the full path; only add: order_dir/file.zip
+		for _, fi := range files {
+			if strings.Index(fi.Name(), ".zip") > 0 {
+				data.DeliveryFiles = append(data.DeliveryFiles, fmt.Sprintf("http://digiservdelivery.lib.virginia.edu/order_%d/%s", o.ID, fi.Name()))
+			}
+		}
+	}
+
+	var renderedEmail bytes.Buffer
+	tpl, err := template.New("order.html").ParseFiles("./templates/order.html")
+	if err != nil {
+		return err
+	}
+	err = tpl.Execute(&renderedEmail, data)
+	if err != nil {
+		return err
+	}
+
+	log.Printf(renderedEmail.String())
+
+	svc.GDB.Model(o).Select("email").Updates(order{Email: renderedEmail.String()})
+	svc.logInfo(js, "An email for web delivery has been created")
+
 	return nil
 }
 

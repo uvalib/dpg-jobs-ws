@@ -15,13 +15,13 @@ all: darwin linux
 
 darwin:
 	GOOS=darwin GOARCH=amd64 $(GOBUILD) -a -o bin/$(BASENAME).darwin cmd/*.go
-	#cp -r xsl/ bin/xsl
-	#cp -r templates/ bin/templates
+	cp -r templates/ bin/templates
+	cp -r assets/ bin/assets
 
 linux:
 	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 $(GOBUILD) -a -installsuffix cgo -o bin/$(BASENAME).linux cmd/*.go
-	#cp -r xsl/ bin/xsl
-	#cp -r templates/ bin/templates
+	cp -r templates/ bin/templates
+	cp -r assets/ bin/assets
 
 clean:
 	$(GOCLEAN) cmd/

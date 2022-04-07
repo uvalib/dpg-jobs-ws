@@ -7,6 +7,8 @@ RUN apk update && apk upgrade && apk add --no-cache make npm yarn
 WORKDIR /build
 COPY go.mod go.sum Makefile ./
 COPY cmd ./cmd
+COPY templates ./templates
+COPY assets ./assets
 RUN make linux
 
 #
@@ -40,12 +42,12 @@ CMD scripts/entry.sh
 COPY package/data/container_bash_profile /home/libsnlocal/.profile
 COPY package/scripts/entry.sh $APP_HOME/scripts/entry.sh
 COPY --from=builder /build/bin/dpg-jobs-ws.linux $APP_HOME/bin/dpg-jobs-ws
-#COPY --from=builder /build/bin/public $APP_HOME/bin/public
-#COPY --from=builder /build/bin/data $APP_HOME/bin/data
+COPY --from=builder /build/bin/templates $APP_HOME/bin/templates
+COPY --from=builder /build/bin/assets $APP_HOME/bin/assets
 
 # Ensure permissions are correct
 RUN chown libsnlocal:lb-digiserv /home/libsnlocal/.profile $APP_HOME/scripts/entry.sh $APP_HOME/bin/dpg-jobs-ws && chmod 755 /home/libsnlocal/.profile $APP_HOME/scripts/entry.sh $APP_HOME/bin/dpg-jobs-ws
-#RUN chown -R libsnlocal:lb-digiserv $APP_HOME/bin/public $APP_HOME/bin/data && chmod -R 755 $APP_HOME/bin/public $APP_HOME/bin/data
+RUN chown -R libsnlocal:lb-digiserv $APP_HOME/bin/assets $APP_HOME/bin/templates && chmod -R 755 $APP_HOME/bin/assets $APP_HOME/bin/tempplates
 RUN chown -R libsnlocal:lb-digiserv $APP_HOME/bin && chmod -R 755 $APP_HOME/bin
 
 # Add the build tag

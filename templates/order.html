@@ -1,0 +1,34 @@
+<img src='http://digiservdelivery.lib.virginia.edu/lib_letterhead.jpg' style="width:640px; height:64px;">
+<h2>University of Virginia Digital Production Group</h2>
+<p>
+   Dear {{.FirstName}} {{.LastName}},<br/>
+   Your digital request is now available and may be downloaded using the links below:
+</p>
+
+{{range .DeliveryFiles}}
+<p>
+   <a href="{{.}}">{{.}}</a>
+</p>
+{{end}}
+
+<p>The PDF included in the above list contains all metadata and descriptive information about your digital order.</p>
+
+<p>*** Please note that your image files will only be available for the next 30 days ***</p>
+
+{{if .Fee}}
+   <p>
+      Our records show that you paid a fee of ${{.Fee}} on {{.DatePaid}} %>.
+   </p>
+{{end}}
+
+<p>Let us know if you have any questions, comments or feedback by writing to <a href="mailto:digitalservices@virginia.edu">digitalservices@virginia.edu</a>.
+<h3>Material Usage Information</h3>
+<p>For more information regarding the use, reproduction and publication of materials, please refer to the guidelines provided by Special Collections at:
+<a href ="http://small.library.virginia.edu/services/reproduction/">http://small.library.virginia.edu/services/reproduction/</a>
+<p>Sincerely,<br/>
+Digital Production Group Staff<br/><br/>
+Digital Production Group<br/>
+University of Virginia Library<br/>
+P.O. Box 400155<br/>
+Charlottesville, VA 22904<br/>
+<a href="http://dcs.library.virginia.edu/">http://dcs.library.virginia.edu/</a></p>
