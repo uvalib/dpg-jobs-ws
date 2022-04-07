@@ -84,6 +84,42 @@ func (svc *ServiceContext) createOrderPDF(c *gin.Context) {
 	c.String(http.StatusOK, "done")
 }
 
+func (svc *ServiceContext) createOrderEmail(c *gin.Context) {
+	orderIDStr := c.Param("id")
+	orderID, _ := strconv.ParseInt(orderIDStr, 10, 64)
+	js, err := svc.createJobStatus("CreateOrderEmail", "Order", orderID)
+	if err != nil {
+		log.Printf("ERROR: unable to create check order job js: %s", err.Error())
+		c.String(http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	var o order
+	err = svc.GDB.Preload("Customer").Preload("Customer.AcademicStatus").
+		Preload("Invoices").Preload("Units").Preload("Units.IntendedUse").
+		Preload("Units.Metadata").Preload("Units.MasterFiles").First(&o, orderID).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			svc.logFatal(js, fmt.Sprintf("order %d not found", orderID))
+			c.String(http.StatusNotFound, fmt.Sprintf("order %d not found", orderID))
+		} else {
+			svc.logFatal(js, fmt.Sprintf("unable to load order %d: %s", orderID, err.Error()))
+			c.String(http.StatusInternalServerError, err.Error())
+		}
+		return
+	}
+
+	err = svc.generateOrderEmail(js, &o)
+	if err != nil {
+		svc.logFatal(js, fmt.Sprintf("Unable to generate email: %s", err.Error()))
+		c.String(http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	svc.jobDone(js)
+	c.String(http.StatusOK, "done")
+}
+
 func (svc *ServiceContext) checkOrderReady(c *gin.Context) {
 	orderIDStr := c.Param("id")
 	orderID, _ := strconv.ParseInt(orderIDStr, 10, 64)
