@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"crypto/tls"
 	"errors"
 	"fmt"
@@ -8,6 +9,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"text/template"
 
 	"github.com/gin-gonic/gin"
 	"gopkg.in/gomail.v2"
@@ -71,7 +73,52 @@ func (svc *ServiceContext) sendFeesEmail(c *gin.Context) {
 		c.String(http.StatusInternalServerError, err.Error())
 		return
 	}
-	svc.logInfo(js, "Start send order email...")
+	svc.logInfo(js, "Start send fees email...")
+	var o order
+	err = svc.GDB.Preload("Customer").First(&o, orderID).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			svc.logFatal(js, fmt.Sprintf("order %d not found", orderID))
+			c.String(http.StatusNotFound, fmt.Sprintf("order %d not found", orderID))
+		} else {
+			svc.logFatal(js, fmt.Sprintf("unable to load order %d: %s", orderID, err.Error()))
+			c.String(http.StatusInternalServerError, err.Error())
+		}
+		return
+	}
+
+	type feeData struct {
+		FirstName string
+		LastName  string
+		Fee       float64
+	}
+	data := feeData{FirstName: o.Customer.FirstName, LastName: o.Customer.LastName, Fee: o.Fee.Float64}
+	var renderedEmail bytes.Buffer
+	tpl, err := template.New("fees.html").ParseFiles("./templates/fees.html")
+	if err != nil {
+		svc.logFatal(js, fmt.Sprintf("unable to load fees email template for order %d: %s", orderID, err.Error()))
+		c.String(http.StatusInternalServerError, err.Error())
+	}
+	err = tpl.Execute(&renderedEmail, data)
+	if err != nil {
+		svc.logFatal(js, fmt.Sprintf("unable to render fees email for order %d: %s", orderID, err.Error()))
+		c.String(http.StatusInternalServerError, err.Error())
+	}
+
+	req := emailRequest{Subject: fmt.Sprintf("UVA Digital Production Group - Request # %d Estimated Fee", o.ID),
+		To:      []string{o.Customer.Email},
+		From:    svc.SMTP.Sender,
+		ReplyTo: svc.SMTP.Sender,
+		Body:    o.Email,
+	}
+	err = svc.sendEmail(&req)
+	if err != nil {
+		svc.logFatal(js, fmt.Sprintf("Unable to send fees email: %s", err.Error()))
+		return
+	}
+
+	svc.jobDone(js)
+	c.String(http.StatusOK, "done")
 }
 
 func (svc *ServiceContext) sendEmail(request *emailRequest) error {
@@ -87,7 +134,7 @@ func (svc *ServiceContext) sendEmail(request *emailRequest) error {
 	if len(request.CC) > 0 {
 		mail.SetHeader("Cc", request.CC)
 	}
-	mail.SetBody("text/plain", request.Body)
+	mail.SetBody("text/html", request.Body)
 
 	if svc.SMTP.FakeSMTP {
 		log.Printf("Email is in dev mode. Logging message instead of sending")
