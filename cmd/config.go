@@ -29,7 +29,6 @@ type ServiceConfig struct {
 	IIIFDir       string
 	ProcessingDir string
 	DeliveryDir   string
-	LogDir        string
 	TrackSysURL   string
 }
 
@@ -44,7 +43,6 @@ func LoadConfiguration() *ServiceConfig {
 	flag.StringVar(&cfg.DeliveryDir, "delivery", "", "Delivery directory")
 	flag.StringVar(&cfg.IIIFDir, "iiif", "", "IIIF directory")
 	flag.StringVar(&cfg.ProcessingDir, "work", "", "Processing directory")
-	flag.StringVar(&cfg.LogDir, "logs", "", "Logging directory")
 	flag.StringVar(&cfg.TrackSysURL, "tsapi", "https://tracksys-api-ws.internal.lib.virginia.edu", "URL for TrackSys API")
 
 	// DB connection params
@@ -80,9 +78,6 @@ func LoadConfiguration() *ServiceConfig {
 	if cfg.ProcessingDir == "" {
 		log.Fatal("Parameter work is required")
 	}
-	if cfg.LogDir == "" {
-		log.Fatal("Parameter logs is required")
-	}
 
 	log.Printf("[CONFIG] port          = [%d]", cfg.Port)
 	log.Printf("[CONFIG] tsapi         = [%s]", cfg.TrackSysURL)
@@ -94,7 +89,6 @@ func LoadConfiguration() *ServiceConfig {
 	log.Printf("[CONFIG] delivery      = [%s]", cfg.DeliveryDir)
 	log.Printf("[CONFIG] iiif          = [%s]", cfg.IIIFDir)
 	log.Printf("[CONFIG] work          = [%s]", cfg.ProcessingDir)
-	log.Printf("[CONFIG] logs          = [%s]", cfg.LogDir)
 
 	return &cfg
 }
