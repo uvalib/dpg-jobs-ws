@@ -38,6 +38,7 @@ type metadata struct {
 	Title       string
 	CreatorName string
 	CallNumber  string
+	Barcoode    string
 }
 
 type masterFile struct {

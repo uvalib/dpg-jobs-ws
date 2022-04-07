@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/xml"
 	"errors"
 	"fmt"
 	"log"
@@ -166,34 +167,38 @@ func (svc *ServiceContext) generateOrderPDF(js *jobStatus, order *order) error {
 		})
 	})
 
-	addPDFTextRow(m, "Digital Production Group, University of Virginia Library", 5, 1, consts.Center)
-	addPDFTextRow(m, "Post Office Box 400155, Charlottesville, Virginia 22904 U.S.A.", 5, 1, consts.Center)
-	addPDFTextRow(m, fmt.Sprintf("Order ID: %d", order.ID), 15, 5, consts.Right)
+	addPDFTextRow(m, "Digital Production Group, University of Virginia Library", 5, consts.Center)
+	addPDFTextRow(m, "Post Office Box 400155, Charlottesville, Virginia 22904 U.S.A.", 5, consts.Center)
+	addPDFTextRow(m, fmt.Sprintf("Order ID: %d", order.ID), 15, consts.Right)
 
 	// define the message to the user
-	addPDFTextRow(m, fmt.Sprintf("Dear %s %s, ", order.Customer.FirstName, order.Customer.LastName), 5, 5, consts.Left)
+	addPDFTextRow(m, fmt.Sprintf("Dear %s %s, ", order.Customer.FirstName, order.Customer.LastName), 15, consts.Left)
 	msg := fmt.Sprintf("On %s you placed an order with the Digital Production Group ", order.DateRequestSubmitted.Format("January 2, 2006"))
 	msg += fmt.Sprintf("of the University of Virginia, Charlottesville, VA. Your request comprised %d items. ", len(order.Units))
 	msg += "Below you will find a description of your digital order and how to cite the material for publication."
-	addPDFTextRow(m, msg, 18, 5, consts.Left)
-	addPDFTextRow(m, "Sincerely,", 5, 5, consts.Left)
-	addPDFTextRow(m, "Digital Production Group Staff", 5, 5, consts.Left)
+	addPDFTextRow(m, msg, 18, consts.Left)
+	addPDFTextRow(m, "Sincerely,", 5, consts.Left)
+	addPDFTextRow(m, "Digital Production Group Staff", 5, consts.Left)
 	m.AddPage()
 
 	// the tables of masterfiles
-	addPDFTextRow(m, "Digital Order Summary", 5, 5, consts.Center)
+	addPDFTextRow(m, "Digital Order Summary", 5, consts.Center)
 
 	tableHeader := []string{"Filename", "Title", "Description"}
 	for idx, unit := range order.Units {
-		addPDFTextRow(m, "", 5, 1, consts.Left)
+		addPDFTextRow(m, "", 5, consts.Left)
 		addPDFLine(m)
-		addPDFTextRow(m, fmt.Sprintf("Item #%d:", idx+1), 5, 10, consts.Left)
-		addPDFTextRow(m, fmt.Sprintf("Title: %s", unit.Metadata.Title), 5, 5, consts.Left)
+		addPDFTextRow(m, fmt.Sprintf("Item #%d", idx+1), 5, consts.Right)
+		addPDFLabeledTextRow(m, "Title:", unit.Metadata.Title)
 		if unit.Metadata.CreatorName != "" {
-			addPDFTextRow(m, fmt.Sprintf("Author: %s", unit.Metadata.Title), 5, 5, consts.Left)
+			addPDFLabeledTextRow(m, "Author:", unit.Metadata.CreatorName)
 		}
 		if unit.Metadata.Type == "SirsiMetadata" {
-			addPDFTextRow(m, fmt.Sprintf("Call Number: %s", unit.Metadata.CallNumber), 5, 5, consts.Left)
+			addPDFLabeledTextRow(m, "Call Number:", unit.Metadata.CallNumber)
+			citation := svc.getCitation(&unit.Metadata)
+			if citation != "" {
+				log.Printf(citation)
+			}
 		}
 
 		content := [][]string{}
@@ -201,7 +206,7 @@ func (svc *ServiceContext) generateOrderPDF(js *jobStatus, order *order) error {
 			content = append(content, []string{mf.Filename, mf.Title, mf.Description})
 		}
 
-		addPDFTextRow(m, "", 3, 1, consts.Left)
+		addPDFTextRow(m, "", 3, consts.Left)
 		m.TableList(tableHeader, content, props.TableList{
 			HeaderProp: props.TableListContent{
 				Size: 10,
@@ -241,7 +246,7 @@ func addPDFLine(m pdf.Maroto) {
 	})
 }
 
-func addPDFTextRow(m pdf.Maroto, text string, rowHeight float64, top float64, align consts.Align) {
+func addPDFTextRow(m pdf.Maroto, text string, rowHeight float64, align consts.Align) {
 	m.Row(rowHeight, func() {
 		m.Col(12, func() {
 			m.Text(text, props.Text{
@@ -253,9 +258,104 @@ func addPDFTextRow(m pdf.Maroto, text string, rowHeight float64, top float64, al
 	})
 }
 
-func (svc *ServiceContext) getCitation() string {
-	// TODO get marc from tracksysAPI
-	return ""
+func addPDFLabeledTextRow(m pdf.Maroto, label string, text string) {
+	m.Row(5, func() {
+		m.Col(2, func() {
+			m.Text(label, props.Text{
+				Style: consts.Bold,
+				Align: consts.Left,
+			})
+		})
+		m.Col(10, func() {
+			m.Text(text, props.Text{
+				Style: consts.Normal,
+				Align: consts.Left,
+			})
+		})
+	})
+}
+
+type subField struct {
+	XMLName xml.Name `xml:"subfield"`
+	Code    string   `xml:"code,attr"`
+	Value   string   `xml:",chardata"`
+}
+
+type dataField struct {
+	XMLName   xml.Name   `xml:"datafield"`
+	Tag       string     `xml:"tag,attr"`
+	Subfields []subField `xml:"subfield"`
+}
+
+type mods = struct {
+	XMLName    xml.Name    `xml:"record"`
+	Leader     string      `xml:"leader"`
+	DataFields []dataField `xml:"datafield"`
+}
+
+func (svc *ServiceContext) getCitation(md *metadata) string {
+	log.Printf("INFO: get citation from marc for pid [%s] barcode [%s]", md.PID, md.Barcoode)
+	citation := ""
+	location := ""
+	out, err := svc.getRequest(fmt.Sprintf("%s/api/metadata/%s?type=marc", svc.TrackSysURL, md.PID))
+	if err != nil {
+		log.Printf("ERROR: unable to get marc for pid [%s] barcode [%s]: %s", md.PID, md.Barcoode, err.Message)
+	} else {
+		var parsed mods
+		parseErr := xml.Unmarshal(out, &parsed)
+		if parseErr != nil {
+			log.Printf("ERROR: unable to parse marc response for %s: %s", md.PID, parseErr.Error())
+		} else {
+			for _, df := range parsed.DataFields {
+				// log.Printf("DF %s", df.Tag)
+				if df.Tag == "524" {
+					for _, sf := range df.Subfields {
+						if sf.Code == "a" {
+							citation = sf.Value
+							break
+						}
+					}
+				}
+				if df.Tag == "999" {
+					// MARC 999 is repeated, once per barcdode. Barcode stored in 'i'
+					// pick the data that matches the target barcode and grab location from 'l'
+					barcodeMatch := false
+					for _, sf := range df.Subfields {
+						if sf.Code == "i" && sf.Value == md.Barcoode {
+							barcodeMatch = true
+						}
+						if sf.Code == "l" && barcodeMatch {
+							location = sf.Value
+							break
+						}
+					}
+				}
+				if citation != "" {
+					break
+				}
+			}
+		}
+	}
+
+	if citation == "" {
+		if md.Title != "" {
+			citation = md.Title + ". "
+		}
+		if md.CallNumber != "" {
+			citation += md.CallNumber + ". "
+		}
+		if location != "" {
+			if val, ok := VirgoLocations[location]; ok {
+				citation += val
+			} else {
+				citation += "Special Collections, University of Virginia, Charlottesville, VA"
+			}
+		} else {
+			citation += "Special Collections, University of Virginia, Charlottesville, VA"
+		}
+	}
+
+	return citation
 }
 
 func (svc *ServiceContext) generateOrderEmail(js *jobStatus, order *order) error {
