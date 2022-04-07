@@ -19,6 +19,7 @@ import (
 // ServiceContext contains common data used by all handlers
 type ServiceContext struct {
 	Version       string
+	SMTP          SMTPConfig
 	GDB           *gorm.DB
 	ArchiveDir    string
 	IIIFDir       string
@@ -37,6 +38,7 @@ type RequestError struct {
 // InitializeService sets up the service context for all API handlers
 func InitializeService(version string, cfg *ServiceConfig) *ServiceContext {
 	ctx := ServiceContext{Version: version,
+		SMTP:          cfg.SMTP,
 		ArchiveDir:    cfg.ArchiveDir,
 		IIIFDir:       cfg.IIIFDir,
 		DeliveryDir:   cfg.DeliveryDir,

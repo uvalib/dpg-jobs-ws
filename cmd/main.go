@@ -38,6 +38,7 @@ func main() {
 	router.POST("/orders/:id/check", svc.checkOrderReady)
 	router.POST("/orders/:id/pdf", svc.createOrderPDF)
 	router.POST("/orders/:id/email", svc.createOrderEmail)
+	router.POST("/orders/:id/email/send", svc.sendOrderEmail)
 	router.GET("/orders/:id/pdf", svc.viewOrderPDF)
 
 	portStr := fmt.Sprintf(":%d", cfg.Port)

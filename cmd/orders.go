@@ -72,7 +72,6 @@ func (svc *ServiceContext) createOrderPDF(c *gin.Context) {
 		return
 	}
 
-	svc.logInfo(js, "Create order PDF...")
 	err = svc.createPDFDeliverable(js, &o)
 	if err != nil {
 		svc.logFatal(js, fmt.Sprintf("Unable to generate PDF: %s", err.Error()))
@@ -89,7 +88,7 @@ func (svc *ServiceContext) createOrderEmail(c *gin.Context) {
 	orderID, _ := strconv.ParseInt(orderIDStr, 10, 64)
 	js, err := svc.createJobStatus("CreateOrderEmail", "Order", orderID)
 	if err != nil {
-		log.Printf("ERROR: unable to create check order job js: %s", err.Error())
+		log.Printf("ERROR: unable to create job js: %s", err.Error())
 		c.String(http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -125,7 +124,7 @@ func (svc *ServiceContext) checkOrderReady(c *gin.Context) {
 	orderID, _ := strconv.ParseInt(orderIDStr, 10, 64)
 	js, err := svc.createJobStatus("CheckOrderReadyForDelivery", "Order", orderID)
 	if err != nil {
-		log.Printf("ERROR: unable to create check order job js: %s", err.Error())
+		log.Printf("ERROR: unable to create job js: %s", err.Error())
 		c.String(http.StatusInternalServerError, err.Error())
 		return
 	}

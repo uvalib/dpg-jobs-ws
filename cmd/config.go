@@ -14,16 +14,20 @@ type DBConfig struct {
 	Name string
 }
 
-// DevConfig specifies configuration params specific to development mode
-type DevConfig struct {
-	AuthUser string
+// SMTPConfig wraps up all of the smpt configuration
+type SMTPConfig struct {
+	Host     string
+	Port     int
+	User     string
+	Pass     string
+	Sender   string
 	FakeSMTP bool
 }
 
 // ServiceConfig defines all of the JRML pool configuration parameters
 type ServiceConfig struct {
 	Port          int
-	DevConfig     bool
+	SMTP          SMTPConfig
 	DB            DBConfig
 	ArchiveDir    string
 	IIIFDir       string
@@ -44,6 +48,14 @@ func LoadConfiguration() *ServiceConfig {
 	flag.StringVar(&cfg.IIIFDir, "iiif", "", "IIIF directory")
 	flag.StringVar(&cfg.ProcessingDir, "work", "", "Processing directory")
 	flag.StringVar(&cfg.TrackSysURL, "tsapi", "https://tracksys-api-ws.internal.lib.virginia.edu", "URL for TrackSys API")
+
+	// SMTP
+	flag.BoolVar(&cfg.SMTP.FakeSMTP, "stubsmtp", false, "Log email insted of sending (dev mode)")
+	flag.StringVar(&cfg.SMTP.Host, "smtphost", "", "SMTP Host")
+	flag.IntVar(&cfg.SMTP.Port, "smtpport", 0, "SMTP Port")
+	flag.StringVar(&cfg.SMTP.User, "smtpuser", "", "SMTP User")
+	flag.StringVar(&cfg.SMTP.Pass, "smtppass", "", "SMTP Password")
+	flag.StringVar(&cfg.SMTP.Sender, "smtpsender", "digitalservices@virginia.edu", "SMTP sender email")
 
 	// DB connection params
 	flag.StringVar(&cfg.DB.Host, "dbhost", "", "Database host")
@@ -89,6 +101,16 @@ func LoadConfiguration() *ServiceConfig {
 	log.Printf("[CONFIG] delivery      = [%s]", cfg.DeliveryDir)
 	log.Printf("[CONFIG] iiif          = [%s]", cfg.IIIFDir)
 	log.Printf("[CONFIG] work          = [%s]", cfg.ProcessingDir)
+
+	if cfg.SMTP.FakeSMTP {
+		log.Printf("[CONFIG] fakesmtp      = [true]")
+	} else {
+		log.Printf("[CONFIG] smtphost      = [%s]", cfg.SMTP.Host)
+		log.Printf("[CONFIG] smtpport      = [%d]", cfg.SMTP.Port)
+		log.Printf("[CONFIG] smtpuser      = [%s]", cfg.SMTP.User)
+		log.Printf("[CONFIG] smtppass      = [%s]", cfg.SMTP.Pass)
+		log.Printf("[CONFIG] smtpsender    = [%s]", cfg.SMTP.Sender)
+	}
 
 	return &cfg
 }

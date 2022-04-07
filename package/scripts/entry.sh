@@ -5,17 +5,22 @@
 
 # run the server
 umask 0002
-cd bin; ./dpg-jobs-ws            \
-  -archive  ${DPG_ARCHIVE_PATH}  \
-  -delivery ${DPG_DELIVERY_PATH} \
-  -iiif     ${DPG_IIIF_PATH}     \
-  -work     ${DPG_WORK_PATH}     \
-  -dbhost   ${DBHOST}            \
-  -dbport   ${DBPORT}            \
-  -dbname   ${DBNAME}            \
-  -dbuser   ${DBUSER}            \
-  -dbpass   ${DBPASS}            \
-  -tsapi    ${TSAPI}
+cd bin; ./dpg-jobs-ws              \
+  -archive    ${DPG_ARCHIVE_PATH}  \
+  -delivery   ${DPG_DELIVERY_PATH} \
+  -iiif       ${DPG_IIIF_PATH}     \
+  -work       ${DPG_WORK_PATH}     \
+  -dbhost     ${DBHOST}            \
+  -dbport     ${DBPORT}            \
+  -dbname     ${DBNAME}            \
+  -dbuser     ${DBUSER}            \
+  -dbpass     ${DBPASS}            \
+  -smtphost   ${SMPT_HOST}         \
+  -smtpport   ${SMPT_PORT}         \
+  -smtpuser   ${SMPT_USER}         \
+  -smtppass   ${SMPT_PASS}         \
+  -smtpsender ${SMPT_SENDER}       \
+  -tsapi      ${TSAPI}
 
 # return the status
 exit $?
