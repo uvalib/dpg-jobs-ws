@@ -1,12 +1,15 @@
 package main
 
 import (
+	"crypto/md5"
 	"fmt"
 	"io/ioutil"
 	"log"
 	"net"
 	"net/http"
+	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -163,4 +166,25 @@ func handleAPIResponse(logURL string, resp *http.Response, err error) ([]byte, *
 	defer resp.Body.Close()
 	bodyBytes, _ := ioutil.ReadAll(resp.Body)
 	return bodyBytes, nil
+}
+
+func padLeft(str string, tgtLen int) string {
+	for {
+		if len(str) == tgtLen {
+			return str
+		}
+		str = "0" + str
+	}
+}
+
+func md5Checksum(filename string) string {
+	data, _ := os.ReadFile(filename)
+	return fmt.Sprintf("%x", md5.Sum(data))
+}
+
+func getMasterFileNumber(filename string) int {
+	noExt := strings.ReplaceAll(filename, ".tif", "")
+	numStr := strings.Split(noExt, "_")[1]
+	num, _ := strconv.ParseInt(numStr, 10, 0)
+	return int(num)
 }
