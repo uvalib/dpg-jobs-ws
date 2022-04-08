@@ -44,22 +44,81 @@ type metadata struct {
 	Barcoode    string
 }
 
+type containerType struct {
+	ID         int64
+	Name       string
+	hasFolders bool
+}
+
+type location struct {
+	ID              int64
+	ContainerTypeID int64
+	ContainerType   containerType `gorm:"foreignKey:ContainerTypeID"`
+	FolderID        string        `gorm:"column:folder_id"`
+}
+
+type imageTechMeta struct {
+	ID           int64
+	MasterFileID int64
+	ImageFormat  string
+	Width        uint
+	Height       uint
+	Resolution   uint
+	ColorSpace   string
+	Depth        uint
+	Compression  string
+	ColorProfile string
+	Equipment    string
+	Softwarre    string
+	Model        string
+	ExifVersion  string
+	CaptureDate  *time.Time
+	ISO          uint `gorm:"column:iso"`
+	ExposureBias string
+	ExposureTime string
+	Aperture     string
+	FocalLength  float64
+	Orientation  uint
+	CreatedAt    time.Time
+	UpdatedAt    time.Time
+}
+
 type masterFile struct {
-	ID          int64
-	PID         string `gorm:"column:pid"`
-	UnitID      int64
-	Filename    string
-	Title       string
-	Description string
+	ID                int64
+	PID               string        `gorm:"column:pid"`
+	MetadataID        *int64        `gorm:"column:metadata_id"`
+	ComponentID       *int64        `gorm:"column:component_id"`
+	ImageTechMeta     imageTechMeta `gorm:"foreignKey:MasterFileID"`
+	UnitID            int64
+	Filename          string
+	Title             string
+	Description       string
+	Locations         []location `gorm:"many2many:master_file_locations"`
+	Filesize          int64
+	MD5               string `gorm:"column:md5"`
+	OriginalMfID      int64  `gorm:"column:original_mf_id"`
+	DateArchived      *time.Time
+	DeaccessionedAt   *time.Time
+	DeaccessionedByID *int64 `gorm:"column:deaccessioned_by_id"`
+	DeaccessionNote   string
+	CreatedAt         time.Time
+	UpdatedAt         time.Time
+}
+
+func (mf *masterFile) location() *location {
+	if len(mf.Locations) == 0 {
+		return nil
+	}
+	return &mf.Locations[0]
 }
 
 type unit struct {
 	ID                          int64
 	OrderID                     int64
-	MetadataID                  uint
-	Metadata                    metadata `gorm:"foreignKey:MetadataID"`
+	MetadataID                  *int64
+	Metadata                    *metadata `gorm:"foreignKey:MetadataID"`
 	UnitStatus                  string
-	IntendedUseID               uint
+	IntendedUseID               int64
 	IntendedUse                 intendedUse `gorm:"foreignKey:IntendedUseID"`
 	RemoveWatermark             bool
 	Reorder                     bool

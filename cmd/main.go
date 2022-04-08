@@ -42,6 +42,8 @@ func main() {
 	router.POST("/orders/:id/email/send", svc.sendOrderEmail)
 	router.POST("/orders/:id/fees", svc.sendFeesEmail)
 
+	router.POST("/units/:id/masterfiles/add", svc.addMasterFiles)
+
 	portStr := fmt.Sprintf(":%d", cfg.Port)
 	log.Printf("INFO: start service v%s on port %s", version, portStr)
 	log.Fatal(router.Run(portStr))
