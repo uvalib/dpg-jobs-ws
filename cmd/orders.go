@@ -56,6 +56,11 @@ func (svc *ServiceContext) createOrderPDF(c *gin.Context) {
 	orderIDStr := c.Param("id")
 	orderID, _ := strconv.ParseInt(orderIDStr, 10, 64)
 	js, err := svc.createJobStatus("CreateOrderPDF", "Order", orderID)
+	if err != nil {
+		log.Printf("ERROR: unable to create job js: %s", err.Error())
+		c.String(http.StatusInternalServerError, err.Error())
+		return
+	}
 
 	var o order
 	err = svc.GDB.Preload("Customer").Preload("Customer.AcademicStatus").
@@ -315,7 +320,7 @@ func (svc *ServiceContext) generateOrderPDF(order *order) pdf.Maroto {
 		}
 		if unit.Metadata.Type == "SirsiMetadata" {
 			addPDFLabeledTextRow(m, "Call Number:", unit.Metadata.CallNumber)
-			citation := svc.getCitation(&unit.Metadata)
+			citation := svc.getCitation(unit.Metadata)
 			if citation != "" {
 				log.Printf(citation)
 			}
