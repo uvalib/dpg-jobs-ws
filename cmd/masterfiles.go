@@ -9,6 +9,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 )
@@ -101,12 +102,10 @@ func (svc *ServiceContext) addMasterFiles(c *gin.Context) {
 
 	// grab the first existing master file and see if it has location data.
 	// if it does, the cotainer type for all will be the same. pull it
-	var containerType *containerType
+	var existingLoc *location
 	var componentID *int64
 	if len(tgtUnit.MasterFiles) > 0 {
-		if tgtUnit.MasterFiles[0].location() != nil {
-			containerType = &tgtUnit.MasterFiles[0].location().ContainerType
-		}
+		existingLoc = tgtUnit.MasterFiles[0].location()
 		componentID = tgtUnit.MasterFiles[0].ComponentID
 	}
 
@@ -118,12 +117,57 @@ func (svc *ServiceContext) addMasterFiles(c *gin.Context) {
 		pgNum := getMasterFileNumber(tf.filename)
 		newMF := masterFile{Filename: tf.filename, Title: fmt.Sprintf("%d", pgNum), Filesize: tf.size,
 			MD5: md5, UnitID: tgtUnit.ID, ComponentID: componentID, MetadataID: tgtUnit.MetadataID}
-		log.Printf("%+v", newMF)
+		err = svc.GDB.Create(&newMF).Error
+		if err != nil {
+			svc.logFatal(js, fmt.Sprintf("Unable to create %s: %s", tf.filename, err.Error()))
+			c.String(http.StatusInternalServerError, err.Error())
+			return
+		}
+		newMF.PID = fmt.Sprintf("tsm:%d", newMF.ID)
+		svc.GDB.Model(&newMF).Select("PID").Updates(newMF)
+		svc.logInfo(js, fmt.Sprintf("Created masterfile for %s, PID: %s", tf.filename, newMF.PID))
+		if existingLoc != nil {
+			svc.logInfo(js, fmt.Sprintf("Adding location %+v", *existingLoc))
+			svc.GDB.Exec("INSERT into master_file_locations (master_file_id, location_id) values (?,?)", newMF.ID, existingLoc.ID)
+		}
 
-		if containerType != nil {
-			// use it!
+		svc.logInfo(js, fmt.Sprintf("Create image tech metadata for %s", tf.filename))
+		err = svc.createImageTechMetadata(&newMF, tf.path)
+		if err != nil {
+			svc.logError(js, fmt.Sprintf("Unable to create %s tech metadata: %s", tf.filename, err.Error()))
+		}
+
+		// TODO publish to IIIF
+
+		// archive file, validate checksum and set archived date
+		archiveUnitDir := path.Join(svc.ArchiveDir, unitDir)
+		err = ensureDirExists(archiveUnitDir, 0777)
+		if err != nil {
+			svc.logError(js, fmt.Sprintf("Unable to archive create archive dir %s: %s", archiveUnitDir, err.Error()))
+		} else {
+			archiveFile := path.Join(archiveUnitDir, tf.filename)
+			svc.logInfo(js, fmt.Sprintf("Archiving new master file %s to %s", tf.filename, archiveFile))
+			newMD5, err := copyFile(tf.path, archiveFile, 0664)
+			if err != nil {
+				svc.logError(js, fmt.Sprintf("Unable to archive %s: %s", tf.filename, err.Error()))
+			} else {
+				if newMD5 != newMF.MD5 {
+					svc.logError(js, fmt.Sprintf("MD5 does not match for new MF %s", archiveFile))
+				}
+
+				now := time.Now()
+				newMF.DateArchived = &now
+				svc.GDB.Model(&newMF).Select("DateArchived").Updates(newMF)
+			}
 		}
 	}
+
+	svc.logInfo(js, fmt.Sprintf("Updating unit master files count by %d", len(tifFiles)))
+	tgtUnit.MasterFilesCount += uint(len(tifFiles))
+	tgtUnit.UpdatedAt = time.Now()
+	svc.GDB.Model(&tgtUnit).Select("UpdatedAt", "MasterFilesCount").Updates(tgtUnit)
+	svc.logInfo(js, "Cleaning up working files")
+	// os.RemoveAll(srcDir)
 
 	svc.jobDone(js)
 	c.String(http.StatusOK, "done")

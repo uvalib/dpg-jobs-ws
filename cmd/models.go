@@ -69,7 +69,7 @@ type imageTechMeta struct {
 	Compression  string
 	ColorProfile string
 	Equipment    string
-	Softwarre    string
+	Software     string
 	Model        string
 	ExifVersion  string
 	CaptureDate  *time.Time
@@ -78,7 +78,6 @@ type imageTechMeta struct {
 	ExposureTime string
 	Aperture     string
 	FocalLength  float64
-	Orientation  uint
 	CreatedAt    time.Time
 	UpdatedAt    time.Time
 }
@@ -96,7 +95,7 @@ type masterFile struct {
 	Locations         []location `gorm:"many2many:master_file_locations"`
 	Filesize          int64
 	MD5               string `gorm:"column:md5"`
-	OriginalMfID      int64  `gorm:"column:original_mf_id"`
+	OriginalMfID      *int64 `gorm:"column:original_mf_id"`
 	DateArchived      *time.Time
 	DeaccessionedAt   *time.Time
 	DeaccessionedByID *int64 `gorm:"column:deaccessioned_by_id"`
@@ -126,9 +125,11 @@ type unit struct {
 	ThrowAway                   bool
 	OCRMasterFiles              bool         `gorm:"column:ocr_master_files"`
 	MasterFiles                 []masterFile `gorm:"foreignKey:UnitID"`
+	MasterFilesCount            uint
 	DateArchived                *time.Time
 	DatePatronDeliverablesReady *time.Time
 	DateDLDeliverablesReady     *time.Time `gorm:"column:date_dl_deliverables_ready"`
+	UpdatedAt                   time.Time
 }
 
 type order struct {

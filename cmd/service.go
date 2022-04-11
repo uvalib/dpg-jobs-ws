@@ -3,6 +3,8 @@ package main
 import (
 	"crypto/md5"
 	"fmt"
+	"io"
+	"io/fs"
 	"io/ioutil"
 	"log"
 	"net"
@@ -187,4 +189,38 @@ func getMasterFileNumber(filename string) int {
 	numStr := strings.Split(noExt, "_")[1]
 	num, _ := strconv.ParseInt(numStr, 10, 0)
 	return int(num)
+}
+
+func ensureDirExists(dir string, mode fs.FileMode) error {
+	if _, err := os.Stat(dir); os.IsNotExist(err) {
+		err := os.Mkdir(dir, 0777)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// copy file from src to dest, set permissions and return the MD5 checksum of the copy
+func copyFile(src string, dest string, mode fs.FileMode) (string, error) {
+	origFile, err := os.Open(src)
+	if err != nil {
+		return "", err
+	}
+	defer origFile.Close()
+
+	destFile, err := os.Create(dest)
+	if err != nil {
+		return "", err
+	}
+	defer destFile.Close()
+
+	_, err = io.Copy(destFile, origFile)
+	if err != nil {
+		return "", err
+	}
+	destFile.Close()
+
+	os.Chmod(dest, mode)
+	return md5Checksum(dest), nil
 }

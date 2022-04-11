@@ -8,7 +8,6 @@ import (
 	"io/ioutil"
 	"log"
 	"net/http"
-	"os"
 	"path"
 	"strconv"
 	"strings"
@@ -244,15 +243,13 @@ func (svc *ServiceContext) createPDFDeliverable(js *jobStatus, o *order) error {
 	svc.logInfo(js, "Create order PDF...")
 	m := svc.generateOrderPDF(o)
 	dir := path.Join(svc.DeliveryDir, fmt.Sprintf("order_%d", o.ID))
-	if _, err := os.Stat(dir); os.IsNotExist(err) {
-		log.Printf("INFO: create pdf output directory %s", dir)
-		err := os.Mkdir(dir, 0777)
-		if err != nil {
-			return err
-		}
+	err := ensureDirExists(dir, 0777)
+	if err != nil {
+		return err
 	}
+
 	pdfFile := path.Join(dir, fmt.Sprintf("%d.pdf", o.ID))
-	err := m.OutputFileAndClose(pdfFile)
+	err = m.OutputFileAndClose(pdfFile)
 	if err != nil {
 		return err
 	}
