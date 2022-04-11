@@ -191,9 +191,16 @@ func getMasterFileNumber(filename string) int {
 	return int(num)
 }
 
+func pathExists(path string) bool {
+	if _, err := os.Stat(path); os.IsNotExist(err) {
+		return false
+	}
+	return true
+}
+
 func ensureDirExists(dir string, mode fs.FileMode) error {
 	if _, err := os.Stat(dir); os.IsNotExist(err) {
-		err := os.Mkdir(dir, 0777)
+		err := os.MkdirAll(dir, 0777)
 		if err != nil {
 			return err
 		}

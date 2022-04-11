@@ -59,8 +59,11 @@ func (svc *ServiceContext) createImageTechMetadata(mf *masterFile, mfPath string
 
 func getUInt(data map[string]interface{}, fieldName string) uint {
 	raw := data[fieldName]
-	floatVal := raw.(float64)
-	return uint(floatVal)
+	floatVal, ok := raw.(float64)
+	if ok {
+		return uint(floatVal)
+	}
+	return 0
 }
 
 func getFocalLength(data map[string]interface{}) float64 {

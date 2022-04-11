@@ -137,7 +137,10 @@ func (svc *ServiceContext) addMasterFiles(c *gin.Context) {
 			svc.logError(js, fmt.Sprintf("Unable to create %s tech metadata: %s", tf.filename, err.Error()))
 		}
 
-		// TODO publish to IIIF
+		err = svc.publishToIIIF(js, &newMF, tf.path, true)
+		if err != nil {
+			svc.logError(js, fmt.Sprintf("Unable to publish %s to IIIF: %s", tf.filename, err.Error()))
+		}
 
 		// archive file, validate checksum and set archived date
 		archiveUnitDir := path.Join(svc.ArchiveDir, unitDir)
@@ -152,7 +155,7 @@ func (svc *ServiceContext) addMasterFiles(c *gin.Context) {
 				svc.logError(js, fmt.Sprintf("Unable to archive %s: %s", tf.filename, err.Error()))
 			} else {
 				if newMD5 != newMF.MD5 {
-					svc.logError(js, fmt.Sprintf("MD5 does not match for new MF %s", archiveFile))
+					svc.logError(js, fmt.Sprintf("MD5 does not match for new MF %s. %s vs %s", archiveFile, newMD5, newMF.MD5))
 				}
 
 				now := time.Now()
