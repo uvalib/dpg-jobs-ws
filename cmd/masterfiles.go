@@ -5,6 +5,7 @@ import (
 	"io/ioutil"
 	"log"
 	"net/http"
+	"os"
 	"path"
 	"regexp"
 	"strconv"
@@ -13,6 +14,12 @@ import (
 
 	"github.com/gin-gonic/gin"
 )
+
+type tifInfo struct {
+	filename string
+	path     string
+	size     int64
+}
 
 func (svc *ServiceContext) addMasterFiles(c *gin.Context) {
 	unitID, _ := strconv.ParseInt(c.Param("id"), 10, 64)
@@ -38,6 +45,7 @@ func (svc *ServiceContext) addMasterFiles(c *gin.Context) {
 
 	unitDir := padLeft(c.Param("id"), 9)
 	srcDir := path.Join(svc.ProcessingDir, "finalization", "unit_update", unitDir)
+	archiveUnitDir := path.Join(svc.ArchiveDir, unitDir)
 	svc.logInfo(js, fmt.Sprintf("Looking for new *.tif files in %s", srcDir))
 	files, err := ioutil.ReadDir(srcDir)
 	if err != nil {
@@ -46,11 +54,6 @@ func (svc *ServiceContext) addMasterFiles(c *gin.Context) {
 		return
 	}
 
-	type tifInfo struct {
-		filename string
-		path     string
-		size     int64
-	}
 	tifFiles := make([]tifInfo, 0)
 	newPage := -1
 	prevPage := -1
@@ -64,7 +67,7 @@ func (svc *ServiceContext) addMasterFiles(c *gin.Context) {
 				return
 			}
 
-			pageNum := getMasterFileNumber(fName)
+			pageNum := getMasterFilePageNum(fName)
 			if newPage == -1 {
 				newPage = pageNum
 				prevPage = newPage
@@ -86,7 +89,7 @@ func (svc *ServiceContext) addMasterFiles(c *gin.Context) {
 		return
 	}
 
-	lastPageNum := getMasterFileNumber(tgtUnit.MasterFiles[len(tgtUnit.MasterFiles)-1].Filename)
+	lastPageNum := getMasterFilePageNum(tgtUnit.MasterFiles[len(tgtUnit.MasterFiles)-1].Filename)
 	if newPage > lastPageNum+1 {
 		svc.logFatal(js, fmt.Sprintf("New master file sequence number gap (from %d to %d)", lastPageNum, newPage))
 		c.String(http.StatusBadRequest, "gap in sequence")
@@ -96,8 +99,12 @@ func (svc *ServiceContext) addMasterFiles(c *gin.Context) {
 	if newPage <= lastPageNum {
 		// rename/rearchive files to make room for new files to be inserted
 		// If components are involved, return the ID of the component at the insertion point
-		// TODO
-		//make_gap_for_insertion(unit, archive_dir, tif_files)
+		err := svc.makeGapForInsertion(js, &tgtUnit, archiveUnitDir, tifFiles)
+		if err != nil {
+			svc.logFatal(js, fmt.Sprintf("Unable to create gap for ne image insertion: %s", err.Error()))
+			c.String(http.StatusBadRequest, "gap in sequence")
+			return
+		}
 	}
 
 	// grab the first existing master file and see if it has location data.
@@ -114,7 +121,7 @@ func (svc *ServiceContext) addMasterFiles(c *gin.Context) {
 	for _, tf := range tifFiles {
 		// create MF and tech metadata
 		md5 := md5Checksum(tf.path)
-		pgNum := getMasterFileNumber(tf.filename)
+		pgNum := getMasterFilePageNum(tf.filename)
 		newMF := masterFile{Filename: tf.filename, Title: fmt.Sprintf("%d", pgNum), Filesize: tf.size,
 			MD5: md5, UnitID: tgtUnit.ID, ComponentID: componentID, MetadataID: tgtUnit.MetadataID}
 		err = svc.GDB.Create(&newMF).Error
@@ -143,7 +150,6 @@ func (svc *ServiceContext) addMasterFiles(c *gin.Context) {
 		}
 
 		// archive file, validate checksum and set archived date
-		archiveUnitDir := path.Join(svc.ArchiveDir, unitDir)
 		err = ensureDirExists(archiveUnitDir, 0777)
 		if err != nil {
 			svc.logError(js, fmt.Sprintf("Unable to archive create archive dir %s: %s", archiveUnitDir, err.Error()))
@@ -170,8 +176,59 @@ func (svc *ServiceContext) addMasterFiles(c *gin.Context) {
 	tgtUnit.UpdatedAt = time.Now()
 	svc.GDB.Model(&tgtUnit).Select("UpdatedAt", "MasterFilesCount").Updates(tgtUnit)
 	svc.logInfo(js, "Cleaning up working files")
-	// os.RemoveAll(srcDir)
+	os.RemoveAll(srcDir)
 
 	svc.jobDone(js)
 	c.String(http.StatusOK, "done")
+}
+
+func (svc *ServiceContext) makeGapForInsertion(js *jobStatus, tgtUnit *unit, archiveDir string, tifFiles []tifInfo) error {
+	tgtFile := tifFiles[0].filename
+	gapSize := len(tifFiles)
+	svc.logInfo(js, fmt.Sprintf("Renaming/rearchiving all master files from %s to make room for insertion of %d new master files", tgtFile, gapSize))
+	done := false
+	for idx := len(tgtUnit.MasterFiles) - 1; idx >= 0; idx-- {
+		mf := tgtUnit.MasterFiles[idx]
+		if mf.Filename == tgtFile {
+			done = true
+		}
+
+		// figure out new filename and rename/re-title
+		origFN := mf.Filename
+		origArchiveFN := path.Join(archiveDir, origFN)
+		origPageNum := getMasterFilePageNum(origFN)
+		newPageNum := origPageNum + gapSize
+		paddedPageNum := padLeft(fmt.Sprintf("%d", newPageNum), 4)
+		newFN := fmt.Sprintf("%s_%s.tif", strings.Split(origFN, "_")[0], paddedPageNum)
+		newTitle := mf.Title
+		titleInt, _ := strconv.Atoi(newTitle)
+		if titleInt == origPageNum {
+			// sometimes the title is not a number. only change title if it is a number
+			newTitle = fmt.Sprintf("%d", titleInt+gapSize)
+		}
+		svc.logInfo(js, fmt.Sprintf("Rename %s to %s. Title %s", origFN, newFN, newTitle))
+		mf.Filename = newFN
+		mf.Title = newTitle
+		err := svc.GDB.Model(&mf).Select("Filename", "Title").Updates(mf).Error
+		if err != nil {
+			return err
+		}
+
+		// copy archived file to new name and validate checksums
+		newArchiveFN := path.Join(archiveDir, newFN)
+		svc.logInfo(js, fmt.Sprintf("Rename archived file %s -> %s", origArchiveFN, newArchiveFN))
+		err = os.Rename(origArchiveFN, newArchiveFN)
+		if err != nil {
+			return err
+		}
+		newMD5 := md5Checksum(newArchiveFN)
+		if newMD5 != mf.MD5 {
+			svc.logError(js, fmt.Sprintf("MD5 does not match for rename %s -> %s", origArchiveFN, newFN))
+		}
+
+		if done == true {
+			break
+		}
+	}
+	return nil
 }

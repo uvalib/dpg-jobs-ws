@@ -184,7 +184,7 @@ func md5Checksum(filename string) string {
 	return fmt.Sprintf("%x", md5.Sum(data))
 }
 
-func getMasterFileNumber(filename string) int {
+func getMasterFilePageNum(filename string) int {
 	noExt := strings.ReplaceAll(filename, ".tif", "")
 	numStr := strings.Split(noExt, "_")[1]
 	num, _ := strconv.ParseInt(numStr, 10, 0)
