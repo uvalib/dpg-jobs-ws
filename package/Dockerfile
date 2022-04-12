@@ -14,17 +14,17 @@ RUN make linux
 #
 # build the target container
 #
-FROM public.ecr.aws/docker/library/alpine:3.15
+FROM public.ecr.aws/debian/debian:buster-slim
 
 # update the packages
-RUN apk update && apk upgrade && apk add bash tzdata ca-certificates curl exiftool imagemagick && rm -rf /var/cache/apk/*
+RUN apt-get -y update && apt-get -y upgrade && apt-get -y install bash tzdata ca-certificates curl exiftool imagemagick
 
 # Create the run user and group
-RUN addgroup --gid 16339 lb-digiserv && adduser --uid 118698 libsnlocal -G lb-digiserv -D
+RUN groupadd -g 16339 lb-digiserv && useradd -u 118698 -g lb-digiserv libsnlocal
 
 # set the timezone appropriatly
 ENV TZ=UTC
-RUN cp /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
+RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
 
 # Specify home
 ENV APP_HOME /dpg-jobs-ws
@@ -41,6 +41,9 @@ CMD scripts/entry.sh
 # Move in necessary assets
 COPY package/data/container_bash_profile /home/libsnlocal/.profile
 COPY package/scripts/entry.sh $APP_HOME/scripts/entry.sh
+COPY package/bin/linux/kdu_compress /usr/local/bin/kdu_compress
+COPY package/bin/linux/libkdu_v63R.so /usr/lib/libkdu_v63R.so
+RUN ldconfig -v
 COPY --from=builder /build/bin/dpg-jobs-ws.linux $APP_HOME/bin/dpg-jobs-ws
 COPY --from=builder /build/bin/templates $APP_HOME/bin/templates
 COPY --from=builder /build/bin/assets $APP_HOME/bin/assets

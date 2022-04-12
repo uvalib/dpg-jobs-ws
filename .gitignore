@@ -5,7 +5,7 @@ tmp/*
 *~
 *.bak
 *.swp
-bin
+/bin
 # Ignore application configuration
 /config.yml
 dist/
