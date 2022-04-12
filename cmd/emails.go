@@ -5,11 +5,12 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
+	"io/ioutil"
 	"log"
 	"net/http"
+	"path"
 	"strconv"
 	"strings"
-	"text/template"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -95,12 +96,7 @@ func (svc *ServiceContext) sendFeesEmail(c *gin.Context) {
 	}
 	data := feeData{FirstName: o.Customer.FirstName, LastName: o.Customer.LastName, Fee: o.Fee.Float64}
 	var renderedEmail bytes.Buffer
-	tpl, err := template.New("fees.html").ParseFiles("./templates/fees.html")
-	if err != nil {
-		svc.logFatal(js, fmt.Sprintf("unable to load fees email template for order %d: %s", orderID, err.Error()))
-		c.String(http.StatusInternalServerError, err.Error())
-	}
-	err = tpl.Execute(&renderedEmail, data)
+	err = svc.Templates.Fees.Execute(&renderedEmail, data)
 	if err != nil {
 		svc.logFatal(js, fmt.Sprintf("unable to render fees email for order %d: %s", orderID, err.Error()))
 		c.String(http.StatusInternalServerError, err.Error())
@@ -176,4 +172,55 @@ func (svc *ServiceContext) sendEmail(request *emailRequest) error {
 	dialer := gomail.Dialer{Host: svc.SMTP.Host, Port: svc.SMTP.Port}
 	dialer.TLSConfig = &tls.Config{InsecureSkipVerify: true}
 	return dialer.DialAndSend(mail)
+}
+
+func (svc *ServiceContext) generateOrderEmail(js *jobStatus, o *order) error {
+	svc.logInfo(js, "Create email for order")
+	type MailData struct {
+		FirstName     string
+		LastName      string
+		Fee           *float64
+		DatePaid      string
+		DeliveryFiles []string
+	}
+	data := MailData{
+		FirstName:     o.Customer.FirstName,
+		LastName:      o.Customer.LastName,
+		DeliveryFiles: make([]string, 0),
+	}
+	if o.Fee.Valid {
+		data.Fee = &o.Fee.Float64
+		for _, inv := range o.Invoices {
+			if inv.DateFeePaid != nil {
+				data.DatePaid = inv.DateFeePaid.Format("2006-01-02")
+				break
+			}
+		}
+	}
+	deliveryDir := path.Join(svc.DeliveryDir, fmt.Sprintf("order_%d", o.ID))
+	data.DeliveryFiles = append(data.DeliveryFiles, fmt.Sprintf("http://digiservdelivery.lib.virginia.edu/order_%d/%d.pdf", o.ID, o.ID))
+	files, err := ioutil.ReadDir(deliveryDir)
+	if err != nil {
+		svc.logError(js, fmt.Sprintf("Unable to get deliverable zip file list: %s", err.Error()))
+	} else {
+		// strip off the full path; only add: order_dir/file.zip
+		for _, fi := range files {
+			if strings.Index(fi.Name(), ".zip") > 0 {
+				data.DeliveryFiles = append(data.DeliveryFiles, fmt.Sprintf("http://digiservdelivery.lib.virginia.edu/order_%d/%s", o.ID, fi.Name()))
+			}
+		}
+	}
+
+	var renderedEmail bytes.Buffer
+	err = svc.Templates.OrderAvailable.Execute(&renderedEmail, data)
+	if err != nil {
+		return err
+	}
+
+	log.Printf(renderedEmail.String())
+
+	svc.GDB.Model(o).Select("email").Updates(order{Email: renderedEmail.String()})
+	svc.logInfo(js, "An email for web delivery has been created")
+
+	return nil
 }

@@ -5,20 +5,15 @@ import (
 	"encoding/xml"
 	"errors"
 	"fmt"
-	"io/ioutil"
 	"log"
 	"net/http"
 	"path"
 	"strconv"
 	"strings"
-	"text/template"
 	"time"
 
+	"github.com/SebastiaanKlippert/go-wkhtmltopdf"
 	"github.com/gin-gonic/gin"
-	"github.com/johnfercher/maroto/pkg/color"
-	"github.com/johnfercher/maroto/pkg/consts"
-	"github.com/johnfercher/maroto/pkg/pdf"
-	"github.com/johnfercher/maroto/pkg/props"
 	"gorm.io/gorm"
 )
 
@@ -41,14 +36,13 @@ func (svc *ServiceContext) viewOrderPDF(c *gin.Context) {
 		return
 	}
 
-	m := svc.generateOrderPDF(&o)
-	pdf, pErr := m.Output()
-	if pErr != nil {
-		log.Printf("ERROR: unable to generate PDF data: %s", pErr.Error())
-		c.String(http.StatusInternalServerError, pErr.Error())
+	pdfGen, err := svc.generateOrderPDF(&o)
+	if err != nil {
+		log.Printf("ERROR: generation of order pdf failed: %s", err.Error())
+		c.String(http.StatusInternalServerError, err.Error())
 		return
 	}
-	c.Data(http.StatusOK, "application/pdf", pdf.Bytes())
+	c.Data(http.StatusOK, "application/pdf", pdfGen.Bytes())
 }
 
 func (svc *ServiceContext) createOrderPDF(c *gin.Context) {
@@ -241,15 +235,18 @@ func (svc *ServiceContext) checkOrderReady(c *gin.Context) {
 
 func (svc *ServiceContext) createPDFDeliverable(js *jobStatus, o *order) error {
 	svc.logInfo(js, "Create order PDF...")
-	m := svc.generateOrderPDF(o)
+	pdfGen, err := svc.generateOrderPDF(o)
+	if err != nil {
+		return err
+	}
 	dir := path.Join(svc.DeliveryDir, fmt.Sprintf("order_%d", o.ID))
-	err := ensureDirExists(dir, 0777)
+	err = ensureDirExists(dir, 0777)
 	if err != nil {
 		return err
 	}
 
 	pdfFile := path.Join(dir, fmt.Sprintf("%d.pdf", o.ID))
-	err = m.OutputFileAndClose(pdfFile)
+	err = pdfGen.WriteFile(pdfFile)
 	if err != nil {
 		return err
 	}
@@ -258,128 +255,87 @@ func (svc *ServiceContext) createPDFDeliverable(js *jobStatus, o *order) error {
 	return nil
 }
 
-func (svc *ServiceContext) generateOrderPDF(order *order) pdf.Maroto {
-	ltGrey := color.Color{
-		Red:   220,
-		Green: 220,
-		Blue:  220,
+func (svc *ServiceContext) generateOrderPDF(order *order) (*wkhtmltopdf.PDFGenerator, error) {
+	pdfGen, err := wkhtmltopdf.NewPDFGenerator()
+	if err != nil {
+		return nil, err
 	}
-	m := pdf.NewMaroto(consts.Portrait, consts.A4)
-	m.SetPageMargins(10, 10, 10)
-	m.SetAliasNbPages("{nb}")
-	m.SetFirstPageNb(1)
-	m.RegisterFooter(func() {
-		m.Row(10, func() {
-			m.Col(12, func() {
-				m.Text("page "+strconv.Itoa(m.GetCurrentPage())+" of {nb}", props.Text{
-					Align: consts.Right,
-					Size:  8,
-				})
-			})
-		})
-	})
 
-	// define the PDF heading
-	m.Row(15, func() {
-		m.Col(12, func() { // 12 means full width (its a column count and PDF grid has 12 cells)
-			m.FileImage("./assets/lib_letterhead.jpg", props.Rect{
-				Center:  true,
-				Percent: 75,
-			})
-		})
-	})
+	pdfGen.PageSize.Set(wkhtmltopdf.PageSizeA4)
+	pdfGen.MarginBottom.Set(10)
+	pdfGen.MarginTop.Set(10)
+	pdfGen.MarginLeft.Set(10)
+	pdfGen.MarginRight.Set(10)
 
-	addPDFTextRow(m, "Digital Production Group, University of Virginia Library", 5, consts.Center)
-	addPDFTextRow(m, "Post Office Box 400155, Charlottesville, Virginia 22904 U.S.A.", 5, consts.Center)
-	addPDFTextRow(m, fmt.Sprintf("Order ID: %d", order.ID), 15, consts.Right)
+	type mfData struct {
+		Filename    string
+		Title       string
+		Description string
+		Even        bool
+	}
+	type itemData struct {
+		Number     int
+		Title      string
+		Author     string
+		CallNumber string
+		Citation   string
+		Files      []mfData
+	}
+	type pdfData struct {
+		FirstName   string
+		LastName    string
+		OrderID     int64
+		DateOrdered string
+		ItemCount   int
+		Items       []itemData
+	}
+	data := pdfData{
+		FirstName:   order.Customer.FirstName,
+		LastName:    order.Customer.LastName,
+		OrderID:     order.ID,
+		ItemCount:   len(order.Units),
+		DateOrdered: order.DateRequestSubmitted.Format("January 2, 2006"),
+		Items:       make([]itemData, 0),
+	}
 
-	// define the message to the user
-	addPDFTextRow(m, fmt.Sprintf("Dear %s %s, ", order.Customer.FirstName, order.Customer.LastName), 10, consts.Left)
-	msg := fmt.Sprintf("On %s you placed an order with the Digital Production Group ", order.DateRequestSubmitted.Format("January 2, 2006"))
-	msg += fmt.Sprintf("of the University of Virginia, Charlottesville, VA. Your request comprised %d items. ", len(order.Units))
-	msg += "Below you will find a description of your digital order and how to cite the material for publication."
-	addPDFTextRow(m, msg, 18, consts.Left)
-	addPDFTextRow(m, "Sincerely,", 5, consts.Left)
-	addPDFTextRow(m, "Digital Production Group Staff", 5, consts.Left)
-	m.AddPage()
-
-	// the tables of masterfiles
-	addPDFTextRow(m, "Digital Order Summary", 5, consts.Center)
-
-	tableHeader := []string{"Filename", "Title", "Description"}
 	for idx, unit := range order.Units {
-		addPDFTextRow(m, "", 5, consts.Left)
-		addPDFLine(m)
-		addPDFTextRow(m, fmt.Sprintf("Item #%d", idx+1), 5, consts.Right)
-		addPDFLabeledTextRow(m, "Title:", unit.Metadata.Title)
-		if unit.Metadata.CreatorName != "" {
-			addPDFLabeledTextRow(m, "Author:", unit.Metadata.CreatorName)
+		item := itemData{Number: idx + 1,
+			Title:  unit.Metadata.Title,
+			Author: unit.Metadata.CreatorName,
+			Files:  make([]mfData, 0),
 		}
 		if unit.Metadata.Type == "SirsiMetadata" {
-			addPDFLabeledTextRow(m, "Call Number:", unit.Metadata.CallNumber)
-			citation := svc.getCitation(unit.Metadata)
-			if citation != "" {
-				log.Printf(citation)
+			item.CallNumber = unit.Metadata.CallNumber
+			item.Citation = svc.getCitation(unit.Metadata)
+		}
+		for mfIdx, mf := range unit.MasterFiles {
+			m := mfData{Title: mf.Title, Description: mf.Description, Filename: mf.Filename}
+			if mfIdx%2 != 0 {
+				m.Even = true
 			}
+			item.Files = append(item.Files, m)
 		}
 
-		content := [][]string{}
-		for _, mf := range unit.MasterFiles {
-			content = append(content, []string{mf.Filename, mf.Title, mf.Description})
-		}
-
-		addPDFTextRow(m, "", 3, consts.Left)
-		m.TableList(tableHeader, content, props.TableList{
-			HeaderProp: props.TableListContent{
-				Size: 10,
-			},
-			AlternatedBackground: &ltGrey,
-			Align:                consts.Left,
-			Line:                 false,
-			HeaderContentSpace:   1,
-		})
+		data.Items = append(data.Items, item)
 	}
 
-	return m
-}
+	var content bytes.Buffer
+	err = svc.Templates.PDFOrderSummary.Execute(&content, data)
+	if err != nil {
+		return nil, err
+	}
+	page := wkhtmltopdf.NewPageReader(strings.NewReader(content.String()))
+	page.DisableExternalLinks.Set(false)
+	page.FooterRight.Set("[page]")
+	page.FooterFontSize.Set(10)
+	pdfGen.AddPage(page)
 
-func addPDFLine(m pdf.Maroto) {
-	m.Row(10, func() {
-		m.Col(12, func() {
-			m.Line(1.0, props.Line{
-				Style: consts.Solid,
-			})
-		})
-	})
-}
+	err = pdfGen.Create()
+	if err != nil {
+		return nil, err
+	}
 
-func addPDFTextRow(m pdf.Maroto, text string, rowHeight float64, align consts.Align) {
-	m.Row(rowHeight, func() {
-		m.Col(12, func() {
-			m.Text(text, props.Text{
-				Size:  10,
-				Style: consts.Normal,
-				Align: align,
-			})
-		})
-	})
-}
-
-func addPDFLabeledTextRow(m pdf.Maroto, label string, text string) {
-	m.Row(5, func() {
-		m.Col(2, func() {
-			m.Text(label, props.Text{
-				Style: consts.Bold,
-				Align: consts.Left,
-			})
-		})
-		m.Col(10, func() {
-			m.Text(text, props.Text{
-				Style: consts.Normal,
-				Align: consts.Left,
-			})
-		})
-	})
+	return pdfGen, nil
 }
 
 type subField struct {
@@ -463,61 +419,6 @@ func (svc *ServiceContext) getCitation(md *metadata) string {
 	}
 
 	return citation
-}
-
-func (svc *ServiceContext) generateOrderEmail(js *jobStatus, o *order) error {
-	svc.logInfo(js, "Create email for order")
-	type MailData struct {
-		FirstName     string
-		LastName      string
-		Fee           *float64
-		DatePaid      string
-		DeliveryFiles []string
-	}
-	data := MailData{
-		FirstName:     o.Customer.FirstName,
-		LastName:      o.Customer.LastName,
-		DeliveryFiles: make([]string, 0),
-	}
-	if o.Fee.Valid {
-		data.Fee = &o.Fee.Float64
-		for _, inv := range o.Invoices {
-			if inv.DateFeePaid != nil {
-				data.DatePaid = inv.DateFeePaid.Format("2006-01-02")
-				break
-			}
-		}
-	}
-	deliveryDir := path.Join(svc.DeliveryDir, fmt.Sprintf("order_%d", o.ID))
-	data.DeliveryFiles = append(data.DeliveryFiles, fmt.Sprintf("http://digiservdelivery.lib.virginia.edu/order_%d/%d.pdf", o.ID, o.ID))
-	files, err := ioutil.ReadDir(deliveryDir)
-	if err != nil {
-		svc.logError(js, fmt.Sprintf("Unable to get deliverable zip file list: %s", err.Error()))
-	} else {
-		// strip off the full path; only add: order_dir/file.zip
-		for _, fi := range files {
-			if strings.Index(fi.Name(), ".zip") > 0 {
-				data.DeliveryFiles = append(data.DeliveryFiles, fmt.Sprintf("http://digiservdelivery.lib.virginia.edu/order_%d/%s", o.ID, fi.Name()))
-			}
-		}
-	}
-
-	var renderedEmail bytes.Buffer
-	tpl, err := template.New("order.html").ParseFiles("./templates/order.html")
-	if err != nil {
-		return err
-	}
-	err = tpl.Execute(&renderedEmail, data)
-	if err != nil {
-		return err
-	}
-
-	log.Printf(renderedEmail.String())
-
-	svc.GDB.Model(o).Select("email").Updates(order{Email: renderedEmail.String()})
-	svc.logInfo(js, "An email for web delivery has been created")
-
-	return nil
 }
 
 func feePaid(order *order) bool {

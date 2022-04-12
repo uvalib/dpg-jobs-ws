@@ -61,6 +61,7 @@ func (svc *ServiceContext) addMasterFiles(c *gin.Context) {
 	for _, fi := range files {
 		fName := fi.Name()
 		if strings.Index(fName, ".tif") > -1 {
+			svc.logInfo(js, fmt.Sprintf("Found %s", fName))
 			if !mfRegex.Match([]byte(fName)) {
 				svc.logFatal(js, fmt.Sprintf("Invalid master file name: %s", fName))
 				c.String(http.StatusBadRequest, fmt.Sprintf("Invalid master file name: %s", fName))

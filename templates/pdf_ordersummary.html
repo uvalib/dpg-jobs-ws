@@ -1,0 +1,72 @@
+<html>
+   <head>
+      <style>
+         body { padding: 2.5rem;}
+         .header { text-align: center;}
+         .greeting { margin-top:4rem;}
+         .items { margin-top: 4rem}
+         p.summary { text-align: center; font-size: 1.2em; border-top:1px solid black; border-bottom:1px solid black;
+            padding: .5rem 0;
+         }
+         p { text-align: left;}
+         table.summary { width: auto; }
+         table.summary td { padding: 4px}
+         td.label { font-weight: bold;padding-right: 2rem; vertical-align: text-top; white-space: nowrap;}
+         table.mf {border-collapse: collapse; margin-top: 1.5rem; margin-bottom: 2.5rem; width: 100%;}
+         table.mf th, table.mf td {text-align: left; padding: 5px; border: 1px solid #666;}
+         table.mf th { background: #eee;}
+         table.mf td {font-weight: normal; background: white;}
+         table.mf td.alt {font-weight: normal; background: #fafafa;}
+         .item { margin-top: 2rem;}
+         .item p.num { font-weight: bold; background: #eee; text-align:center; padding: 5px;}
+      </style>
+   </head>
+   <body>
+      <div class="header">
+         <img src='http://digiservdelivery.lib.virginia.edu/lib_letterhead.jpg' style="width:640px; height:64px;">
+         <p style="margin:3px 0;text-align: center;">Digital Production Group, University of Virginia Library</p>
+         <p style="margin:3px 0;text-align: center;">Post Office Box 400155, Charlottesville, Virginia 22904 U.S.A.</p>
+         <p style="text-align:right;">Order: {{.OrderID}}</p>
+      </div>
+      <div class="greeting">
+         <p>Dear {{.FirstName}} {{.LastName}},</p>
+         <p>
+            On {{.DateOrdered}} you placed an order with the Digital Production Group of the
+            University of Virginia, Charlottesville, VA. Your request comprised {{.ItemCount}} items. Below you
+            will find a description of your digital order and how to cite the material for publication.
+         </p>
+         <p>Sincerely,</p>
+         <p>Digital Production Group Staff</p>
+      </div>
+
+      <div class="items">
+         <p class="summary">Digital Order Summary</p>
+         {{range .Items}}
+         <div class="item">
+            <p class="num">Item #{{.Number}}</p>
+            <table class="sumary">
+               <tr><td class="label">Title:</td><td>{{.Title}}</td></tr>
+               {{if .Author}}<tr><td class="label">Author:</td><td>{{.Author}}</td></tr>{{end}}
+               {{if .CallNumber}}<tr><td class="label">Call Number:</td><td>{{.CallNumber}}</td></tr>{{end}}
+               {{if .Citation}}<tr><td class="label">Citation:</td><td>{{.Citation}}</td></tr>{{end}}
+            </table>
+            <table class="mf">
+               <tr>
+                  <th>Filename</th>
+                  <th>Title</th>
+                  <th>Descritption</th>
+               </tr>
+               {{range .Files}}
+               <tr>
+                  <td {{if .Even}}class="alt"{{end}}>{{.Filename}}</td>
+                  <td {{if .Even}}class="alt"{{end}}>{{.Title}}</td>
+                  <td {{if .Even}}class="alt"{{end}}>{{.Description}}</td>
+               </tr>
+               {{end}}
+            </table>
+         </div>
+         {{end}}
+      </div>
+   </body>
+</html>
+

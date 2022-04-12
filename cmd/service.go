@@ -15,11 +15,19 @@ import (
 	"strings"
 	"time"
 
+	"html/template"
+
 	"github.com/gin-gonic/gin"
 	_ "github.com/go-sql-driver/mysql"
 	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
 )
+
+type htmlTemplates struct {
+	Fees            *template.Template
+	OrderAvailable  *template.Template
+	PDFOrderSummary *template.Template
+}
 
 // ServiceContext contains common data used by all handlers
 type ServiceContext struct {
@@ -32,6 +40,7 @@ type ServiceContext struct {
 	DeliveryDir   string
 	TrackSysURL   string
 	HTTPClient    *http.Client
+	Templates     htmlTemplates
 }
 
 // RequestError contains http status code and message for a failed HTTP request
@@ -60,6 +69,20 @@ func InitializeService(version string, cfg *ServiceConfig) *ServiceContext {
 	}
 	ctx.GDB = gdb
 	log.Printf("INFO: DB Connection established")
+
+	log.Printf("INFO: load html templates")
+	ctx.Templates.Fees, err = template.New("fees.html").ParseFiles("./templates/fees.html")
+	if err != nil {
+		log.Fatal(err)
+	}
+	ctx.Templates.OrderAvailable, err = template.New("order.html").ParseFiles("./templates/order.html")
+	if err != nil {
+		log.Fatal(err)
+	}
+	ctx.Templates.PDFOrderSummary, err = template.New("pdf_ordersummary.html").ParseFiles("./templates/pdf_ordersummary.html")
+	if err != nil {
+		log.Fatal(err)
+	}
 
 	log.Printf("INFO: create HTTP client...")
 	defaultTransport := &http.Transport{
