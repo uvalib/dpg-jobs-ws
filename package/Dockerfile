@@ -17,10 +17,13 @@ RUN make linux
 FROM public.ecr.aws/debian/debian:buster-slim
 
 # update the packages
-RUN apt-get -y update && apt-get -y upgrade && apt-get -y install binutils bash tzdata ca-certificates curl exiftool imagemagick wkhtmltopdf
+RUN apt-get -y update && apt-get -y upgrade && apt-get -y install binutils bash tzdata ca-certificates curl exiftool imagemagick wget xfonts-base xfonts-75dpi
+
+# get and install the wkhtmltopdf package
+RUN cd /tmp && wget https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6-1/wkhtmltox_0.12.6-1.buster_amd64.deb && dpkg -i wkhtmltox_0.12.6-1.buster_amd64.deb && rm wkhtmltox_0.12.6-1.buster_amd64.deb
 
 # see: https://github.com/dnschneid/crouton/wiki/Fix-error-while-loading-shared-libraries:-libQt5Core.so.5
-RUN strip --remove-section=.note.ABI-tag /usr/lib/x86_64-linux-gnu/libQt5Core.so.5
+#RUN strip --remove-section=.note.ABI-tag /usr/lib/x86_64-linux-gnu/libQt5Core.so.5
 
 # Create the run user and group
 RUN groupadd -g 16339 lb-digiserv && useradd -u 118698 -g lb-digiserv libsnlocal
@@ -59,7 +62,6 @@ RUN chown -R libsnlocal:lb-digiserv $APP_HOME/bin && chmod -R 755 $APP_HOME/bin
 # Add the build tag
 ARG BUILD_TAG
 RUN test -n "$BUILD_TAG" && touch $APP_HOME/buildtag.build-$BUILD_TAG || touch $APP_HOME/buildtag.build-0
-
 
 # Specify the user
 USER libsnlocal
