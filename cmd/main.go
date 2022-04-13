@@ -44,6 +44,7 @@ func main() {
 
 	router.POST("/units/:id/masterfiles/add", svc.addMasterFiles)
 	router.POST("/units/:id/masterfiles/delete", svc.deleteMasterFiles)
+	router.POST("/units/:id/masterfiles/renumber", svc.renumberMasterFiles)
 
 	portStr := fmt.Sprintf(":%d", cfg.Port)
 	log.Printf("INFO: start service v%s on port %s", version, portStr)

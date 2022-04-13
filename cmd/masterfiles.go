@@ -22,6 +22,69 @@ type tifInfo struct {
 	size     int64
 }
 
+func (svc *ServiceContext) renumberMasterFiles(c *gin.Context) {
+	unitID, _ := strconv.ParseInt(c.Param("id"), 10, 64)
+	js, err := svc.createJobStatus("RenumberMasterFiles", "Unit", unitID)
+	if err != nil {
+		log.Printf("ERROR: unable to create RenumberMasterFiles job status: %s", err.Error())
+		c.String(http.StatusInternalServerError, err.Error())
+		return
+	}
+	type renumberReq struct {
+		Filenames []string `json:"filenames"`
+		StartNum  int      `json:"startNum"`
+	}
+	svc.logInfo(js, "Staring process to renumber master files...")
+	var req renumberReq
+	err = c.ShouldBindJSON(&req)
+	if err != nil {
+		svc.logFatal(js, fmt.Sprintf("Unable to parse request: %s", err.Error()))
+		c.String(http.StatusBadRequest, err.Error())
+		return
+	}
+	sort.Strings(req.Filenames)
+	if len(req.Filenames) == 0 {
+		svc.logFatal(js, "No filenames in request")
+		c.String(http.StatusBadRequest, "no filenames")
+		return
+	}
+	svc.logInfo(js, fmt.Sprintf("These masterfiles will be renamed %v starting at page %d", req.Filenames, req.StartNum))
+
+	svc.logInfo(js, "Load unit and masterfiles")
+	var tgtUnit unit
+	err = svc.GDB.Preload("MasterFiles").First(&tgtUnit, unitID).Error
+	if err != nil {
+		svc.logFatal(js, fmt.Sprintf("Unable to load unit %d: %s", unitID, err.Error()))
+		c.String(http.StatusBadRequest, err.Error())
+		return
+	}
+
+	tgtFN := req.Filenames[0]
+	req.Filenames = req.Filenames[1:]
+	newNum := req.StartNum
+	for _, mf := range tgtUnit.MasterFiles {
+		if mf.Filename != tgtFN {
+			continue
+		}
+
+		svc.logInfo(js, fmt.Sprintf("MasterFile %s renumber from %s to %d", tgtFN, mf.Title, newNum))
+		mf.Title = fmt.Sprintf("%d", newNum)
+		mf.UpdatedAt = time.Now()
+		svc.GDB.Model(&mf).Select("Title", "UpdatedAt").Updates(mf)
+
+		if len(req.Filenames) > 0 {
+			tgtFN = req.Filenames[0]
+			req.Filenames = req.Filenames[1:]
+			newNum++
+		} else {
+			break
+		}
+	}
+
+	svc.jobDone(js)
+	c.String(http.StatusOK, "done")
+}
+
 func (svc *ServiceContext) deleteMasterFiles(c *gin.Context) {
 	unitID, _ := strconv.ParseInt(c.Param("id"), 10, 64)
 	js, err := svc.createJobStatus("DeleteMasterFiles", "Unit", unitID)
