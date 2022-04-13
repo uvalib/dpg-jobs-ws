@@ -164,12 +164,8 @@ func (svc *ServiceContext) deleteMasterFiles(c *gin.Context) {
 				if err != nil {
 					svc.logError(js, fmt.Sprintf("Unable to rename %s: %s", origArchive, err.Error()))
 				}
-				origMD5 := md5Checksum(origArchive)
 				newMD5 := md5Checksum(newArchive)
-				log.Printf(" DB %s", mf.MD5)
-				log.Printf("PRE %s", origMD5)
-				log.Printf("PST %s", newMD5)
-				if newMD5 != origMD5 {
+				if newMD5 != mf.MD5 {
 					svc.logError(js, fmt.Sprintf("MD5 does not match for rename %s -> %s; %s vs %s", origArchive, newArchive, mf.MD5, newMD5))
 				}
 			} else {
@@ -184,6 +180,7 @@ func (svc *ServiceContext) deleteMasterFiles(c *gin.Context) {
 		currPage++
 	}
 
+	svc.jobDone(js)
 	c.String(http.StatusOK, "done")
 }
 
