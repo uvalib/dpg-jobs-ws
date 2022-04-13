@@ -17,7 +17,10 @@ RUN make linux
 FROM public.ecr.aws/debian/debian:buster-slim
 
 # update the packages
-RUN apt-get -y update && apt-get -y upgrade && apt-get -y install bash tzdata ca-certificates curl exiftool imagemagick wkhtmltopdf
+RUN apt-get -y update && apt-get -y upgrade && apt-get -y install bash tzdata ca-certificates curl exiftool imagemagick wget xfonts-base xfonts-75dpi
+
+# get and install the wkhtmltopdf package
+RUN cd /tmp && wget https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6-1/wkhtmltox_0.12.6-1.buster_amd64.deb && dpkg -i wkhtmltox_0.12.6-1.buster_amd64.deb && rm wkhtmltox_0.12.6-1.buster_amd64.deb
 
 # Create the run user and group
 RUN groupadd -g 16339 lb-digiserv && useradd -u 118698 -g lb-digiserv libsnlocal
