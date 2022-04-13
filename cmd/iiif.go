@@ -21,6 +21,8 @@ func (svc *ServiceContext) publishToIIIF(js *jobStatus, mf *masterFile, path str
 				svc.logError(js, fmt.Sprintf("Unable to remove compression on %s: %s", mf.PID, err.Error()))
 			} else {
 				svc.logInfo(js, fmt.Sprintf("MasterFile %s is compressed. This has been corrected automatically.", mf.PID))
+				mf.MD5 = md5Checksum(path)
+				svc.GDB.Model(mf).Select("MD5").Updates(mf)
 			}
 		}
 	}

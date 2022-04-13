@@ -203,8 +203,14 @@ func padLeft(str string, tgtLen int) string {
 }
 
 func md5Checksum(filename string) string {
-	data, _ := os.ReadFile(filename)
-	return fmt.Sprintf("%x", md5.Sum(data))
+	log.Printf("INFO: get checksum for %s", filename)
+	if pathExists(filename) {
+		data, _ := os.ReadFile(filename)
+		md5 := fmt.Sprintf("%x", md5.Sum(data))
+		log.Printf("INFO: %s", md5)
+		return md5
+	}
+	return ""
 }
 
 func getMasterFilePageNum(filename string) int {

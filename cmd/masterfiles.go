@@ -8,6 +8,7 @@ import (
 	"os"
 	"path"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -30,6 +31,158 @@ func (svc *ServiceContext) deleteMasterFiles(c *gin.Context) {
 		return
 	}
 	svc.logInfo(js, "Staring process to delete master files...")
+
+	type delReq struct {
+		Filenames []string `json:"filenames"`
+	}
+	var req delReq
+	err = c.ShouldBindJSON(&req)
+	if err != nil {
+		svc.logFatal(js, fmt.Sprintf("Unable to parse request: %s", err.Error()))
+		c.String(http.StatusBadRequest, err.Error())
+		return
+	}
+	sort.Strings(req.Filenames)
+	if len(req.Filenames) == 0 {
+		svc.logFatal(js, "No filenames in request")
+		c.String(http.StatusBadRequest, "no filenames")
+		return
+	}
+	svc.logInfo(js, fmt.Sprintf("These masterfiles will be removed %v", req.Filenames))
+
+	svc.logInfo(js, "Load unit and masterfiles")
+	var tgtUnit unit
+	err = svc.GDB.Preload("MasterFiles").First(&tgtUnit, unitID).Error
+	if err != nil {
+		svc.logFatal(js, fmt.Sprintf("Unable to load unit %d: %s", unitID, err.Error()))
+		c.String(http.StatusBadRequest, err.Error())
+		return
+	}
+
+	if tgtUnit.DateDLDeliverablesReady != nil {
+		svc.logFatal(js, "Cannot delete from units that have been published")
+		c.String(http.StatusBadRequest, "cannot delete from units that have been published")
+		return
+	}
+
+	delCount := uint(len(req.Filenames))
+	unitDir := padLeft(c.Param("id"), 9)
+	archiveUnitDir := path.Join(svc.ArchiveDir, unitDir)
+	tgtFN := req.Filenames[0]
+	req.Filenames = req.Filenames[1:]
+	for _, mf := range tgtUnit.MasterFiles {
+		if mf.Filename != tgtFN {
+			continue
+		}
+		svc.logInfo(js, fmt.Sprintf("Delete %s", mf.Filename))
+		if mf.OriginalMfID == nil {
+			archiveFile := path.Join(archiveUnitDir, tgtFN)
+			svc.logInfo(js, fmt.Sprintf("Removing from archive: %s", archiveFile))
+			if pathExists(archiveFile) {
+				os.Remove(archiveFile)
+			} else {
+				svc.logError(js, fmt.Sprintf("No archive found for %s", tgtFN))
+			}
+
+			iiifInfo := svc.iiifPath(&mf)
+			svc.logInfo(js, fmt.Sprintf("Removing file published to IIIF: %s", iiifInfo.absolutePath))
+			if pathExists(iiifInfo.absolutePath) {
+				os.Remove(iiifInfo.absolutePath)
+				files, _ := ioutil.ReadDir(iiifInfo.basePath)
+				if len(files) == 0 {
+					os.Remove(iiifInfo.basePath)
+				}
+			} else {
+				svc.logError(js, fmt.Sprintf("No IIIF file found for %s", tgtFN))
+			}
+		} else {
+			// clone
+			clonedFile := path.Join(svc.ProcessingDir, "finalization", unitDir, mf.Filename)
+			if pathExists(clonedFile) {
+				svc.logInfo(js, fmt.Sprintf("Removing cloned tif from in_process dir: %s", clonedFile))
+				os.Remove(clonedFile)
+			}
+		}
+
+		svc.logInfo(js, fmt.Sprintf("Removing master file and image tech metadata for %s", tgtFN))
+		svc.GDB.Where("master_file_id=?", mf.ID).Delete(&imageTechMeta{})
+		svc.GDB.Delete(&masterFile{}, mf.ID)
+
+		if len(req.Filenames) > 0 {
+			tgtFN = req.Filenames[0]
+			req.Filenames = req.Filenames[1:]
+		} else {
+			break
+		}
+	}
+
+	newCnt := tgtUnit.MasterFilesCount - delCount
+	svc.logInfo(js, fmt.Sprintf("Updating unit master files count from %d to %d", tgtUnit.MasterFilesCount, newCnt))
+	tgtUnit.MasterFilesCount = newCnt
+	tgtUnit.UpdatedAt = time.Now()
+	svc.GDB.Model(&tgtUnit).Select("MasterFilesCount", "UpdatedAt").Updates(tgtUnit)
+	svc.GDB.Preload("MasterFiles").First(&tgtUnit, unitID) // reload masterfiles list
+
+	svc.logInfo(js, "Updating remaining master files to correct page number gaps")
+	prevPage := -1
+	currPage := 1
+	changeTitle := true
+	for _, mf := range tgtUnit.MasterFiles {
+		// if page titles are not a number, can't consider them to be sequential
+		titleInt, _ := strconv.Atoi(mf.Title)
+		if fmt.Sprintf("%d", titleInt) != mf.Title {
+			changeTitle = false
+		}
+		if prevPage > -1 && prevPage+1 != currPage {
+			changeTitle = false
+		}
+
+		mfPg := getMasterFilePageNum(mf.Filename)
+		if mfPg > currPage {
+			origFN := mf.Filename
+			pageStr := fmt.Sprintf("%04d", currPage)
+			newFN := fmt.Sprintf("%s_%s.tif", unitDir, pageStr)
+			svc.logInfo(js, fmt.Sprintf("Update MF filename from %s to %s", origFN, newFN))
+			mf.Filename = newFN
+
+			// see if the title is a number and that it is the different
+			// from the new page number portion. If so, update it
+			if titleInt != currPage && changeTitle {
+				mf.Title = fmt.Sprintf("%d", currPage)
+			}
+			mf.UpdatedAt = time.Now()
+			err = svc.GDB.Model(&mf).Select("Filename", "Title", "UpdatedAt").Updates(mf).Error
+			if err != nil {
+				log.Printf("ERR: %s", err.Error())
+			}
+
+			if mf.OriginalMfID == nil {
+				origArchive := path.Join(archiveUnitDir, origFN)
+				newArchive := path.Join(archiveUnitDir, newFN)
+				svc.logInfo(js, fmt.Sprintf("Rename archived file %s -> %s", origArchive, newArchive))
+				err = os.Rename(origArchive, newArchive)
+				if err != nil {
+					svc.logError(js, fmt.Sprintf("Unable to rename %s: %s", origArchive, err.Error()))
+				}
+				origMD5 := md5Checksum(origArchive)
+				newMD5 := md5Checksum(newArchive)
+				log.Printf(" DB %s", mf.MD5)
+				log.Printf("PRE %s", origMD5)
+				log.Printf("PST %s", newMD5)
+				if newMD5 != origMD5 {
+					svc.logError(js, fmt.Sprintf("MD5 does not match for rename %s -> %s; %s vs %s", origArchive, newArchive, mf.MD5, newMD5))
+				}
+			} else {
+				origClonedFile := path.Join(svc.ProcessingDir, "finalization", unitDir, origFN)
+				newClonedFile := path.Join(svc.ProcessingDir, "finalization", unitDir, newFN)
+				svc.logInfo(js, fmt.Sprintf("Rename cloned file %s -> %s", origClonedFile, newClonedFile))
+				os.Rename(newClonedFile, newClonedFile)
+			}
+		}
+
+		prevPage = currPage
+		currPage++
+	}
 
 	c.String(http.StatusOK, "done")
 }
