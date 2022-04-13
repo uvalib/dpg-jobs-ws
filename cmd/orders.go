@@ -325,7 +325,6 @@ func (svc *ServiceContext) generateOrderPDF(order *order) (*wkhtmltopdf.PDFGener
 		return nil, err
 	}
 	page := wkhtmltopdf.NewPageReader(strings.NewReader(content.String()))
-	page.DisableExternalLinks.Set(false)
 	page.FooterRight.Set("[page]")
 	page.FooterFontSize.Set(10)
 	pdfGen.AddPage(page)
