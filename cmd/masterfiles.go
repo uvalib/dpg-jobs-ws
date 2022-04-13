@@ -21,6 +21,19 @@ type tifInfo struct {
 	size     int64
 }
 
+func (svc *ServiceContext) deleteMasterFiles(c *gin.Context) {
+	unitID, _ := strconv.ParseInt(c.Param("id"), 10, 64)
+	js, err := svc.createJobStatus("DeleteMasterFiles", "Unit", unitID)
+	if err != nil {
+		log.Printf("ERROR: unable to create DeleteMasterFiles job status: %s", err.Error())
+		c.String(http.StatusInternalServerError, err.Error())
+		return
+	}
+	svc.logInfo(js, "Staring process to delete master files...")
+
+	c.String(http.StatusOK, "done")
+}
+
 func (svc *ServiceContext) addMasterFiles(c *gin.Context) {
 	unitID, _ := strconv.ParseInt(c.Param("id"), 10, 64)
 	js, err := svc.createJobStatus("AddMasterFiles", "Unit", unitID)
