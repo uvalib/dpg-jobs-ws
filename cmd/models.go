@@ -111,6 +111,16 @@ func (mf *masterFile) location() *location {
 	return &mf.Locations[0]
 }
 
+type attachment struct {
+	ID          int64
+	UnitID      int64
+	Filename    string
+	Description string
+	MD5         string `gorm:"column:md5"`
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
+}
+
 type unit struct {
 	ID                          int64
 	OrderID                     int64
