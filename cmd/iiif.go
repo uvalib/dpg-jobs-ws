@@ -3,7 +3,9 @@ package main
 import (
 	"errors"
 	"fmt"
+	"io/ioutil"
 	"log"
+	"os"
 	"os/exec"
 	"path"
 	"strings"
@@ -63,6 +65,20 @@ func (svc *ServiceContext) publishToIIIF(js *jobStatus, mf *masterFile, path str
 	}
 
 	return nil
+}
+
+func (svc *ServiceContext) unpublishIIIF(js *jobStatus, mf *masterFile) {
+	iiifInfo := svc.iiifPath(mf)
+	svc.logInfo(js, fmt.Sprintf("Removing file published to IIIF: %s", iiifInfo.absolutePath))
+	if pathExists(iiifInfo.absolutePath) {
+		os.Remove(iiifInfo.absolutePath)
+		files, _ := ioutil.ReadDir(iiifInfo.basePath)
+		if len(files) == 0 {
+			os.Remove(iiifInfo.basePath)
+		}
+	} else {
+		svc.logError(js, fmt.Sprintf("No IIIF file found for %s", mf.Filename))
+	}
 }
 
 type iiifPathInfo struct {

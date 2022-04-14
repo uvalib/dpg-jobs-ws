@@ -130,7 +130,6 @@ func (svc *ServiceContext) deleteMasterFiles(c *gin.Context) {
 
 	delCount := uint(len(req.Filenames))
 	unitDir := padLeft(c.Param("id"), 9)
-	archiveUnitDir := path.Join(svc.ArchiveDir, unitDir)
 	tgtFN := req.Filenames[0]
 	req.Filenames = req.Filenames[1:]
 	for _, mf := range tgtUnit.MasterFiles {
@@ -139,25 +138,8 @@ func (svc *ServiceContext) deleteMasterFiles(c *gin.Context) {
 		}
 		svc.logInfo(js, fmt.Sprintf("Delete %s", mf.Filename))
 		if mf.OriginalMfID == nil {
-			archiveFile := path.Join(archiveUnitDir, tgtFN)
-			svc.logInfo(js, fmt.Sprintf("Removing from archive: %s", archiveFile))
-			if pathExists(archiveFile) {
-				os.Remove(archiveFile)
-			} else {
-				svc.logError(js, fmt.Sprintf("No archive found for %s", tgtFN))
-			}
-
-			iiifInfo := svc.iiifPath(&mf)
-			svc.logInfo(js, fmt.Sprintf("Removing file published to IIIF: %s", iiifInfo.absolutePath))
-			if pathExists(iiifInfo.absolutePath) {
-				os.Remove(iiifInfo.absolutePath)
-				files, _ := ioutil.ReadDir(iiifInfo.basePath)
-				if len(files) == 0 {
-					os.Remove(iiifInfo.basePath)
-				}
-			} else {
-				svc.logError(js, fmt.Sprintf("No IIIF file found for %s", tgtFN))
-			}
+			svc.removeArchive(js, unitID, mf.Filename)
+			svc.unpublishIIIF(js, &mf)
 		} else {
 			// clone
 			clonedFile := path.Join(svc.ProcessingDir, "finalization", unitDir, mf.Filename)
@@ -220,17 +202,7 @@ func (svc *ServiceContext) deleteMasterFiles(c *gin.Context) {
 			}
 
 			if mf.OriginalMfID == nil {
-				origArchive := path.Join(archiveUnitDir, origFN)
-				newArchive := path.Join(archiveUnitDir, newFN)
-				svc.logInfo(js, fmt.Sprintf("Rename archived file %s -> %s", origArchive, newArchive))
-				err = os.Rename(origArchive, newArchive)
-				if err != nil {
-					svc.logError(js, fmt.Sprintf("Unable to rename %s: %s", origArchive, err.Error()))
-				}
-				newMD5 := md5Checksum(newArchive)
-				if newMD5 != mf.MD5 {
-					svc.logError(js, fmt.Sprintf("MD5 does not match for rename %s -> %s; %s vs %s", origArchive, newArchive, mf.MD5, newMD5))
-				}
+				svc.renameArchive(js, unitID, origFN, mf.MD5, newFN)
 			} else {
 				origClonedFile := path.Join(svc.ProcessingDir, "finalization", unitDir, origFN)
 				newClonedFile := path.Join(svc.ProcessingDir, "finalization", unitDir, newFN)
@@ -271,7 +243,6 @@ func (svc *ServiceContext) addMasterFiles(c *gin.Context) {
 
 	unitDir := padLeft(c.Param("id"), 9)
 	srcDir := path.Join(svc.ProcessingDir, "finalization", "unit_update", unitDir)
-	archiveUnitDir := path.Join(svc.ArchiveDir, unitDir)
 	svc.logInfo(js, fmt.Sprintf("Looking for new *.tif files in %s", srcDir))
 	files, err := ioutil.ReadDir(srcDir)
 	if err != nil {
@@ -326,7 +297,7 @@ func (svc *ServiceContext) addMasterFiles(c *gin.Context) {
 	if newPage <= lastPageNum {
 		// rename/rearchive files to make room for new files to be inserted
 		// If components are involved, return the ID of the component at the insertion point
-		err := svc.makeGapForInsertion(js, &tgtUnit, archiveUnitDir, tifFiles)
+		err := svc.makeGapForInsertion(js, &tgtUnit, tifFiles)
 		if err != nil {
 			svc.logFatal(js, fmt.Sprintf("Unable to create gap for ne image insertion: %s", err.Error()))
 			c.String(http.StatusBadRequest, "gap in sequence")
@@ -377,25 +348,19 @@ func (svc *ServiceContext) addMasterFiles(c *gin.Context) {
 		}
 
 		// archive file, validate checksum and set archived date
-		err = ensureDirExists(archiveUnitDir, 0777)
+		newMD5, err := svc.archiveFile(js, tf.path, unitID, tf.filename)
 		if err != nil {
-			svc.logError(js, fmt.Sprintf("Unable to archive create archive dir %s: %s", archiveUnitDir, err.Error()))
-		} else {
-			archiveFile := path.Join(archiveUnitDir, tf.filename)
-			svc.logInfo(js, fmt.Sprintf("Archiving new master file %s to %s", tf.filename, archiveFile))
-			newMD5, err := copyFile(tf.path, archiveFile, 0664)
-			if err != nil {
-				svc.logError(js, fmt.Sprintf("Unable to archive %s: %s", tf.filename, err.Error()))
-			} else {
-				if newMD5 != newMF.MD5 {
-					svc.logError(js, fmt.Sprintf("MD5 does not match for new MF %s. %s vs %s", archiveFile, newMD5, newMF.MD5))
-				}
-
-				now := time.Now()
-				newMF.DateArchived = &now
-				svc.GDB.Model(&newMF).Select("DateArchived").Updates(newMF)
-			}
+			svc.logError(js, fmt.Sprintf("Unable to archive %s: %s", tf.filename, err.Error()))
 		}
+
+		if newMD5 != newMF.MD5 {
+			svc.logError(js, fmt.Sprintf("Archived MD5 does not match for %s: %s vs %s", tf.filename, newMD5, newMF.MD5))
+		}
+
+		now := time.Now()
+		newMF.DateArchived = &now
+		svc.GDB.Model(&newMF).Select("DateArchived").Updates(newMF)
+
 	}
 
 	svc.logInfo(js, fmt.Sprintf("Updating unit master files count by %d", len(tifFiles)))
@@ -409,7 +374,7 @@ func (svc *ServiceContext) addMasterFiles(c *gin.Context) {
 	c.String(http.StatusOK, "done")
 }
 
-func (svc *ServiceContext) makeGapForInsertion(js *jobStatus, tgtUnit *unit, archiveDir string, tifFiles []tifInfo) error {
+func (svc *ServiceContext) makeGapForInsertion(js *jobStatus, tgtUnit *unit, tifFiles []tifInfo) error {
 	tgtFile := tifFiles[0].filename
 	gapSize := len(tifFiles)
 	svc.logInfo(js, fmt.Sprintf("Renaming/rearchiving all master files from %s to make room for insertion of %d new master files", tgtFile, gapSize))
@@ -422,7 +387,6 @@ func (svc *ServiceContext) makeGapForInsertion(js *jobStatus, tgtUnit *unit, arc
 
 		// figure out new filename and rename/re-title
 		origFN := mf.Filename
-		origArchiveFN := path.Join(archiveDir, origFN)
 		origPageNum := getMasterFilePageNum(origFN)
 		newPageNum := origPageNum + gapSize
 		paddedPageNum := padLeft(fmt.Sprintf("%d", newPageNum), 4)
@@ -442,16 +406,7 @@ func (svc *ServiceContext) makeGapForInsertion(js *jobStatus, tgtUnit *unit, arc
 		}
 
 		// copy archived file to new name and validate checksums
-		newArchiveFN := path.Join(archiveDir, newFN)
-		svc.logInfo(js, fmt.Sprintf("Rename archived file %s -> %s", origArchiveFN, newArchiveFN))
-		err = os.Rename(origArchiveFN, newArchiveFN)
-		if err != nil {
-			return err
-		}
-		newMD5 := md5Checksum(newArchiveFN)
-		if newMD5 != mf.MD5 {
-			svc.logError(js, fmt.Sprintf("MD5 does not match for rename %s -> %s", origArchiveFN, newFN))
-		}
+		svc.renameArchive(js, tgtUnit.ID, origFN, mf.MD5, newFN)
 
 		if done == true {
 			break
