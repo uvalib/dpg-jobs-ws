@@ -50,33 +50,41 @@ func (svc *ServiceContext) downloadFromArchive(c *gin.Context) {
 		return
 	}
 	if strings.ToLower(req.Filename) == "all" {
-		var tgtUnit unit
-		err := svc.GDB.Preload("MasterFiles").First(&tgtUnit, unitID).Error
-		if err != nil {
-			svc.logFatal(js, fmt.Sprintf("Unable to load unit %d: %s", unitID, err.Error()))
-			c.String(http.StatusBadRequest, err.Error())
-			return
-		}
-		for _, mf := range tgtUnit.MasterFiles {
-			err := svc.copyArchivedFile(js, unitID, mf.Filename, destPath)
-			if err != nil {
-				svc.logFatal(js, fmt.Sprintf("Unable to copy %s: %s", req.Filename, err.Error()))
-				c.String(http.StatusInternalServerError, err.Error())
-				return
-			}
-		}
-		svc.logInfo(js, fmt.Sprintf("Masterfiles from unit %d copied to %s", unitID, destPath))
-	} else {
-		err := svc.copyArchivedFile(js, unitID, req.Filename, destPath)
-		if err != nil {
-			svc.logFatal(js, fmt.Sprintf("Unable to copy %s: %s", req.Filename, err.Error()))
-			c.String(http.StatusInternalServerError, err.Error())
-			return
-		}
-		svc.logInfo(js, fmt.Sprintf("Masterfile %s copied to %s", req.Filename, destPath))
+		go svc.copyAllFromArchive(js, unitID, destPath)
+		c.String(http.StatusOK, fmt.Sprintf("%d", js.ID))
+		return
 	}
+
+	err = svc.copyArchivedFile(js, unitID, req.Filename, destPath)
+	if err != nil {
+		svc.logFatal(js, fmt.Sprintf("Unable to copy %s: %s", req.Filename, err.Error()))
+		c.String(http.StatusInternalServerError, err.Error())
+		return
+	}
+	svc.logInfo(js, fmt.Sprintf("Masterfile %s copied to %s", req.Filename, destPath))
+
 	svc.jobDone(js)
 	c.String(http.StatusOK, "done")
+}
+
+// called as goroutine to copy all from the archive. it may take a long time
+func (svc *ServiceContext) copyAllFromArchive(js *jobStatus, unitID int64, destDir string) {
+	var tgtUnit unit
+	err := svc.GDB.Preload("MasterFiles").First(&tgtUnit, unitID).Error
+	if err != nil {
+		svc.logFatal(js, fmt.Sprintf("Unable to load unit %d: %s", unitID, err.Error()))
+		return
+	}
+	for _, mf := range tgtUnit.MasterFiles {
+		svc.logInfo(js, fmt.Sprintf("Copying %s", mf.Filename))
+		err := svc.copyArchivedFile(js, unitID, mf.Filename, destDir)
+		if err != nil {
+			svc.logFatal(js, fmt.Sprintf("Unable to copy %s: %s", mf.Filename, err.Error()))
+			return
+		}
+	}
+	svc.logInfo(js, fmt.Sprintf("Masterfiles from unit %d copied to %s", unitID, destDir))
+	svc.jobDone(js)
 }
 
 func (svc *ServiceContext) copyArchivedFile(js *jobStatus, unitID int64, filename string, destDir string) error {
