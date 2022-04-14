@@ -36,18 +36,39 @@ func (svc *ServiceContext) createImageTechMetadata(mf *masterFile, mfPath string
 		ColorSpace:   fmt.Sprintf("%v", jsonMD["ColorSpaceData"]),
 		Depth:        getDepth(jsonMD),
 		Resolution:   getUInt(jsonMD, "XResolution"),
-		Equipment:    fmt.Sprintf("%v", jsonMD["Make"]),
-		Software:     fmt.Sprintf("%v", jsonMD["Software"]),
-		Model:        fmt.Sprintf("%v", jsonMD["Model"]),
-		ExifVersion:  fmt.Sprintf("%v", jsonMD["ExifVersion"]),
-		CaptureDate:  getDate(jsonMD, "DateCreated"),
-		ISO:          getUInt(jsonMD, "ISO"),
-		ExposureBias: fmt.Sprintf("%v", jsonMD["ExposureCompensation"]),
-		ExposureTime: fmt.Sprintf("%v", jsonMD["ExposureTime"]),
-		Aperture:     fmt.Sprintf("%v", jsonMD["ApertureValue"]),
-		FocalLength:  getFocalLength(jsonMD),
 		CreatedAt:    time.Now(),
 		UpdatedAt:    time.Now(),
+	}
+
+	if jsonMD["Make"] != nil {
+		md.Equipment = fmt.Sprintf("%v", jsonMD["Make"])
+	}
+	if jsonMD["Software"] != nil {
+		md.Software = fmt.Sprintf("%v", jsonMD["Software"])
+	}
+	if jsonMD["Model"] != nil {
+		md.Model = fmt.Sprintf("%v", jsonMD["Model"])
+	}
+	if jsonMD["ExifVersion"] != nil {
+		md.ExifVersion = fmt.Sprintf("%v", jsonMD["ExifVersion"])
+	}
+	if jsonMD["DateCreated"] != nil {
+		md.CaptureDate = getDate(jsonMD, "DateCreated")
+	}
+	if jsonMD["ISO"] != nil {
+		md.ISO = getUInt(jsonMD, "ISO")
+	}
+	if jsonMD["ExposureCompensation"] != nil {
+		md.ExposureBias = fmt.Sprintf("%v", jsonMD["ExposureCompensation"])
+	}
+	if jsonMD["ExposureTime"] != nil {
+		md.ExposureTime = fmt.Sprintf("%v", jsonMD["ExposureTime"])
+	}
+	if jsonMD["ApertureValue"] != nil {
+		md.Aperture = fmt.Sprintf("%v", jsonMD["ApertureValue"])
+	}
+	if jsonMD["FocalLength"] != nil {
+		md.FocalLength = getFocalLength(jsonMD)
 	}
 
 	err = svc.GDB.Create(&md).Error
