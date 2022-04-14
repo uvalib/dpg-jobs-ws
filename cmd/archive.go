@@ -7,6 +7,7 @@ import (
 	"os"
 	"path"
 	"strconv"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 )
@@ -20,8 +21,76 @@ func (svc *ServiceContext) downloadFromArchive(c *gin.Context) {
 		return
 	}
 
+	type dlReq struct {
+		Filename  string `json:"filename"`
+		ComputeID string `json:"computeID"`
+	}
+	svc.logInfo(js, "Staring process to download master files from the archive...")
+	var req dlReq
+	err = c.ShouldBindJSON(&req)
+	if err != nil {
+		svc.logFatal(js, fmt.Sprintf("Unable to parse request: %s", err.Error()))
+		c.String(http.StatusBadRequest, err.Error())
+		return
+	}
+
+	var cnt int64
+	svc.GDB.Table("staff_members").Where("computing_id=?", req.ComputeID).Count(&cnt)
+	if cnt != 1 {
+		svc.logFatal(js, fmt.Sprintf("%s is not a valid computing ID", req.ComputeID))
+		c.String(http.StatusBadRequest, "invalid compute id")
+		return
+	}
+	svc.logInfo(js, fmt.Sprintf("%s requests to download %s from unit %d", req.ComputeID, req.Filename, unitID))
+	destPath := path.Join(svc.ProcessingDir, "from_archive", req.ComputeID, fmt.Sprintf("%09d", unitID))
+	err = ensureDirExists(destPath, 0775)
+	if err != nil {
+		svc.logFatal(js, fmt.Sprintf("Unable to create download directory %s: %s", destPath, err.Error()))
+		c.String(http.StatusBadRequest, err.Error())
+		return
+	}
+	if strings.ToLower(req.Filename) == "all" {
+		var tgtUnit unit
+		err := svc.GDB.Preload("MasterFiles").First(&tgtUnit, unitID).Error
+		if err != nil {
+			svc.logFatal(js, fmt.Sprintf("Unable to load unit %d: %s", unitID, err.Error()))
+			c.String(http.StatusBadRequest, err.Error())
+			return
+		}
+		for _, mf := range tgtUnit.MasterFiles {
+			err := svc.copyArchivedFile(js, unitID, mf.Filename, destPath)
+			if err != nil {
+				svc.logFatal(js, fmt.Sprintf("Unable to copy %s: %s", req.Filename, err.Error()))
+				c.String(http.StatusInternalServerError, err.Error())
+				return
+			}
+		}
+		svc.logInfo(js, fmt.Sprintf("Masterfiles from unit %d copied to %s", unitID, destPath))
+	} else {
+		err := svc.copyArchivedFile(js, unitID, req.Filename, destPath)
+		if err != nil {
+			svc.logFatal(js, fmt.Sprintf("Unable to copy %s: %s", req.Filename, err.Error()))
+			c.String(http.StatusInternalServerError, err.Error())
+			return
+		}
+		svc.logInfo(js, fmt.Sprintf("Masterfile %s copied to %s", req.Filename, destPath))
+	}
 	svc.jobDone(js)
 	c.String(http.StatusOK, "done")
+}
+
+func (svc *ServiceContext) copyArchivedFile(js *jobStatus, unitID int64, filename string, destDir string) error {
+	archiveFile := path.Join(svc.ArchiveDir, fmt.Sprintf("%09d", unitID), filename)
+	archiveMD5 := md5Checksum(archiveFile)
+	destFile := path.Join(destDir, filename)
+	copyMD5, err := copyFile(archiveFile, destFile, 0666)
+	if err != nil {
+		return err
+	}
+	if copyMD5 != archiveMD5 {
+		svc.logError(js, fmt.Sprintf("MD5 checksum does not match on copied file %s", destFile))
+	}
+	return nil
 }
 
 // archiveFile will create the unit directory, copy the target file and return an MD5 checksum
