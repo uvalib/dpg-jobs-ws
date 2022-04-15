@@ -41,14 +41,16 @@ func (svc *ServiceContext) createJobStatus(job string, origType string, origID i
 }
 
 func (svc *ServiceContext) jobDone(status *jobStatus) {
-	e := event{JobStatusID: status.ID, Level: 0, Text: "job finished", CreatedAt: time.Now()}
-	err := svc.GDB.Create(&e).Error
-	if err != nil {
-		log.Printf("ERROR: unable to log job %d done event: %s", status.ID, err.Error())
-	}
+	if status.EndedAt == nil {
+		e := event{JobStatusID: status.ID, Level: 0, Text: "job finished", CreatedAt: time.Now()}
+		err := svc.GDB.Create(&e).Error
+		if err != nil {
+			log.Printf("ERROR: unable to log job %d done event: %s", status.ID, err.Error())
+		}
 
-	now := time.Now()
-	svc.GDB.Model(&status).Select("ended_at", "status").Updates(jobStatus{EndedAt: &now, Status: "finished"})
+		now := time.Now()
+		svc.GDB.Model(&status).Select("ended_at", "status").Updates(jobStatus{EndedAt: &now, Status: "finished"})
+	}
 }
 
 func (svc *ServiceContext) logInfo(status *jobStatus, text string) {
@@ -71,12 +73,14 @@ func (svc *ServiceContext) logError(status *jobStatus, text string) {
 }
 
 func (svc *ServiceContext) logFatal(status *jobStatus, text string) {
-	log.Printf("INFO: [job %d fatal]: %s", status.ID, text)
-	e := event{JobStatusID: status.ID, Level: 3, Text: text, CreatedAt: time.Now()}
-	err := svc.GDB.Create(&e).Error
-	if err != nil {
-		log.Printf("ERROR: unable to log job %d fatal event [%s]: %s", status.ID, text, err.Error())
+	if status.EndedAt == nil {
+		log.Printf("INFO: [job %d fatal]: %s", status.ID, text)
+		e := event{JobStatusID: status.ID, Level: 3, Text: text, CreatedAt: time.Now()}
+		err := svc.GDB.Create(&e).Error
+		if err != nil {
+			log.Printf("ERROR: unable to log job %d fatal event [%s]: %s", status.ID, text, err.Error())
+		}
+		now := time.Now()
+		svc.GDB.Model(status).Select("ended_at", "status", "error").Updates(jobStatus{EndedAt: &now, Status: "failure", Error: text})
 	}
-	now := time.Now()
-	svc.GDB.Model(status).Select("ended_at", "status", "error").Updates(jobStatus{EndedAt: &now, Status: "failure", Error: text})
 }

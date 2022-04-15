@@ -258,3 +258,15 @@ func copyFile(src string, dest string, mode fs.FileMode) (string, error) {
 	os.Chmod(dest, mode)
 	return md5Checksum(dest), nil
 }
+
+func (svc *ServiceContext) ensureMD5(js *jobStatus, mf *masterFile, mfPath string) {
+	if mf.MD5 == "" {
+		svc.logInfo(js, fmt.Sprintf("Masterfile %s is missing MD5 checksum; calculating it now from %s", mf.PID, mfPath))
+		mf.MD5 = md5Checksum(mfPath)
+		mf.UpdatedAt = time.Now()
+		err := svc.GDB.Model(mf).Select("UpdatedAt", "MD5").Updates(*mf).Error
+		if err != nil {
+			svc.logError(js, fmt.Sprintf("Unable to update chacksum: %s", err.Error()))
+		}
+	}
+}

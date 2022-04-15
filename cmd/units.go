@@ -88,22 +88,56 @@ func (svc *ServiceContext) cloneMasterFiles(c *gin.Context) {
 		return
 	}
 
+	svc.logInfo(js, fmt.Sprintf("Loading destination unit %d", unitID))
+	var tgtUnit unit
+	err = svc.GDB.First(&tgtUnit, unitID).Error
+	if err != nil {
+		svc.logFatal(js, fmt.Sprintf("Unable to load destination unit %d: %s", unitID, err.Error()))
+		return
+	}
+
 	go func() {
+		pageNum := 1
+		failed := false
 		for _, cr := range req {
-			var tgtUnit unit
-			err = svc.GDB.Preload("MasterFiles").Preload("MasterFiles.ImageTechMeta").First(&tgtUnit, cr.UnitID).Error
+			svc.logInfo(js, fmt.Sprintf("Loading clone source unit %d", cr.UnitID))
+			var srcUnit unit
+			err = svc.GDB.Preload("MasterFiles").
+				Preload("MasterFiles.ImageTechMeta").
+				Preload("MasterFiles.Locations").
+				First(&srcUnit, cr.UnitID).Error
 			if err != nil {
 				svc.logFatal(js, fmt.Sprintf("Unable to load unit %d: %s", cr.UnitID, err.Error()))
+				failed = true
 				return
 			}
 
 			if cr.AllFiles {
-				svc.cloneAllMasterFiles(js, &tgtUnit)
+				cloneCnt, err := svc.cloneAllMasterFiles(js, &tgtUnit, &srcUnit, pageNum)
+				if err != nil {
+					svc.logFatal(js, err.Error())
+					break
+				}
+				pageNum += cloneCnt
 			} else {
 				for _, mf := range cr.Files {
-					svc.cloneMasterFile(js, &tgtUnit, mf.ID, mf.Title)
+					mf := findMasterfile(&srcUnit, mf.ID)
+					if mf == nil {
+						svc.logError(js, fmt.Sprintf("Unable to find masterfile %d in source unit %d. Skipping.", mf.ID, srcUnit.ID))
+					} else {
+						err = svc.cloneMasterFile(js, &tgtUnit, mf, mf.Title, pageNum)
+						if err != nil {
+							svc.logFatal(js, err.Error())
+							failed = true
+							break
+						}
+					}
 				}
 			}
+			if failed {
+				break
+			}
+			pageNum++
 		}
 		svc.jobDone(js)
 	}()
@@ -111,10 +145,97 @@ func (svc *ServiceContext) cloneMasterFiles(c *gin.Context) {
 	c.String(http.StatusOK, fmt.Sprintf("%d", js.ID))
 }
 
-func (svc *ServiceContext) cloneAllMasterFiles(js *jobStatus, tgtUnit *unit) {
-
+func findMasterfile(tgtUnit *unit, mfID int64) *masterFile {
+	var match *masterFile
+	for _, mf := range tgtUnit.MasterFiles {
+		if mf.ID == mfID {
+			match = &mf
+			break
+		}
+	}
+	return match
 }
 
-func (svc *ServiceContext) cloneMasterFile(js *jobStatus, tgtUnit *unit, tgtID int64, newTitle string) {
+func (svc *ServiceContext) cloneAllMasterFiles(js *jobStatus, destUnit *unit, srcUnit *unit, startPageNum int) (int, error) {
 
+	svc.logInfo(js, fmt.Sprintf("Cloning all master files from unit %d", srcUnit.ID))
+	pageNum := startPageNum
+	clonedCount := 0
+	for _, srcMF := range srcUnit.MasterFiles {
+		err := svc.cloneMasterFile(js, destUnit, &srcMF, srcMF.Title, pageNum)
+		if err != nil {
+			return 0, err
+		}
+		pageNum++
+		clonedCount++
+	}
+	return clonedCount, nil
+}
+
+func (svc *ServiceContext) cloneMasterFile(js *jobStatus, destUnit *unit, srcMF *masterFile, newTitle string, pageNum int) error {
+	// Create new MF records and pull tiffs from archive into in_proc for the new unit
+	// so they will be ready to be used to generate deliverables with CreatePatronDeliverables job
+	unitDir := fmt.Sprintf("%09d", destUnit.ID)
+	destUnitDir := path.Join(svc.ProcessingDir, "finalization", unitDir)
+	ensureDirExists(destUnitDir, 0775)
+
+	srcArchiveFile := path.Join(svc.ArchiveDir, unitDir, srcMF.Filename)
+	if pathExists(srcArchiveFile) == false {
+		return fmt.Errorf("unable to find archived tif %s for master file with ID %d", srcArchiveFile, srcMF.ID)
+	}
+	svc.ensureMD5(js, srcMF, srcArchiveFile)
+
+	svc.logInfo(js, fmt.Sprintf("Cloning master file from %s", srcArchiveFile))
+	newFN := fmt.Sprintf("%s_%04d.tif", unitDir, pageNum)
+	destFile := path.Join(destUnitDir, newFN)
+	newMD5, err := copyFile(srcArchiveFile, destFile, 0664)
+	if err != nil {
+		return err
+	}
+
+	if newMD5 != srcMF.MD5 {
+		svc.logError(js, fmt.Sprintf("WARNING: Checksum mismatch for clone of source master file %d", srcMF.ID))
+	}
+
+	now := time.Now()
+	newMF := masterFile{
+		UnitID:       destUnit.ID,
+		Filename:     newFN,
+		Filesize:     srcMF.Filesize,
+		ComponentID:  srcMF.ComponentID,
+		Title:        newTitle,
+		Description:  srcMF.Description,
+		MD5:          newMD5,
+		MetadataID:   srcMF.MetadataID,
+		OriginalMfID: &srcMF.ID,
+		CreatedAt:    now,
+		UpdatedAt:    now,
+	}
+	err = svc.GDB.Create(&newMF).Error
+	if err != nil {
+		return fmt.Errorf("Unable to create %s: %s", newFN, err.Error())
+	}
+	newMF.PID = fmt.Sprintf("tsm:%d", newMF.ID)
+	svc.GDB.Model(&newMF).Select("PID").Updates(newMF)
+	if srcMF.location() != nil {
+		svc.GDB.Exec("INSERT into master_file_locations (master_file_id, location_id) values (?,?)", newMF.ID, srcMF.location().ID)
+	}
+
+	tm := srcMF.ImageTechMeta
+	newTM := imageTechMeta{
+		MasterFileID: newMF.ID,
+		ImageFormat:  tm.ImageFormat, Width: tm.Width, Height: tm.Height,
+		Resolution: tm.Resolution, ColorSpace: tm.ColorSpace, Depth: tm.Depth,
+		Compression: tm.Compression, ColorProfile: tm.ColorProfile,
+		Equipment: tm.Equipment, Software: tm.Software, Model: tm.Model,
+		ExifVersion: tm.ExifVersion, CaptureDate: tm.CaptureDate, ISO: tm.ISO,
+		ExposureBias: tm.ExposureBias, ExposureTime: tm.ExposureTime,
+		Aperture: tm.Aperture, FocalLength: tm.FocalLength, CreatedAt: now, UpdatedAt: now,
+	}
+	err = svc.GDB.Create(&newTM).Error
+	if err != nil {
+		svc.logError(js, fmt.Sprintf("Unable to create tech metadata for masterfile %d", newMF.ID))
+	}
+
+	return nil
 }
