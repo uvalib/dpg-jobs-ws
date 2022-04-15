@@ -89,8 +89,8 @@ func (svc *ServiceContext) cloneMasterFiles(c *gin.Context) {
 	}
 
 	svc.logInfo(js, fmt.Sprintf("Loading destination unit %d", unitID))
-	var tgtUnit unit
-	err = svc.GDB.First(&tgtUnit, unitID).Error
+	var destUnit unit
+	err = svc.GDB.First(&destUnit, unitID).Error
 	if err != nil {
 		svc.logFatal(js, fmt.Sprintf("Unable to load destination unit %d: %s", unitID, err.Error()))
 		return
@@ -113,7 +113,7 @@ func (svc *ServiceContext) cloneMasterFiles(c *gin.Context) {
 			}
 
 			if cr.AllFiles {
-				cloneCnt, err := svc.cloneAllMasterFiles(js, &tgtUnit, &srcUnit, pageNum)
+				cloneCnt, err := svc.cloneAllMasterFiles(js, &srcUnit, &destUnit, pageNum)
 				if err != nil {
 					svc.logFatal(js, err.Error())
 					break
@@ -125,19 +125,19 @@ func (svc *ServiceContext) cloneMasterFiles(c *gin.Context) {
 					if mf == nil {
 						svc.logError(js, fmt.Sprintf("Unable to find masterfile %d in source unit %d. Skipping.", mf.ID, srcUnit.ID))
 					} else {
-						err = svc.cloneMasterFile(js, &tgtUnit, mf, mf.Title, pageNum)
+						err = svc.cloneMasterFile(js, &srcUnit, mf, &destUnit, mf.Title, pageNum)
 						if err != nil {
 							svc.logFatal(js, err.Error())
 							failed = true
 							break
 						}
 					}
+					pageNum++
 				}
 			}
 			if failed {
 				break
 			}
-			pageNum++
 		}
 		svc.jobDone(js)
 	}()
@@ -145,49 +145,37 @@ func (svc *ServiceContext) cloneMasterFiles(c *gin.Context) {
 	c.String(http.StatusOK, fmt.Sprintf("%d", js.ID))
 }
 
-func findMasterfile(tgtUnit *unit, mfID int64) *masterFile {
-	var match *masterFile
-	for _, mf := range tgtUnit.MasterFiles {
-		if mf.ID == mfID {
-			match = &mf
-			break
-		}
-	}
-	return match
-}
-
-func (svc *ServiceContext) cloneAllMasterFiles(js *jobStatus, destUnit *unit, srcUnit *unit, startPageNum int) (int, error) {
-
-	svc.logInfo(js, fmt.Sprintf("Cloning all master files from unit %d", srcUnit.ID))
+func (svc *ServiceContext) cloneAllMasterFiles(js *jobStatus, srcUnit *unit, destUnit *unit, startPageNum int) (int, error) {
+	svc.logInfo(js, fmt.Sprintf("Cloning all master files from unit %d. Statring page number: %d", srcUnit.ID, startPageNum))
 	pageNum := startPageNum
 	clonedCount := 0
 	for _, srcMF := range srcUnit.MasterFiles {
-		err := svc.cloneMasterFile(js, destUnit, &srcMF, srcMF.Title, pageNum)
+		err := svc.cloneMasterFile(js, srcUnit, &srcMF, destUnit, srcMF.Title, pageNum)
 		if err != nil {
 			return 0, err
 		}
 		pageNum++
 		clonedCount++
 	}
+	svc.logInfo(js, fmt.Sprintf("All master files from unit %d have been cloned. %d masterfiles added", srcUnit.ID, clonedCount))
 	return clonedCount, nil
 }
 
-func (svc *ServiceContext) cloneMasterFile(js *jobStatus, destUnit *unit, srcMF *masterFile, newTitle string, pageNum int) error {
+func (svc *ServiceContext) cloneMasterFile(js *jobStatus, srcUnit *unit, srcMF *masterFile, destUnit *unit, newTitle string, pageNum int) error {
 	// Create new MF records and pull tiffs from archive into in_proc for the new unit
 	// so they will be ready to be used to generate deliverables with CreatePatronDeliverables job
-	unitDir := fmt.Sprintf("%09d", destUnit.ID)
-	destUnitDir := path.Join(svc.ProcessingDir, "finalization", unitDir)
+	destUnitDir := path.Join(svc.ProcessingDir, "finalization", fmt.Sprintf("%09d", destUnit.ID))
 	ensureDirExists(destUnitDir, 0775)
 
-	srcArchiveFile := path.Join(svc.ArchiveDir, unitDir, srcMF.Filename)
+	srcArchiveFile := path.Join(svc.ArchiveDir, fmt.Sprintf("%09d", srcUnit.ID), srcMF.Filename)
 	if pathExists(srcArchiveFile) == false {
 		return fmt.Errorf("unable to find archived tif %s for master file with ID %d", srcArchiveFile, srcMF.ID)
 	}
 	svc.ensureMD5(js, srcMF, srcArchiveFile)
 
-	svc.logInfo(js, fmt.Sprintf("Cloning master file from %s", srcArchiveFile))
-	newFN := fmt.Sprintf("%s_%04d.tif", unitDir, pageNum)
+	newFN := fmt.Sprintf("%s_%04d.tif", fmt.Sprintf("%09d", destUnit.ID), pageNum)
 	destFile := path.Join(destUnitDir, newFN)
+	svc.logInfo(js, fmt.Sprintf("Cloning master file from %s to %s", srcArchiveFile, destFile))
 	newMD5, err := copyFile(srcArchiveFile, destFile, 0664)
 	if err != nil {
 		return err
@@ -236,6 +224,17 @@ func (svc *ServiceContext) cloneMasterFile(js *jobStatus, destUnit *unit, srcMF 
 	if err != nil {
 		svc.logError(js, fmt.Sprintf("Unable to create tech metadata for masterfile %d", newMF.ID))
 	}
-
+	svc.logInfo(js, fmt.Sprintf("Master file cloned to %s", newMF.PID))
 	return nil
+}
+
+func findMasterfile(tgtUnit *unit, mfID int64) *masterFile {
+	var match *masterFile
+	for _, mf := range tgtUnit.MasterFiles {
+		if mf.ID == mfID {
+			match = &mf
+			break
+		}
+	}
+	return match
 }

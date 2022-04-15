@@ -50,6 +50,7 @@ func (svc *ServiceContext) jobDone(status *jobStatus) {
 
 		now := time.Now()
 		svc.GDB.Model(&status).Select("ended_at", "status").Updates(jobStatus{EndedAt: &now, Status: "finished"})
+		log.Printf("INFO: [job %d finished] %s", status.ID, status.Name)
 	}
 }
 
