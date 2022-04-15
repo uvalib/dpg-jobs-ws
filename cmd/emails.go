@@ -141,10 +141,10 @@ func (svc *ServiceContext) sendFeesEmail(c *gin.Context) {
 func (svc *ServiceContext) sendEmail(request *emailRequest) error {
 	mail := gomail.NewMessage()
 	mail.SetHeader("MIME-version", "1.0")
-	mail.SetHeader("Content-Type", "text/html; charset=\"UTF-8\"")
 	mail.SetHeader("Subject", request.Subject)
 	mail.SetHeader("To", request.To...)
 	mail.SetHeader("From", request.From)
+	mail.SetHeader("Content-Transfer-Encoding", "BASE64")
 	if request.ReplyTo != "" {
 		mail.SetHeader("Reply-To", request.ReplyTo)
 	}
@@ -159,6 +159,13 @@ func (svc *ServiceContext) sendEmail(request *emailRequest) error {
 		mail.WriteTo(log.Writer())
 		log.Printf("==================================================")
 		return nil
+	}
+
+	log.Printf("Sending %s email to %s", request.Subject, strings.Join(request.To, ","))
+	if svc.SMTP.Pass != "" {
+		dialer := gomail.Dialer{Host: svc.SMTP.Host, Port: svc.SMTP.Port, Username: svc.SMTP.User, Password: svc.SMTP.Pass}
+		dialer.TLSConfig = &tls.Config{InsecureSkipVerify: true}
+		return dialer.DialAndSend(mail)
 	}
 
 	log.Printf("Sending %s email to %s", request.Subject, strings.Join(request.To, ","))
