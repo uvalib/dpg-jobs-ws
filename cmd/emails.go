@@ -37,6 +37,7 @@ func (svc *ServiceContext) sendOrderEmail(c *gin.Context) {
 		return
 	}
 	svc.logInfo(js, "Start send order email...")
+	svc.logInfo(js, fmt.Sprintf("Loading customer and order data for order %d", orderID))
 	var o order
 	err = svc.GDB.Preload("Customer").First(&o, orderID).Error
 	if err != nil {
@@ -50,6 +51,7 @@ func (svc *ServiceContext) sendOrderEmail(c *gin.Context) {
 		return
 	}
 
+	svc.logInfo(js, fmt.Sprintf("Sending order email to  %s", o.Customer.Email))
 	req := emailRequest{Subject: fmt.Sprintf("UVA Digital Production Group - Order # %d Complete", o.ID),
 		To:      []string{o.Customer.Email},
 		From:    svc.SMTP.Sender,
@@ -76,6 +78,7 @@ func (svc *ServiceContext) sendFeesEmail(c *gin.Context) {
 		return
 	}
 	svc.logInfo(js, "Start send fees email...")
+	svc.logInfo(js, fmt.Sprintf("Loading customer and invoice data for order %d", orderID))
 	var o order
 	err = svc.GDB.Preload("Customer").Preload("Invoices").First(&o, orderID).Error
 	if err != nil {
@@ -94,6 +97,7 @@ func (svc *ServiceContext) sendFeesEmail(c *gin.Context) {
 		LastName  string
 		Fee       float64
 	}
+	svc.logInfo(js, "Rendering fees email")
 	data := feeData{FirstName: o.Customer.FirstName, LastName: o.Customer.LastName, Fee: o.Fee.Float64}
 	var renderedEmail bytes.Buffer
 	err = svc.Templates.Fees.Execute(&renderedEmail, data)
@@ -102,6 +106,7 @@ func (svc *ServiceContext) sendFeesEmail(c *gin.Context) {
 		c.String(http.StatusInternalServerError, err.Error())
 	}
 
+	svc.logInfo(js, fmt.Sprintf("Sending fees email to  %s", o.Customer.Email))
 	req := emailRequest{Subject: fmt.Sprintf("UVA Digital Production Group - Request # %d Estimated Fee", o.ID),
 		To:      []string{o.Customer.Email},
 		From:    svc.SMTP.Sender,
