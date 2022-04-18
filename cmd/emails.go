@@ -145,7 +145,6 @@ func (svc *ServiceContext) sendEmail(request *emailRequest) error {
 	mail.SetHeader("To", request.To...)
 	mail.SetHeader("From", request.From)
 	mail.SetHeader("Content-Transfer-Encoding", "BASE64")
-	mail.Embed("http://digiservdelivery.lib.virginia.edu/lib_letterhead.jpg")
 	if request.ReplyTo != "" {
 		mail.SetHeader("Reply-To", request.ReplyTo)
 	}
