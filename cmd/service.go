@@ -10,7 +10,9 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"path"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -257,6 +259,54 @@ func copyFile(src string, dest string, mode fs.FileMode) (string, error) {
 
 	os.Chmod(dest, mode)
 	return md5Checksum(dest), nil
+}
+
+func copyAll(srcDir string, destDir string) error {
+	if _, err := os.Stat(srcDir); os.IsNotExist(err) {
+		return err
+	}
+	files, err := ioutil.ReadDir(srcDir)
+	if err != nil {
+		return err
+	}
+	ensureDirExists(destDir, 0775)
+	for _, fi := range files {
+		srcFile := path.Join(srcDir, fi.Name())
+		destFile := path.Join(destDir, fi.Name())
+		_, err = copyFile(srcFile, destFile, 0664)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+type tifInfo struct {
+	filename string
+	path     string
+	size     int64
+}
+
+func getTifFiles(srcDir string, unitID int64) ([]tifInfo, error) {
+	tifFiles := make([]tifInfo, 0)
+	files, err := ioutil.ReadDir(srcDir)
+	if err != nil {
+		return nil, fmt.Errorf("Unable to read %s: %s", srcDir, err.Error())
+	}
+
+	mfRegex := regexp.MustCompile(fmt.Sprintf(`^%09d_\w{4,}\.tif$`, unitID))
+	for _, fi := range files {
+		fName := fi.Name()
+		if strings.Index(fName, ".tif") > -1 {
+			if !mfRegex.Match([]byte(fName)) {
+				return nil, fmt.Errorf("Invalid tif file name: %s for unit %d", fName, unitID)
+
+			}
+			tifFiles = append(tifFiles, tifInfo{path: path.Join(srcDir, fName), filename: fName, size: fi.Size()})
+		}
+	}
+
+	return tifFiles, nil
 }
 
 func (svc *ServiceContext) ensureMD5(js *jobStatus, mf *masterFile, mfPath string) {

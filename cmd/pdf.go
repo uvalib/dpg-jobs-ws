@@ -69,9 +69,16 @@ func (svc *ServiceContext) createOrderPDF(c *gin.Context) {
 		return
 	}
 
-	err = svc.createPDFDeliverable(js, &o)
+	svc.logInfo(js, "Create order PDF...")
+	pdfGen, err := svc.generateOrderPDF(&o)
 	if err != nil {
-		svc.logFatal(js, fmt.Sprintf("Unable to generate PDF: %s", err.Error()))
+		svc.logFatal(js, fmt.Sprintf("Unable to generate order PDF: %s", err.Error()))
+		c.String(http.StatusInternalServerError, err.Error())
+		return
+	}
+	err = svc.saveOrderPDF(js, &o, pdfGen)
+	if err != nil {
+		svc.logFatal(js, fmt.Sprintf("Unable to save order PDF: %s", err.Error()))
 		c.String(http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -80,15 +87,10 @@ func (svc *ServiceContext) createOrderPDF(c *gin.Context) {
 	c.String(http.StatusOK, "done")
 }
 
-func (svc *ServiceContext) createPDFDeliverable(js *jobStatus, o *order) error {
-	svc.logInfo(js, "Create order PDF...")
+func (svc *ServiceContext) saveOrderPDF(js *jobStatus, o *order, pdfGen *wkhtmltopdf.PDFGenerator) error {
+
 	dir := path.Join(svc.DeliveryDir, fmt.Sprintf("order_%d", o.ID))
 	err := ensureDirExists(dir, 0777)
-	if err != nil {
-		return err
-	}
-
-	pdfGen, err := svc.generateOrderPDF(o)
 	if err != nil {
 		return err
 	}

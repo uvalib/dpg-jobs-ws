@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 	"path"
 	"strconv"
 	"time"
@@ -139,6 +140,11 @@ func (svc *ServiceContext) cloneMasterFiles(c *gin.Context) {
 				break
 			}
 		}
+		svc.logInfo(js, fmt.Sprintf("%d masterfiles cloned into unit. Flagging unit as cloned", (pageNum-1)))
+		destUnit.Reorder = true
+		destUnit.MasterFilesCount = uint(pageNum - 1)
+		destUnit.UpdatedAt = time.Now()
+		err = svc.GDB.Model(&destUnit).Select("Reorder", "MasterFilesCount", "UpdatedAt").Updates(destUnit).Error
 		svc.jobDone(js)
 	}()
 
@@ -155,6 +161,44 @@ func (svc *ServiceContext) createPatronDeliverables(c *gin.Context) {
 	}
 
 	go func() {
+		svc.logInfo(js, fmt.Sprintf("Loading target unit %d", unitID))
+		var tgtUnit unit
+		err = svc.GDB.Preload("MasterFiles").Preload("IntendedUse").First(&tgtUnit, unitID).Error
+		if err != nil {
+			svc.logFatal(js, fmt.Sprintf("Unable to load unit %d: %s", unitID, err.Error()))
+			return
+		}
+
+		// this can be called as part of a re-order or after finalization. for re-orders, the images will already exist in unit_dir
+		unitDir := path.Join(svc.ProcessingDir, "finalization", fmt.Sprintf("%09d", unitID))
+		assembleDir := path.Join(svc.ProcessingDir, "finalization", "tmp", fmt.Sprintf("%09d", unitID))
+
+		if svc.unitImagesAvailable(js, &tgtUnit, assembleDir) == false {
+			if tgtUnit.Reorder {
+				svc.logInfo(js, "Creating deliverables for a reorder")
+				// in this case, each cloned masterfile will have a reference to the original.
+				// use this to get to the original unit and recalculate directories
+				svc.copyOriginalFiles(js, &tgtUnit, unitDir)
+			} else {
+				archiveDir := path.Join(svc.ArchiveDir, fmt.Sprintf("%09d", unitID))
+				svc.logInfo(js, fmt.Sprintf("Creating deliverables from the archive %s", archiveDir))
+				copyAll(archiveDir, unitDir)
+			}
+		} else {
+			svc.logInfo(js, fmt.Sprintf("All files needed to generate unit %d deliverables exist in %s", unitID, assembleDir))
+		}
+
+		if tgtUnit.IntendedUse.DeliverableFormat == "pdf" {
+			svc.logInfo(js, "Unit requires the creation of PDF patron deliverables.")
+			err = svc.createPatronPDF(js, &tgtUnit)
+			if err != nil {
+				svc.logFatal(js, fmt.Sprintf("Unable to create patron PDF deliverable: %s", err.Error()))
+				return
+			}
+		} else {
+			svc.logInfo(js, "Unit requires the creation of zipped patron deliverables.")
+		}
+
 		svc.jobDone(js)
 	}()
 
@@ -253,4 +297,54 @@ func findMasterfile(tgtUnit *unit, mfID int64) *masterFile {
 		}
 	}
 	return match
+}
+
+func (svc *ServiceContext) copyOriginalFiles(js *jobStatus, tgtUnit *unit, unitDir string) error {
+	svc.logInfo(js, fmt.Sprintf("Copy original unit masterfiles to %s", unitDir))
+	err := ensureDirExists(unitDir, 0775)
+	if err != nil {
+		return err
+	}
+
+	for _, mf := range tgtUnit.MasterFiles {
+		destFile := path.Join(unitDir, mf.Filename)
+		if pathExists(destFile) {
+			svc.logInfo(js, fmt.Sprintf("%s already exists at %s", mf.Filename, destFile))
+			continue
+		}
+
+		// Cloned files can come from many src units. Get original unit for
+		// the current master file and figure out where to find it in the archive
+		var omf masterFile
+		err = svc.GDB.Find(&omf, mf.OriginalMfID).Error
+		if err != nil {
+			return err
+		}
+
+		origArchiveFile := path.Join(svc.ArchiveDir, fmt.Sprintf("%09d", omf.UnitID), omf.Filename)
+		svc.logInfo(js, fmt.Sprintf("Copy original master file from %s to %s", origArchiveFile, unitDir))
+		md5, err := copyFile(origArchiveFile, destFile, 0664)
+		if err != nil {
+			return err
+		}
+
+		if md5 != omf.MD5 {
+			svc.logError(js, fmt.Sprintf("Copied file %s does not match original MD5", destFile))
+		}
+	}
+	return nil
+}
+
+func (svc *ServiceContext) unitImagesAvailable(js *jobStatus, tgtUnit *unit, unitDir string) bool {
+	if _, err := os.Stat(unitDir); os.IsNotExist(err) {
+		svc.logInfo(js, fmt.Sprintf("Directory %s does not exist, creating it", unitDir))
+		ensureDirExists(unitDir, 0775)
+		return false
+	}
+	files, err := getTifFiles(unitDir, tgtUnit.ID)
+	if err != nil {
+		svc.logError(js, fmt.Sprintf("Unable to read tif files from %s: %s", unitDir, err.Error()))
+		return false
+	}
+	return len(files) == len(tgtUnit.MasterFiles)
 }

@@ -147,12 +147,22 @@ func (svc *ServiceContext) checkOrderReady(c *gin.Context) {
 	}
 
 	svc.logInfo(js, "Order has passed QA")
-	err = svc.createPDFDeliverable(js, &o)
+
+	svc.logInfo(js, "Create order PDF...")
+	pdfGen, err := svc.generateOrderPDF(&o)
 	if err != nil {
-		svc.logFatal(js, fmt.Sprintf("Unable to generate PDF: %s", err.Error()))
+		svc.logFatal(js, fmt.Sprintf("Unable to generate order PDF: %s", err.Error()))
 		c.String(http.StatusInternalServerError, err.Error())
 		return
 	}
+
+	err = svc.saveOrderPDF(js, &o, pdfGen)
+	if err != nil {
+		svc.logFatal(js, fmt.Sprintf("Unable to save order PDF: %s", err.Error()))
+		c.String(http.StatusInternalServerError, err.Error())
+		return
+	}
+
 	err = svc.generateOrderEmail(js, &o)
 	if err != nil {
 		svc.logFatal(js, fmt.Sprintf("Unable to generate email: %s", err.Error()))

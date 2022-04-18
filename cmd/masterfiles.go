@@ -2,12 +2,10 @@ package main
 
 import (
 	"fmt"
-	"io/ioutil"
 	"log"
 	"net/http"
 	"os"
 	"path"
-	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -15,12 +13,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 )
-
-type tifInfo struct {
-	filename string
-	path     string
-	size     int64
-}
 
 func (svc *ServiceContext) replaceMasterFiles(c *gin.Context) {
 	unitID, _ := strconv.ParseInt(c.Param("id"), 10, 64)
@@ -35,31 +27,28 @@ func (svc *ServiceContext) replaceMasterFiles(c *gin.Context) {
 		unitDir := fmt.Sprintf("%09d", unitID)
 		srcDir := path.Join(svc.ProcessingDir, "finalization", "unit_update", unitDir)
 		svc.logInfo(js, fmt.Sprintf("Looking for new *.tif files in %s", srcDir))
-		files, err := ioutil.ReadDir(srcDir)
+		files, err := getTifFiles(srcDir, unitID)
 		if err != nil {
-			svc.logFatal(js, fmt.Sprintf("Unable to read %s: %s", srcDir, err.Error()))
+			svc.logFatal(js, fmt.Sprintf("Unable to get .tif files in %s: %s", srcDir, err.Error()))
 			return
 		}
 
-		replaced := false
-		mfRegex := regexp.MustCompile(fmt.Sprintf(`^%s_\w{4,}\.tif$`, unitDir))
-		for _, fi := range files {
-			fName := fi.Name()
-			if mfRegex.Match([]byte(fName)) == false {
-				continue
-			}
-			replaced = true
+		if len(files) == 0 {
+			svc.logFatal(js, "No replacement .tif files found")
+			return
+		}
 
-			svc.logInfo(js, fmt.Sprintf("Replacing master file %s", fi.Name()))
+		for _, tifFile := range files {
+
+			svc.logInfo(js, fmt.Sprintf("Replacing master file %s", tifFile.filename))
 			var mf masterFile
-			err := svc.GDB.Preload("ImageTechMeta").Where("filename=?", fName).First(&mf).Error
+			err := svc.GDB.Preload("ImageTechMeta").Where("filename=?", tifFile.filename).First(&mf).Error
 			if err != nil {
-				svc.logError(js, fmt.Sprintf("Masterfile %s was not found in unit. Skipping.", fName))
+				svc.logError(js, fmt.Sprintf("Masterfile %s was not found in unit. Skipping.", tifFile.filename))
 				continue
 			}
-			mfPath := path.Join(srcDir, fName)
-			mf.Filesize = fi.Size()
-			mf.MD5 = md5Checksum(mfPath)
+			mf.Filesize = tifFile.size
+			mf.MD5 = md5Checksum(tifFile.path)
 			mf.UpdatedAt = time.Now()
 			err = svc.GDB.Model(&mf).Select("Filesize", "MD5", "UpdatedAt").Updates(mf).Error
 			if err != nil {
@@ -68,20 +57,15 @@ func (svc *ServiceContext) replaceMasterFiles(c *gin.Context) {
 			if mf.ImageTechMeta.ID > 0 {
 				svc.GDB.Delete(&mf.ImageTechMeta)
 			}
-			svc.createImageTechMetadata(&mf, mfPath)
-			svc.publishToIIIF(js, &mf, mfPath, true)
-			archiveMD5, err := svc.archiveFile(js, mfPath, unitID, mf.Filename)
+			svc.createImageTechMetadata(&mf, tifFile.path)
+			svc.publishToIIIF(js, &mf, tifFile.path, true)
+			archiveMD5, err := svc.archiveFile(js, tifFile.path, unitID, mf.Filename)
 			if err != nil {
 				svc.logError(js, fmt.Sprintf("Unable to archive %s: %s", mf.Filename, err.Error()))
 			}
 			if archiveMD5 != mf.MD5 {
 				svc.logError(js, fmt.Sprintf("Archived MD5 does not match for %s", mf.Filename))
 			}
-		}
-
-		if replaced == false {
-			svc.logFatal(js, "No replacement .tif files found")
-			return
 		}
 
 		svc.logInfo(js, "Cleaning up working files")
@@ -314,43 +298,31 @@ func (svc *ServiceContext) addMasterFiles(c *gin.Context) {
 		unitDir := padLeft(c.Param("id"), 9)
 		srcDir := path.Join(svc.ProcessingDir, "finalization", "unit_update", unitDir)
 		svc.logInfo(js, fmt.Sprintf("Looking for new *.tif files in %s", srcDir))
-		files, err := ioutil.ReadDir(srcDir)
+		files, err := getTifFiles(srcDir, unitID)
 		if err != nil {
-			svc.logFatal(js, fmt.Sprintf("Unable to read %s: %s", srcDir, err.Error()))
+			svc.logFatal(js, fmt.Sprintf("Unable to get .tif files in %s: %s", srcDir, err.Error()))
 			return
 		}
 
-		tifFiles := make([]tifInfo, 0)
-		newPage := -1
-		prevPage := -1
-		mfRegex := regexp.MustCompile(fmt.Sprintf(`^%s_\w{4,}\.tif$`, unitDir))
-		for _, fi := range files {
-			fName := fi.Name()
-			if strings.Index(fName, ".tif") > -1 {
-				svc.logInfo(js, fmt.Sprintf("Found %s", fName))
-				if !mfRegex.Match([]byte(fName)) {
-					svc.logFatal(js, fmt.Sprintf("Invalid master file name: %s", fName))
-					return
-				}
-
-				pageNum := getMasterFilePageNum(fName)
-				if newPage == -1 {
-					newPage = pageNum
-					prevPage = newPage
-				} else {
-					if pageNum > prevPage+1 {
-						svc.logFatal(js, "Gap in sequence number of new master files")
-						return
-					}
-					prevPage = pageNum
-				}
-				tifFiles = append(tifFiles, tifInfo{path: path.Join(srcDir, fName), filename: fName, size: fi.Size()})
-			}
-		}
-
-		if len(tifFiles) == 0 {
+		if len(files) == 0 {
 			svc.logFatal(js, "No tif files found")
 			return
+		}
+
+		newPage := -1
+		prevPage := -1
+		for _, fi := range files {
+			pageNum := getMasterFilePageNum(fi.filename)
+			if newPage == -1 {
+				newPage = pageNum
+				prevPage = newPage
+			} else {
+				if pageNum > prevPage+1 {
+					svc.logFatal(js, "Gap in sequence number of new master files")
+					return
+				}
+				prevPage = pageNum
+			}
 		}
 
 		lastPageNum := getMasterFilePageNum(tgtUnit.MasterFiles[len(tgtUnit.MasterFiles)-1].Filename)
@@ -362,7 +334,7 @@ func (svc *ServiceContext) addMasterFiles(c *gin.Context) {
 		if newPage <= lastPageNum {
 			// rename/rearchive files to make room for new files to be inserted
 			// If components are involved, return the ID of the component at the insertion point
-			err := svc.makeGapForInsertion(js, &tgtUnit, tifFiles)
+			err := svc.makeGapForInsertion(js, &tgtUnit, files)
 			if err != nil {
 				svc.logFatal(js, fmt.Sprintf("Unable to create gap for ne image insertion: %s", err.Error()))
 				return
@@ -379,8 +351,8 @@ func (svc *ServiceContext) addMasterFiles(c *gin.Context) {
 		}
 
 		// Create new master files for the tif file found in the src dir
-		svc.logInfo(js, fmt.Sprintf("Adding %d new master files...", len(tifFiles)))
-		for _, tf := range tifFiles {
+		svc.logInfo(js, fmt.Sprintf("Adding %d new master files...", len(files)))
+		for _, tf := range files {
 			// create MF and tech metadata
 			md5 := md5Checksum(tf.path)
 			pgNum := getMasterFilePageNum(tf.filename)
@@ -425,8 +397,8 @@ func (svc *ServiceContext) addMasterFiles(c *gin.Context) {
 			svc.GDB.Model(&newMF).Select("DateArchived").Updates(newMF)
 		}
 
-		svc.logInfo(js, fmt.Sprintf("Updating unit master files count by %d", len(tifFiles)))
-		tgtUnit.MasterFilesCount += uint(len(tifFiles))
+		svc.logInfo(js, fmt.Sprintf("Updating unit master files count by %d", len(files)))
+		tgtUnit.MasterFilesCount += uint(len(files))
 		tgtUnit.UpdatedAt = time.Now()
 		svc.GDB.Model(&tgtUnit).Select("UpdatedAt", "MasterFilesCount").Updates(tgtUnit)
 		svc.logInfo(js, "Cleaning up working files")
