@@ -44,6 +44,7 @@ func main() {
 
 	router.POST("/units/:id/attach", svc.attachFile)
 	router.POST("/units/:id/copy", svc.downloadFromArchive)
+	router.POST("/units/:id/deliverables", svc.createPatronDeliverables)
 
 	router.POST("/units/:id/masterfiles/add", svc.addMasterFiles)
 	router.POST("/units/:id/masterfiles/delete", svc.deleteMasterFiles)

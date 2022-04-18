@@ -145,6 +145,22 @@ func (svc *ServiceContext) cloneMasterFiles(c *gin.Context) {
 	c.String(http.StatusOK, fmt.Sprintf("%d", js.ID))
 }
 
+func (svc *ServiceContext) createPatronDeliverables(c *gin.Context) {
+	unitID, _ := strconv.ParseInt(c.Param("id"), 10, 64)
+	js, err := svc.createJobStatus("CreatePatronDeliverables", "Unit", unitID)
+	if err != nil {
+		log.Printf("ERROR: unable to create CreatePatronDeliverables job status: %s", err.Error())
+		c.String(http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	go func() {
+		svc.jobDone(js)
+	}()
+
+	c.String(http.StatusOK, fmt.Sprintf("%d", js.ID))
+}
+
 func (svc *ServiceContext) cloneAllMasterFiles(js *jobStatus, srcUnit *unit, destUnit *unit, startPageNum int) (int, error) {
 	svc.logInfo(js, fmt.Sprintf("Cloning all master files from unit %d. Statring page number: %d", srcUnit.ID, startPageNum))
 	pageNum := startPageNum
