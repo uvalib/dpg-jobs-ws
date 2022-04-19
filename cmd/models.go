@@ -138,6 +138,7 @@ type unit struct {
 	ID                          int64
 	OrderID                     int64
 	MetadataID                  *int64
+	ProjectID                   *int64
 	Metadata                    *metadata `gorm:"foreignKey:MetadataID"`
 	UnitStatus                  string
 	IntendedUseID               int64
