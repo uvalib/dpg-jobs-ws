@@ -76,6 +76,10 @@ func (svc *ServiceContext) copyAllFromArchive(js *jobStatus, unitID int64, destD
 		return
 	}
 	for _, mf := range tgtUnit.MasterFiles {
+		if mf.DeaccessionedAt != nil {
+			svc.logInfo(js, fmt.Sprintf("Skipping deaccessioned file %s ", mf.Filename))
+			continue
+		}
 		svc.logInfo(js, fmt.Sprintf("Copying %s", mf.Filename))
 		err := svc.copyArchivedFile(js, unitID, mf.Filename, destDir)
 		if err != nil {
