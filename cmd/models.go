@@ -16,6 +16,11 @@ type intendedUse struct {
 	DeliverableResolution string
 }
 
+type staffMember struct {
+	ID          int64
+	ComputingID string
+}
+
 type customer struct {
 	ID               int64
 	FirstName        string
@@ -43,6 +48,10 @@ type metadata struct {
 	CallNumber     string
 	Barcoode       string
 	IsPersonalItem bool
+	DateDlIngest   *time.Time `gorm:"column:date_dl_ingest"`
+	DateDlUpdate   *time.Time `gorm:"column:date_dl_update"`
+	CreatedAt      time.Time
+	UpdatedAt      time.Time
 }
 
 type containerType struct {
@@ -102,6 +111,8 @@ type masterFile struct {
 	DeaccessionedByID *int64 `gorm:"column:deaccessioned_by_id"`
 	DeaccessionNote   string
 	TranscriptionText string
+	DateDlIngest      *time.Time `gorm:"column:date_dl_ingest"`
+	DateDlUpdate      *time.Time `gorm:"column:date_dl_update"`
 	CreatedAt         time.Time
 	UpdatedAt         time.Time
 }

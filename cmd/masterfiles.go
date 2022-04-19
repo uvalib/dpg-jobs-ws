@@ -410,6 +410,79 @@ func (svc *ServiceContext) addMasterFiles(c *gin.Context) {
 	c.String(http.StatusOK, fmt.Sprintf("%d", js.ID))
 }
 
+func (svc *ServiceContext) deaccessionMasterFile(c *gin.Context) {
+	mfID, _ := strconv.ParseInt(c.Param("id"), 10, 64)
+	js, err := svc.createJobStatus("DeaccessionMasterFile", "MasterFile", mfID)
+	if err != nil {
+		log.Printf("ERROR: unable to create DeaccessionMasterFile job status: %s", err.Error())
+		c.String(http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	type deaccessinReq struct {
+		ComputeID string `json:"computeID"`
+		Note      string `json:"note"`
+	}
+	var req deaccessinReq
+	err = c.ShouldBindJSON(&req)
+	if err != nil {
+		svc.logFatal(js, fmt.Sprintf("Unable to parse request: %s", err.Error()))
+		c.String(http.StatusBadRequest, err.Error())
+		return
+	}
+
+	var mf masterFile
+	err = svc.GDB.First(&mf, mfID).Error
+	if err != nil {
+		svc.logFatal(js, fmt.Sprintf("Unable to find masterfile %d: %s", mfID, err.Error()))
+		return
+	}
+
+	var staff staffMember
+	err = svc.GDB.Where("computing_id=?", req.ComputeID).First(&staff).Error
+	if err != nil {
+		svc.logFatal(js, fmt.Sprintf("Unable to find staff member %s: %s", req.ComputeID, err.Error()))
+		return
+	}
+
+	if mf.OriginalMfID != nil || (mf.OriginalMfID == nil && svc.hasReorders(&mf)) {
+		svc.logFatal(js, "Cannot deaccession a cloned master file.")
+		return
+	}
+
+	svc.logInfo(js, fmt.Sprintf("User %s begins to deaccession masterfile %s", req.ComputeID, mf.Filename))
+	now := time.Now()
+	mf.DeaccessionedAt = &now
+	mf.DeaccessionNote = req.Note
+	mf.DeaccessionedByID = &staff.ID
+	mf.UpdatedAt = now
+	err = svc.GDB.Model(&mf).Select("DeaccessionedAt", "DeaccessionedByID", "DeaccessionNote", "UpdatedAt").Updates(mf).Error
+	if err != nil {
+		svc.logFatal(js, fmt.Sprintf("Unable to mark masterfile %s as deaccessioned: %s", mf.Filename, err.Error()))
+		return
+	}
+
+	svc.removeArchive(js, mf.UnitID, mf.Filename)
+	svc.unpublishIIIF(js, &mf)
+
+	// If necessary, flag for publish to DL
+	if mf.DateDlIngest != nil {
+		svc.logInfo(js, "File was published to DL; flagging for removal")
+		mf.DateDlUpdate = &now
+		svc.GDB.Model(&mf).Select("DateDlUpdate").Updates(mf)
+		svc.GDB.Model(&metadata{ID: *mf.MetadataID}).Updates(metadata{DateDlUpdate: &now, UpdatedAt: now})
+	}
+
+	svc.logInfo(js, fmt.Sprintf("masterfile %s deaccessioned by %s", mf.Filename, req.ComputeID))
+	svc.jobDone(js)
+}
+
+func (svc *ServiceContext) hasReorders(mf *masterFile) bool {
+	var count int64
+	svc.GDB.Table("master_files").Where("original_mf_id=?", mf.ID).Count(&count)
+	return count > 0
+}
+
 func (svc *ServiceContext) makeGapForInsertion(js *jobStatus, tgtUnit *unit, tifFiles []tifInfo) error {
 	tgtFile := tifFiles[0].filename
 	gapSize := len(tifFiles)
