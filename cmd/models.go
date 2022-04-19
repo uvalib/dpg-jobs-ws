@@ -35,13 +35,14 @@ type invoice struct {
 }
 
 type metadata struct {
-	ID          int64
-	PID         string `gorm:"column:pid"`
-	Type        string
-	Title       string
-	CreatorName string
-	CallNumber  string
-	Barcoode    string
+	ID             int64
+	PID            string `gorm:"column:pid"`
+	Type           string
+	Title          string
+	CreatorName    string
+	CallNumber     string
+	Barcoode       string
+	IsPersonalItem bool
 }
 
 type containerType struct {
@@ -100,6 +101,7 @@ type masterFile struct {
 	DeaccessionedAt   *time.Time
 	DeaccessionedByID *int64 `gorm:"column:deaccessioned_by_id"`
 	DeaccessionNote   string
+	TranscriptionText string
 	CreatedAt         time.Time
 	UpdatedAt         time.Time
 }

@@ -163,7 +163,8 @@ func (svc *ServiceContext) createPatronDeliverables(c *gin.Context) {
 	go func() {
 		svc.logInfo(js, fmt.Sprintf("Loading target unit %d", unitID))
 		var tgtUnit unit
-		err = svc.GDB.Preload("MasterFiles").Preload("IntendedUse").First(&tgtUnit, unitID).Error
+		err = svc.GDB.Preload("MasterFiles").Preload("MasterFiles.ImageTechMeta").
+			Preload("IntendedUse").Preload("Metadata").First(&tgtUnit, unitID).Error
 		if err != nil {
 			svc.logFatal(js, fmt.Sprintf("Unable to load unit %d: %s", unitID, err.Error()))
 			return
@@ -197,8 +198,43 @@ func (svc *ServiceContext) createPatronDeliverables(c *gin.Context) {
 			}
 		} else {
 			svc.logInfo(js, "Unit requires the creation of zipped patron deliverables.")
+			err = ensureDirExists(assembleDir, 0755)
+			if err != nil {
+				svc.logFatal(js, fmt.Sprintf("Unable to create %s: %s", assembleDir, err.Error()))
+				return
+			}
+			for _, mf := range tgtUnit.MasterFiles {
+				mfPath := path.Join(unitDir, mf.Filename)
+				callNumber := ""
+				location := ""
+				if tgtUnit.Metadata.Type == "SirsiMetadata" {
+					callNumber = tgtUnit.Metadata.CallNumber
+					location = svc.getLocation(tgtUnit.Metadata)
+				}
+				err = svc.createPatronDeliverable(js, &tgtUnit, &mf, mfPath, assembleDir, callNumber, location)
+				if err != nil {
+					svc.logFatal(js, fmt.Sprintf("Deliverable creation failed for %s: %s", mf.Filename, err.Error()))
+					return
+				}
+			}
+
+			err = svc.zipPatronDeliverables(js, &tgtUnit)
+			if err != nil {
+				svc.logFatal(js, fmt.Sprintf("Zip creation failed: %s", err.Error()))
+				return
+			}
+
 		}
 
+		now := time.Now()
+		tgtUnit.DatePatronDeliverablesReady = &now
+		tgtUnit.UpdatedAt = now
+		svc.GDB.Model(&tgtUnit).Select("DatePatronDeliverablesReady", "UpdatedAt").Updates(tgtUnit)
+		svc.logInfo(js, "Deliverables created. Date deliverables ready has been updated.")
+
+		svc.logInfo(js, "Cleaning up working directories")
+		os.RemoveAll(unitDir)
+		os.RemoveAll(assembleDir)
 		svc.jobDone(js)
 	}()
 

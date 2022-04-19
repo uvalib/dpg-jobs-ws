@@ -95,6 +95,10 @@ func (svc *ServiceContext) checkOrderReady(c *gin.Context) {
 					incomplete = append(incomplete, unit.ID)
 				} else {
 					svc.logInfo(js, fmt.Sprintf("   Unit %d COMPLETE", unit.ID))
+					if unit.UnitStatus != "done" {
+						unit.UnitStatus = "done"
+						svc.GDB.Model(&unit).Select("UnitStatus").Updates(unit)
+					}
 				}
 			} else {
 				svc.logInfo(js, "   unit is canceled")
