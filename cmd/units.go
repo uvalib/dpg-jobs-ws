@@ -50,8 +50,7 @@ func (svc *ServiceContext) attachFile(c *gin.Context) {
 
 	svc.logInfo(js, "Creating attachment record")
 	md5 := md5Checksum(destFile)
-	now := time.Now()
-	att := attachment{UnitID: unitID, MD5: md5, Filename: name, Description: description, CreatedAt: now, UpdatedAt: now}
+	att := attachment{UnitID: unitID, MD5: md5, Filename: name, Description: description}
 	err = svc.GDB.Create(&att).Error
 	if err != nil {
 		svc.logFatal(js, fmt.Sprintf("Unable to create attachment record: %s", err.Error()))
@@ -143,8 +142,7 @@ func (svc *ServiceContext) cloneMasterFiles(c *gin.Context) {
 		svc.logInfo(js, fmt.Sprintf("%d masterfiles cloned into unit. Flagging unit as cloned", (pageNum-1)))
 		destUnit.Reorder = true
 		destUnit.MasterFilesCount = uint(pageNum - 1)
-		destUnit.UpdatedAt = time.Now()
-		err = svc.GDB.Model(&destUnit).Select("Reorder", "MasterFilesCount", "UpdatedAt").Updates(destUnit).Error
+		err = svc.GDB.Model(&destUnit).Select("Reorder", "MasterFilesCount").Updates(destUnit).Error
 		svc.jobDone(js)
 	}()
 
@@ -228,8 +226,7 @@ func (svc *ServiceContext) createPatronDeliverables(c *gin.Context) {
 
 		now := time.Now()
 		tgtUnit.DatePatronDeliverablesReady = &now
-		tgtUnit.UpdatedAt = now
-		svc.GDB.Model(&tgtUnit).Select("DatePatronDeliverablesReady", "UpdatedAt").Updates(tgtUnit)
+		svc.GDB.Model(&tgtUnit).Select("DatePatronDeliverablesReady").Updates(tgtUnit)
 		svc.logInfo(js, "Deliverables created. Date deliverables ready has been updated.")
 
 		svc.logInfo(js, "Cleaning up working directories")
@@ -281,7 +278,6 @@ func (svc *ServiceContext) cloneMasterFile(js *jobStatus, srcUnit *unit, srcMF *
 		svc.logError(js, fmt.Sprintf("WARNING: Checksum mismatch for clone of source master file %d", srcMF.ID))
 	}
 
-	now := time.Now()
 	newMF := masterFile{
 		UnitID:       destUnit.ID,
 		Filename:     newFN,
@@ -292,8 +288,6 @@ func (svc *ServiceContext) cloneMasterFile(js *jobStatus, srcUnit *unit, srcMF *
 		MD5:          newMD5,
 		MetadataID:   srcMF.MetadataID,
 		OriginalMfID: &srcMF.ID,
-		CreatedAt:    now,
-		UpdatedAt:    now,
 	}
 	err = svc.GDB.Create(&newMF).Error
 	if err != nil {
@@ -314,7 +308,7 @@ func (svc *ServiceContext) cloneMasterFile(js *jobStatus, srcUnit *unit, srcMF *
 		Equipment: tm.Equipment, Software: tm.Software, Model: tm.Model,
 		ExifVersion: tm.ExifVersion, CaptureDate: tm.CaptureDate, ISO: tm.ISO,
 		ExposureBias: tm.ExposureBias, ExposureTime: tm.ExposureTime,
-		Aperture: tm.Aperture, FocalLength: tm.FocalLength, CreatedAt: now, UpdatedAt: now,
+		Aperture: tm.Aperture, FocalLength: tm.FocalLength,
 	}
 	err = svc.GDB.Create(&newTM).Error
 	if err != nil {

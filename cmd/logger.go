@@ -31,8 +31,7 @@ type jobStatus struct {
 func (svc *ServiceContext) createJobStatus(job string, origType string, origID int64) (*jobStatus, error) {
 	log.Printf("INFO: create job status %s %s %d", job, origType, origID)
 	now := time.Now()
-	js := jobStatus{OriginatorID: origID, OriginatorType: origType, Name: job, Status: "running",
-		StartedAt: &now, CreatedAt: now, UpdatedAt: now}
+	js := jobStatus{OriginatorID: origID, OriginatorType: origType, Name: job, Status: "running", StartedAt: &now}
 	err := svc.GDB.Create(&js).Error
 	if err != nil {
 		return nil, err
@@ -42,7 +41,7 @@ func (svc *ServiceContext) createJobStatus(job string, origType string, origID i
 
 func (svc *ServiceContext) jobDone(status *jobStatus) {
 	if status.EndedAt == nil {
-		e := event{JobStatusID: status.ID, Level: 0, Text: "job finished", CreatedAt: time.Now()}
+		e := event{JobStatusID: status.ID, Level: 0, Text: "job finished"}
 		err := svc.GDB.Create(&e).Error
 		if err != nil {
 			log.Printf("ERROR: unable to log job %d done event: %s", status.ID, err.Error())
@@ -56,7 +55,7 @@ func (svc *ServiceContext) jobDone(status *jobStatus) {
 
 func (svc *ServiceContext) logInfo(status *jobStatus, text string) {
 	log.Printf("INFO: [job %d info]: %s", status.ID, text)
-	e := event{JobStatusID: status.ID, Level: 0, Text: text, CreatedAt: time.Now()}
+	e := event{JobStatusID: status.ID, Level: 0, Text: text}
 	err := svc.GDB.Create(&e).Error
 	if err != nil {
 		log.Printf("ERROR: unable to log job %d info event [%s]: %s", status.ID, text, err.Error())
@@ -65,7 +64,7 @@ func (svc *ServiceContext) logInfo(status *jobStatus, text string) {
 
 func (svc *ServiceContext) logError(status *jobStatus, text string) {
 	log.Printf("INFO: [job %d error]: %s", status.ID, text)
-	e := event{JobStatusID: status.ID, Level: 2, Text: text, CreatedAt: time.Now()}
+	e := event{JobStatusID: status.ID, Level: 2, Text: text}
 	err := svc.GDB.Create(&e).Error
 	if err != nil {
 		log.Printf("ERROR: unable to log job %d error event [%s]: %s", status.ID, text, err.Error())
@@ -76,7 +75,7 @@ func (svc *ServiceContext) logError(status *jobStatus, text string) {
 func (svc *ServiceContext) logFatal(status *jobStatus, text string) {
 	if status.EndedAt == nil {
 		log.Printf("INFO: [job %d fatal]: %s", status.ID, text)
-		e := event{JobStatusID: status.ID, Level: 3, Text: text, CreatedAt: time.Now()}
+		e := event{JobStatusID: status.ID, Level: 3, Text: text}
 		err := svc.GDB.Create(&e).Error
 		if err != nil {
 			log.Printf("ERROR: unable to log job %d fatal event [%s]: %s", status.ID, text, err.Error())

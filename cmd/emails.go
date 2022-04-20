@@ -123,7 +123,7 @@ func (svc *ServiceContext) sendFeesEmail(c *gin.Context) {
 
 	// If an invoice does not yet exist for this order, create one
 	if len(o.Invoices) == 0 {
-		inv := invoice{OrderID: o.ID, DateInvoice: time.Now(), CreatedAt: now, UpdatedAt: now}
+		inv := invoice{OrderID: o.ID, DateInvoice: time.Now()}
 		err = svc.GDB.Create(&inv).Error
 		if err != nil {
 			svc.logError(js, fmt.Sprintf("Unable to create invoice: %s", err.Error()))

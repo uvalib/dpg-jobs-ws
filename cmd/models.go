@@ -171,4 +171,5 @@ type order struct {
 	DateArchivingComplete          *time.Time
 	DateFinalizationBegun          *time.Time
 	DateFeeEstimateSentToCustomer  *time.Time
+	UpdatedAt                      time.Time
 }

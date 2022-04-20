@@ -48,11 +48,26 @@ func (svc *ServiceContext) finalizeUnit(c *gin.Context) {
 		srcDir := path.Join(svc.ProcessingDir, "finalization", fmt.Sprintf("%09d", unitID))
 		if pathExists(srcDir) == false {
 			tgtUnit.UnitStatus = "error"
-			tgtUnit.UpdatedAt = time.Now()
-			svc.GDB.Model(&tgtUnit).Select("UnitStatus", "UpdatedAt").Updates(tgtUnit)
+			svc.GDB.Model(&tgtUnit).Select("UnitStatus").Updates(tgtUnit)
 			svc.logFatal(js, fmt.Sprintf("Finalization directory %s does not exist", srcDir))
 			return
 		}
+
+		// manage unit status
+		if tgtUnit.UnitStatus == "finalizing" {
+			svc.logFatal(js, "Unit is already finalizaing.")
+			return
+		}
+		if tgtUnit.UnitStatus != "error" {
+			svc.logFatal(js, "Unit has not been approved.")
+			return
+		}
+		if tgtUnit.UnitStatus == "approved" {
+			svc.GDB.Model(order{ID: tgtUnit.OrderID}).Update("date_finalization_begun", time.Now())
+			svc.logInfo(js, fmt.Sprintf("Date Finalization Begun updated for order %d", tgtUnit.OrderID))
+		}
+		tgtUnit.UnitStatus = "finalizing"
+		svc.GDB.Model(&tgtUnit).Select("UnitStatus").Updates(tgtUnit)
 
 		svc.logFatal(js, "Fail finalize with incomplete logic")
 		// svc.jobDone(js)

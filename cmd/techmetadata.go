@@ -36,8 +36,6 @@ func (svc *ServiceContext) createImageTechMetadata(mf *masterFile, mfPath string
 		ColorSpace:   fmt.Sprintf("%v", jsonMD["ColorSpaceData"]),
 		Depth:        getDepth(jsonMD),
 		Resolution:   getUInt(jsonMD, "XResolution"),
-		CreatedAt:    time.Now(),
-		UpdatedAt:    time.Now(),
 	}
 
 	if jsonMD["Make"] != nil {

@@ -49,8 +49,7 @@ func (svc *ServiceContext) replaceMasterFiles(c *gin.Context) {
 			}
 			mf.Filesize = tifFile.size
 			mf.MD5 = md5Checksum(tifFile.path)
-			mf.UpdatedAt = time.Now()
-			err = svc.GDB.Model(&mf).Select("Filesize", "MD5", "UpdatedAt").Updates(mf).Error
+			err = svc.GDB.Model(&mf).Select("Filesize", "MD5").Updates(mf).Error
 			if err != nil {
 				svc.logError(js, fmt.Sprintf("Unable to save updates to %s: %s", mf.Filename, err.Error()))
 			}
@@ -123,8 +122,7 @@ func (svc *ServiceContext) renumberMasterFiles(c *gin.Context) {
 
 		svc.logInfo(js, fmt.Sprintf("MasterFile %s renumber from %s to %d", tgtFN, mf.Title, newNum))
 		mf.Title = fmt.Sprintf("%d", newNum)
-		mf.UpdatedAt = time.Now()
-		svc.GDB.Model(&mf).Select("Title", "UpdatedAt").Updates(mf)
+		svc.GDB.Model(&mf).Select("Title").Updates(mf)
 
 		if len(req.Filenames) > 0 {
 			tgtFN = req.Filenames[0]
@@ -189,8 +187,9 @@ func (svc *ServiceContext) deleteMasterFiles(c *gin.Context) {
 			if mf.Filename != tgtFN {
 				continue
 			}
+
 			svc.logInfo(js, fmt.Sprintf("Delete %s", mf.Filename))
-			if mf.OriginalMfID == nil {
+			if mf.OriginalMfID == nil && mf.DeaccessionedAt == nil {
 				svc.removeArchive(js, unitID, mf.Filename)
 				svc.unpublishIIIF(js, &mf)
 			} else {
@@ -217,8 +216,7 @@ func (svc *ServiceContext) deleteMasterFiles(c *gin.Context) {
 		newCnt := tgtUnit.MasterFilesCount - delCount
 		svc.logInfo(js, fmt.Sprintf("Updating unit master files count from %d to %d", tgtUnit.MasterFilesCount, newCnt))
 		tgtUnit.MasterFilesCount = newCnt
-		tgtUnit.UpdatedAt = time.Now()
-		svc.GDB.Model(&tgtUnit).Select("MasterFilesCount", "UpdatedAt").Updates(tgtUnit)
+		svc.GDB.Model(&tgtUnit).Select("MasterFilesCount").Updates(tgtUnit)
 		svc.GDB.Preload("MasterFiles").First(&tgtUnit, unitID) // reload masterfiles list
 
 		svc.logInfo(js, "Updating remaining master files to correct page number gaps")
@@ -248,13 +246,12 @@ func (svc *ServiceContext) deleteMasterFiles(c *gin.Context) {
 				if titleInt != currPage && changeTitle {
 					mf.Title = fmt.Sprintf("%d", currPage)
 				}
-				mf.UpdatedAt = time.Now()
-				err = svc.GDB.Model(&mf).Select("Filename", "Title", "UpdatedAt").Updates(mf).Error
+				err = svc.GDB.Model(&mf).Select("Filename", "Title").Updates(mf).Error
 				if err != nil {
 					log.Printf("ERR: %s", err.Error())
 				}
 
-				if mf.OriginalMfID == nil {
+				if mf.OriginalMfID == nil && mf.DeaccessionedAt == nil {
 					svc.renameArchive(js, unitID, origFN, mf.MD5, newFN)
 				} else {
 					origClonedFile := path.Join(svc.ProcessingDir, "finalization", unitDir, origFN)
@@ -399,8 +396,7 @@ func (svc *ServiceContext) addMasterFiles(c *gin.Context) {
 
 		svc.logInfo(js, fmt.Sprintf("Updating unit master files count by %d", len(files)))
 		tgtUnit.MasterFilesCount += uint(len(files))
-		tgtUnit.UpdatedAt = time.Now()
-		svc.GDB.Model(&tgtUnit).Select("UpdatedAt", "MasterFilesCount").Updates(tgtUnit)
+		svc.GDB.Model(&tgtUnit).Select("MasterFilesCount").Updates(tgtUnit)
 		svc.logInfo(js, "Cleaning up working files")
 		os.RemoveAll(srcDir)
 
@@ -455,8 +451,7 @@ func (svc *ServiceContext) deaccessionMasterFile(c *gin.Context) {
 	mf.DeaccessionedAt = &now
 	mf.DeaccessionNote = req.Note
 	mf.DeaccessionedByID = &staff.ID
-	mf.UpdatedAt = now
-	err = svc.GDB.Model(&mf).Select("DeaccessionedAt", "DeaccessionedByID", "DeaccessionNote", "UpdatedAt").Updates(mf).Error
+	err = svc.GDB.Model(&mf).Select("DeaccessionedAt", "DeaccessionedByID", "DeaccessionNote").Updates(mf).Error
 	if err != nil {
 		svc.logFatal(js, fmt.Sprintf("Unable to mark masterfile %s as deaccessioned: %s", mf.Filename, err.Error()))
 		return
@@ -470,7 +465,7 @@ func (svc *ServiceContext) deaccessionMasterFile(c *gin.Context) {
 		svc.logInfo(js, "File was published to DL; flagging for removal")
 		mf.DateDlUpdate = &now
 		svc.GDB.Model(&mf).Select("DateDlUpdate").Updates(mf)
-		svc.GDB.Model(&metadata{ID: *mf.MetadataID}).Updates(metadata{DateDlUpdate: &now, UpdatedAt: now})
+		svc.GDB.Model(&metadata{ID: *mf.MetadataID}).Updates(metadata{DateDlUpdate: &now})
 	}
 
 	svc.logInfo(js, fmt.Sprintf("masterfile %s deaccessioned by %s", mf.Filename, req.ComputeID))
