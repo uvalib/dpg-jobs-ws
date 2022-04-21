@@ -35,7 +35,6 @@ func (svc *ServiceContext) getMarcPublicationYear(md *metadata) int {
 			for _, sf := range df.Subfields {
 				if sf.Code == "c" {
 					raw := sf.Value
-					log.Printf("RAW YEAR %s", raw)
 					year = extractYearFrom260c(raw)
 				}
 			}
