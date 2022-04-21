@@ -91,7 +91,7 @@ func (svc *ServiceContext) createPatronDeliverable(js *jobStatus, tgtUnit *unit,
 	if tgtUnit.IntendedUse.DeliverableFormat == "jpeg" {
 		suffix = ".jpg"
 		addLegalNotice = true
-		useID := tgtUnit.IntendedUseID
+		useID := *tgtUnit.IntendedUseID
 
 		// New from Brandon; web publication and online exhibits don't need watermarks
 		if tgtUnit.Metadata.IsPersonalItem || tgtUnit.RemoveWatermark || useID == 103 || useID == 109 {
@@ -141,10 +141,10 @@ func (svc *ServiceContext) createPatronDeliverable(js *jobStatus, tgtUnit *unit,
 		}
 
 		// notice for personal research or presentation
-		if tgtUnit.IntendedUseID == 106 || tgtUnit.IntendedUseID == 104 {
+		if *tgtUnit.IntendedUseID == 106 || *tgtUnit.IntendedUseID == 104 {
 			svc.logInfo(js, "Notice of private study")
 			notice += "This single copy was produced for the purposes of private study, scholarship, or research pursuant to 17 USC § 107 and/or 108.\nCopyright and other legal restrictions may apply to further uses. Special Collections, University of Virginia Library."
-		} else if tgtUnit.IntendedUseID == 100 {
+		} else if *tgtUnit.IntendedUseID == 100 {
 			svc.logInfo(js, "Notice of classroom teaching")
 			notice += "This single copy was produced for the purposes of classroom teaching pursuant to 17 USC § 107 (fair use).\nCopyright and other legal restrictions may apply to further uses. Special Collections, University of Virginia Library."
 		}

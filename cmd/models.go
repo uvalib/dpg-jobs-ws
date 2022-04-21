@@ -2,12 +2,59 @@ package main
 
 import (
 	"database/sql"
+	"fmt"
+	"regexp"
+	"strings"
 	"time"
 )
 
 type academicStatus struct {
 	ID   int64
 	Name string
+}
+
+type componentType struct {
+	ID         int64
+	Name       string
+	Descrition string
+}
+
+type component struct {
+	ID              int64
+	Title           string
+	ContentDesc     string
+	Label           string
+	Date            string
+	Level           string
+	ComponentTypeID int64
+	ComponentType   componentType `gorm:"foreignKey:ComponentTypeID"`
+}
+
+func (c *component) Type() string {
+	return strings.ToTitle(string(c.ComponentType.Name[0])) + c.ComponentType.Name[1:]
+}
+func (c *component) Name() string {
+	// At this time there is no definitive field that can be used for "naming" purposes.
+	// There are several candidates (title, content_desc, label) and until we make
+	// a definitive choice, we must rely upon an aritifical method to provide the string.
+	// Given the inconsistencies of input data, all newlines and sequences of two or more spaces
+	// will be substituted.
+	name := ""
+	if c.Title != "" {
+		name = c.Title
+	} else if c.ContentDesc != "" {
+		name = c.ContentDesc
+	} else if c.Label != "" {
+		name = c.Label
+	} else if c.Date != "" {
+		name = c.Date
+	} else {
+		name = fmt.Sprintf("%d", c.ID) // Everything has an id, so it is the LCD.
+	}
+	m := regexp.MustCompile("\\s+")
+	name = strings.ReplaceAll(name, "\n", " ")
+	name = m.ReplaceAllString(name, " ")
+	return name
 }
 
 type intendedUse struct {
@@ -40,18 +87,19 @@ type invoice struct {
 }
 
 type metadata struct {
-	ID             int64
-	PID            string `gorm:"column:pid"`
-	Type           string
-	Title          string
-	CreatorName    string
-	CallNumber     string
-	Barcoode       string
-	IsPersonalItem bool
-	DateDlIngest   *time.Time `gorm:"column:date_dl_ingest"`
-	DateDlUpdate   *time.Time `gorm:"column:date_dl_update"`
-	CreatedAt      time.Time
-	UpdatedAt      time.Time
+	ID                   int64
+	PID                  string `gorm:"column:pid"`
+	Type                 string
+	Title                string
+	CreatorName          string
+	CallNumber           string
+	Barcoode             string
+	IsPersonalItem       bool
+	AvailabilityPolicyID *int64
+	DateDlIngest         *time.Time `gorm:"column:date_dl_ingest"`
+	DateDlUpdate         *time.Time `gorm:"column:date_dl_update"`
+	CreatedAt            time.Time
+	UpdatedAt            time.Time
 }
 
 type containerType struct {
@@ -97,6 +145,7 @@ type masterFile struct {
 	PID               string        `gorm:"column:pid"`
 	MetadataID        *int64        `gorm:"column:metadata_id"`
 	ComponentID       *int64        `gorm:"column:component_id"`
+	Component         *component    `gorm:"foreignKey:ComponentID"`
 	ImageTechMeta     imageTechMeta `gorm:"foreignKey:MasterFileID"`
 	UnitID            int64
 	Filename          string
@@ -141,8 +190,9 @@ type unit struct {
 	ProjectID                   *int64
 	Metadata                    *metadata `gorm:"foreignKey:MetadataID"`
 	UnitStatus                  string
-	IntendedUseID               int64
-	IntendedUse                 intendedUse `gorm:"foreignKey:IntendedUseID"`
+	IntendedUseID               *int64
+	IntendedUse                 *intendedUse `gorm:"foreignKey:IntendedUseID"`
+	IncludeInDL                 bool         `gorm:"column:include_in_dl"`
 	RemoveWatermark             bool
 	Reorder                     bool
 	CommpleteScan               bool

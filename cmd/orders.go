@@ -88,7 +88,7 @@ func (svc *ServiceContext) checkOrderReady(c *gin.Context) {
 		// then we have to remove from consideration those units whose intended use is "Digital Collection Building"
 		// and consider all other units.
 		svc.logInfo(js, fmt.Sprintf("   Check unit %d", unit.ID))
-		if unit.IntendedUseID != 110 {
+		if *unit.IntendedUseID != 110 {
 			if unit.UnitStatus != "canceled" {
 				if unit.DatePatronDeliverablesReady == nil {
 					svc.logInfo(js, fmt.Sprintf("   Unit %d incomplete", unit.ID))

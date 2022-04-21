@@ -19,6 +19,8 @@
          table.mf td.alt {font-weight: normal; background: #fafafa;}
          .item { margin-top: 2rem;}
          .item p.num { font-weight: bold; background: #eee; text-align:center; padding: 5px;}
+         label.container { font-weight: bold; margin-right: 0.5rem;}
+         div.container-head {margin: 1.5rem 0 0 0;}
       </style>
    </head>
    <body>
@@ -50,6 +52,7 @@
                {{if .CallNumber}}<tr><td class="label">Call Number:</td><td>{{.CallNumber}}</td></tr>{{end}}
                {{if .Citation}}<tr><td class="label">Citation:</td><td>{{.Citation}}</td></tr>{{end}}
             </table>
+            {{if .Files}}
             <table class="mf">
                <tr>
                   <th>Filename</th>
@@ -64,6 +67,28 @@
                </tr>
                {{end}}
             </table>
+            {{else}}
+               {{range .Containers}}
+                  <div class="container-head">
+                     <div><label class="container">{{.Type}}:</label><span>{{.Name}}</span></div>
+                     {{if .Date}}<div><label class="container">Date:</label><span>{{.Date}}</span></div>{{end}}
+                  </div>
+                  <table class="mf">
+                     <tr>
+                        <th>Filename</th>
+                        <th>Title</th>
+                        <th>Descritption</th>
+                     </tr>
+                     {{range .Files}}
+                     <tr>
+                        <td {{if .Even}}class="alt"{{end}}>{{.Filename}}</td>
+                        <td {{if .Even}}class="alt"{{end}}>{{.Title}}</td>
+                        <td {{if .Even}}class="alt"{{end}}>{{.Description}}</td>
+                     </tr>
+                     {{end}}
+                  </table>
+               {{end}}
+            {{end}}
          </div>
          {{end}}
       </div>

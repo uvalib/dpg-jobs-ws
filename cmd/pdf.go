@@ -23,7 +23,9 @@ func (svc *ServiceContext) viewOrderPDF(c *gin.Context) {
 	var o order
 	err := svc.GDB.Preload("Customer").Preload("Customer.AcademicStatus").
 		Preload("Invoices").Preload("Units").Preload("Units.IntendedUse").
-		Preload("Units.Metadata").Preload("Units.MasterFiles").First(&o, orderID).Error
+		Preload("Units.Metadata").Preload("Units.MasterFiles").
+		Preload("Units.MasterFiles.Component").Preload("Units.MasterFiles.Component.ComponentType").
+		First(&o, orderID).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			log.Printf("ERROR: order %d not found", orderID)
@@ -57,7 +59,9 @@ func (svc *ServiceContext) createOrderPDF(c *gin.Context) {
 	var o order
 	err = svc.GDB.Preload("Customer").Preload("Customer.AcademicStatus").
 		Preload("Invoices").Preload("Units").Preload("Units.IntendedUse").
-		Preload("Units.Metadata").Preload("Units.MasterFiles").First(&o, orderID).Error
+		Preload("Units.Metadata").Preload("Units.MasterFiles").
+		Preload("Units.MasterFiles.Component").Preload("Units.MasterFiles.Component.ComponentType").
+		First(&o, orderID).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			svc.logFatal(js, fmt.Sprintf("order %d not found", orderID))
@@ -123,12 +127,20 @@ func (svc *ServiceContext) generateOrderPDF(order *order) (*wkhtmltopdf.PDFGener
 		Description string
 		Even        bool
 	}
+	type containerData struct {
+		ID    int64
+		Type  string
+		Name  string
+		Date  string
+		Files []mfData
+	}
 	type itemData struct {
 		Number     int
 		Title      string
 		Author     string
 		CallNumber string
 		Citation   string
+		Containers []containerData // item wil have Containers or Files, but not both
 		Files      []mfData
 	}
 	type pdfData struct {
@@ -150,20 +162,35 @@ func (svc *ServiceContext) generateOrderPDF(order *order) (*wkhtmltopdf.PDFGener
 
 	for idx, unit := range order.Units {
 		item := itemData{Number: idx + 1,
-			Title:  unit.Metadata.Title,
-			Author: unit.Metadata.CreatorName,
-			Files:  make([]mfData, 0),
+			Title:      unit.Metadata.Title,
+			Author:     unit.Metadata.CreatorName,
+			Files:      make([]mfData, 0),
+			Containers: make([]containerData, 0),
 		}
 		if unit.Metadata.Type == "SirsiMetadata" {
 			item.CallNumber = unit.Metadata.CallNumber
 			item.Citation = svc.getCitation(unit.Metadata)
 		}
+		var currContainer *containerData
+		hasComponents := unit.MasterFiles[0].ComponentID != nil
 		for mfIdx, mf := range unit.MasterFiles {
 			m := mfData{Title: mf.Title, Description: mf.Description, Filename: mf.Filename}
 			if mfIdx%2 != 0 {
 				m.Even = true
 			}
-			item.Files = append(item.Files, m)
+			if hasComponents == false {
+				item.Files = append(item.Files, m)
+			} else {
+				if mf.ComponentID != nil && (currContainer == nil || currContainer.ID != *mf.ComponentID) {
+					if currContainer != nil {
+						item.Containers = append(item.Containers, *currContainer)
+					}
+					newContainer := containerData{ID: *mf.ComponentID, Type: mf.Component.Type(), Name: mf.Component.Name(),
+						Date: mf.Component.Date, Files: make([]mfData, 0)}
+					currContainer = &newContainer
+				}
+				currContainer.Files = append(currContainer.Files, m)
+			}
 		}
 
 		data.Items = append(data.Items, item)
