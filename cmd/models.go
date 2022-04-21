@@ -13,6 +13,12 @@ type academicStatus struct {
 	Name string
 }
 
+type ocrHint struct {
+	ID           int64
+	Name         string
+	OcrCandidate bool
+}
+
 type componentType struct {
 	ID         int64
 	Name       string
@@ -95,7 +101,11 @@ type metadata struct {
 	CallNumber           string
 	Barcoode             string
 	IsPersonalItem       bool
+	IsManuscript         bool
 	AvailabilityPolicyID *int64
+	OcrHintID            *int64
+	OcrHint              *ocrHint `gorm:"foreignKey:OcrHintID"`
+	OcrLanguageHint      string
 	DateDlIngest         *time.Time `gorm:"column:date_dl_ingest"`
 	DateDlUpdate         *time.Time `gorm:"column:date_dl_update"`
 	CreatedAt            time.Time
@@ -186,6 +196,7 @@ type attachment struct {
 type unit struct {
 	ID                          int64
 	OrderID                     int64
+	Order                       order `gorm:"foreignKey:OrderID"`
 	MetadataID                  *int64
 	ProjectID                   *int64
 	Metadata                    *metadata `gorm:"foreignKey:MetadataID"`
@@ -197,7 +208,7 @@ type unit struct {
 	Reorder                     bool
 	CommpleteScan               bool
 	ThrowAway                   bool
-	OCRMasterFiles              bool         `gorm:"column:ocr_master_files"`
+	OcrMasterFiles              bool         `gorm:"column:ocr_master_files"`
 	MasterFiles                 []masterFile `gorm:"foreignKey:UnitID"`
 	MasterFilesCount            uint
 	DateArchived                *time.Time
@@ -216,6 +227,7 @@ type order struct {
 	Units                          []unit    `gorm:"foreignKey:OrderID"`
 	Email                          string
 	DateRequestSubmitted           time.Time
+	DateOrderApproved              *time.Time
 	DateCustomerNotified           *time.Time
 	DatePatronDeliverablesComplete *time.Time
 	DateArchivingComplete          *time.Time

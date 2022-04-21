@@ -207,7 +207,7 @@ func (svc *ServiceContext) createPatronDeliverables(c *gin.Context) {
 				location := ""
 				if tgtUnit.Metadata.Type == "SirsiMetadata" {
 					callNumber = tgtUnit.Metadata.CallNumber
-					location = svc.getLocation(tgtUnit.Metadata)
+					location = svc.getMarcLocation(tgtUnit.Metadata)
 				}
 				err = svc.createPatronDeliverable(js, &tgtUnit, &mf, mfPath, assembleDir, callNumber, location)
 				if err != nil {

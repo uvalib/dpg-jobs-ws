@@ -188,7 +188,7 @@ func (svc *ServiceContext) zipPatronDeliverables(js *jobStatus, tgtUnit *unit) e
 
 	// IF OCR was requested, generate a single text file containing all of the page OCR results
 	ocrFileName := ""
-	if tgtUnit.OCRMasterFiles {
+	if tgtUnit.OcrMasterFiles {
 		ocrFileName = path.Join(assembleDir, fmt.Sprintf("%d.txt", tgtUnit.ID))
 		svc.logInfo(js, fmt.Sprintf("OCR was requeseted for this unit; generate text file with OCR resuls here: %s", ocrFileName))
 		ocrFile, err := os.OpenFile(ocrFileName, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
