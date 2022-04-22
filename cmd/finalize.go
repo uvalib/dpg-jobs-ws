@@ -8,6 +8,7 @@ import (
 	"path"
 	"path/filepath"
 	"regexp"
+	"runtime/debug"
 	"strconv"
 	"time"
 
@@ -49,6 +50,14 @@ func (svc *ServiceContext) finalizeUnit(c *gin.Context) {
 	}
 
 	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				log.Printf("ERROR: Panic recovered: %v", r)
+				debug.PrintStack()
+				svc.setUnitFatal(js, &tgtUnit, fmt.Sprintf("%v", r))
+			}
+		}()
+
 		svc.logInfo(js, "Check for presence of finalization directory")
 		srcDir := path.Join(svc.ProcessingDir, "finalization", fmt.Sprintf("%09d", unitID))
 		if pathExists(srcDir) == false {
@@ -98,15 +107,43 @@ func (svc *ServiceContext) finalizeUnit(c *gin.Context) {
 		// 	@unit.reload
 		// end
 
-		// # Flag unit for Virgo publication?
+		// Flag unit for Virgo publication?
 		// if @unit.include_in_dl
 		// 	Virgo.publish(@unit, logger)
 		// end
 
-		// # If desc is not digital collection building, create patron deliverables regardless of any other settings
-		// if @unit.intended_use.description != "Digital Collection Building"
-		// 	create_patron_deliverables()
-		// end
+		// If desc is not digital collection building, create patron deliverables regardless of any other settings
+		if tgtUnit.IntendedUse.ID != 110 {
+			if tgtUnit.DatePatronDeliverablesReady == nil {
+				if tgtUnit.IntendedUse.DeliverableFormat == "pdf" {
+					err = svc.createPatronPDF(js, &tgtUnit)
+					if err != nil {
+						svc.setUnitFatal(js, &tgtUnit, fmt.Sprintf("Unable to create patron PDF: %s", err.Error()))
+						return
+					}
+				} else {
+					err = svc.zipPatronDeliverables(js, &tgtUnit)
+					if err != nil {
+						svc.setUnitFatal(js, &tgtUnit, fmt.Sprintf("Unable to create patron ZIP: %s", err.Error()))
+						return
+					}
+				}
+
+				now := time.Now()
+				tgtUnit.DatePatronDeliverablesReady = &now
+				svc.GDB.Model(&tgtUnit).Select("DatePatronDeliverablesReady").Updates(tgtUnit)
+				svc.logInfo(js, "All patron deliverables created")
+			} else {
+				svc.logInfo(js, "Patron deliverables already generated")
+			}
+
+			// check for completeness, fees and generate manifest PDF. Same for all patron deliverables
+			err = svc.checkOrderReadyForDelivery(js, tgtUnit.OrderID)
+			if err != nil {
+				svc.setUnitFatal(js, &tgtUnit, err.Error())
+				return
+			}
+		}
 
 		// # At this point, finalization has completed successfully and project is done
 		// if !@project.nil?
@@ -126,6 +163,99 @@ func (svc *ServiceContext) finalizeUnit(c *gin.Context) {
 
 	c.String(http.StatusOK, fmt.Sprintf("%d", js.ID))
 }
+
+/*
+   # Finalization of the associated unit was successful
+   #
+   def finalization_success(job)
+      Rails.logger.info("Project [#{self.project_name}] completed finalization")
+      processing_mins = ((Time.now - job.started_at)/60.0).round
+      validate_finalization(processing_mins)
+   end
+
+	def validate_finalization(processing_mins)
+      Rails.logger.info("Validating finalized unit")
+      if !unit.throw_away
+         if unit.date_archived.nil?
+            validation_failed("Unit was not archived")
+            return
+         end
+
+         # archive OK; make sure masterfiles all have metadata (tech and desc)
+         # and that the archived file count matches masterfile count
+         archive_dir = File.join(ARCHIVE_DIR, unit.directory)
+         archived_tif_count = Dir[File.join(archive_dir, '*.tif')].count
+         if archived_tif_count == 0
+            validation_failed("No tif files found in archive")
+            return
+         end
+      end
+
+      mf_count = 0
+      unit.master_files.each do |mf|
+         mf_count += 1
+         if mf.metadata.nil?
+            validation_failed("Masterfile #{mf.filename} missing desc metadata")
+            return
+         end
+         if mf.image_tech_meta.nil?
+            validation_failed("Masterfile #{mf.filename} missing tech metadata")
+            return
+         end
+      end
+
+      if !unit.throw_away
+         if archived_tif_count != mf_count
+            validation_failed("MasterFile / tif count mismatch. #{archived_tif_count} tif files vs #{mf_count} MasterFiles")
+            return
+         end
+      end
+
+      # deliverables ready (patron or dl)
+      if unit.intended_use_id == 110
+         if unit.date_dl_deliverables_ready.nil? && unit.include_in_dl
+            validation_failed("DL deliverables ready date not set")
+            return
+         end
+      else
+         if unit.date_patron_deliverables_ready.nil?
+            validation_failed("Patron deliverables ready date not set")
+            return
+         end
+      end
+
+      # Validations all passed, complete the workflow
+      Rails.logger.info("Workflow [#{self.workflow.name}] is now complete")
+      # self.active_assignment.update(finished_at: Time.now, status: :finished)
+      self.update(finished_at: Time.now, owner: nil, current_step: nil)
+      qa_mins = self.active_assignment.duration_minutes
+      qa_mins = 0 if qa_mins.nil?
+      Rails.logger.info("Project [#{self.project_name}] finalization minutes: #{processing_mins}, prior minutes: #{qa_mins}")
+      self.active_assignment.update(finished_at: Time.now, status: :finished, duration_minutes: (processing_mins+qa_mins) )
+   end
+end
+
+   # Finalzation of the associated unit failed
+   #
+   def finalization_failure(job)
+      Rails.logger.error("Project [#{self.project_name}] FAILED finalization")
+
+      # Fail the step and increase time spent
+      processing_mins = ((job.ended_at - job.started_at)/60.0).round
+      qa_mins = self.active_assignment.duration_minutes
+      qa_mins = 0 if qa_mins.nil?
+      Rails.logger.info("Project [#{self.project_name}] finalization minutes: #{processing_mins}, prior minutes: #{qa_mins}")
+      self.active_assignment.update(duration_minutes: (processing_mins+qa_mins), status: :error )
+
+      # Add a problem note with a summary of the issue
+      prob = Problem.find(6) # Finalization
+      msg = "<p>#{job.error}</p>"
+      msg << "<p>Please manually correct the finalization problems. Once complete, press the Finish button to restart finalization.</p>"
+      msg << "<p>Error details <a href='/admin/job_statuses/#{job.id}'>here</a></p>"
+      note = Note.create(staff_member: self.owner, project: self, note_type: :problem, note: msg, step: self.current_step )
+      note.problems << prob
+   end
+*/
 
 func (svc *ServiceContext) setUnitFatal(js *jobStatus, tgtUnit *unit, errMsg string) {
 	svc.setUnitStatus(tgtUnit, "error")

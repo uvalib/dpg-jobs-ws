@@ -187,6 +187,13 @@ func (svc *ServiceContext) zipPatronDeliverables(js *jobStatus, tgtUnit *unit) e
 	ensureDirExists(deliveryDir, 0755)
 	assembleDir := path.Join(svc.ProcessingDir, "finalization", "tmp", fmt.Sprintf("%09d", tgtUnit.ID))
 
+	svc.logInfo(js, "Getting up-to-date list of master files for unit")
+	var masterfiles []masterFile
+	err := svc.GDB.Where("unit_id=?", tgtUnit.ID).Find(&masterfiles).Error
+	if err != nil {
+		return fmt.Errorf("Unable to get masterfiles: %s", err.Error())
+	}
+
 	// IF OCR was requested, generate a single text file containing all of the page OCR results
 	ocrFileName := ""
 	if tgtUnit.OcrMasterFiles {
@@ -197,7 +204,7 @@ func (svc *ServiceContext) zipPatronDeliverables(js *jobStatus, tgtUnit *unit) e
 			svc.logError(js, fmt.Sprintf("Unable to open OCR file %s: %s", ocrFileName, err.Error()))
 		} else {
 			ocrWriter := bufio.NewWriter(ocrFile)
-			for _, mf := range tgtUnit.MasterFiles {
+			for _, mf := range masterfiles {
 				ocrWriter.WriteString(fmt.Sprintf("%s\n", mf.Filename))
 				ocrWriter.WriteString(fmt.Sprintf("%s\n", mf.TranscriptionText))
 				svc.logInfo(js, fmt.Sprintf("Added OCR results for master file %s", mf.Filename))
@@ -212,7 +219,7 @@ func (svc *ServiceContext) zipPatronDeliverables(js *jobStatus, tgtUnit *unit) e
 	zipFN := ""
 	var zipFile *os.File
 	var zipWriter *zip.Writer
-	for _, mf := range tgtUnit.MasterFiles {
+	for _, mf := range masterfiles {
 		// max filesize is 2GB
 		if zipSize == 0 || zipSize > int64(2.0*1024.0*1024.0*1024.0) {
 			zipNum++
@@ -230,8 +237,9 @@ func (svc *ServiceContext) zipPatronDeliverables(js *jobStatus, tgtUnit *unit) e
 			if err != nil {
 				return fmt.Errorf("Unable to create zip file: %s", err.Error())
 			}
-			defer zipFile.Close()
 			zipWriter = zip.NewWriter(zipFile)
+			defer zipFile.Close()
+			defer zipWriter.Close()
 		}
 
 		deliverableFN := mf.Filename
@@ -246,8 +254,6 @@ func (svc *ServiceContext) zipPatronDeliverables(js *jobStatus, tgtUnit *unit) e
 		}
 		zipSize = newZipSize
 	}
-	zipWriter.Close()
-	zipFile.Close()
 
 	return nil
 }

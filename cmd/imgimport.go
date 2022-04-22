@@ -38,7 +38,6 @@ func (svc *ServiceContext) importImages(js *jobStatus, tgtUnit *unit, srcDir str
 		if tgtUnit.Metadata.Type == "SirsiMetadata" {
 			callNumber = tgtUnit.Metadata.CallNumber
 			location = svc.getMarcLocation(tgtUnit.Metadata)
-			svc.logInfo(js, fmt.Sprintf("Metadata for Sirsi deliverables: call number: %s, location: %s", callNumber, location))
 		}
 	}
 
@@ -54,7 +53,8 @@ func (svc *ServiceContext) importImages(js *jobStatus, tgtUnit *unit, srcDir str
 
 		// See if this masterfile has already been created...
 		var newMF masterFile
-		err = svc.GDB.Where("filename=?", fi.filename).Limit(1).Find(&newMF).Error
+		err = svc.GDB.Preload("ImageTechMeta").Preload("Component").Preload("Locations").
+			Where("filename=?", fi.filename).Limit(1).Find(&newMF).Error
 		if err != nil {
 			return err
 		}
@@ -98,9 +98,9 @@ func (svc *ServiceContext) importImages(js *jobStatus, tgtUnit *unit, srcDir str
 			err = svc.createImageTechMetadata(&newMF, fi.path)
 			if err != nil {
 				svc.logError(js, fmt.Sprintf("Unable to create image tech metadata: %s", err.Error()))
-			} else {
-				svc.logInfo(js, fmt.Sprintf("%+v", newMF.ImageTechMeta))
 			}
+		} else {
+			svc.logInfo(js, "Image tech metadata already exists")
 		}
 
 		if tgtUnit.Reorder == false {

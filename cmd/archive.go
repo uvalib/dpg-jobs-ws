@@ -155,7 +155,7 @@ func (svc *ServiceContext) renameArchive(js *jobStatus, unitID int64, origFile, 
 }
 
 func (svc *ServiceContext) checkOrderArchiveComplete(js *jobStatus, orderID int64) {
-	svc.logInfo(js, fmt.Sprintf("Checking if all units in order %d are complete...", orderID))
+	svc.logInfo(js, fmt.Sprintf("Check if all units in order %d are arhived", orderID))
 	var cnt int64
 	err := svc.GDB.Table("units").Where("order_id=? and unit_status !=? and date_archived is null", orderID, "canceled").Count(&cnt).Error
 	if err != nil {
