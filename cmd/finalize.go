@@ -145,20 +145,18 @@ func (svc *ServiceContext) finalizeUnit(c *gin.Context) {
 			}
 		}
 
-		// # At this point, finalization has completed successfully and project is done
-		// if !@project.nil?
-		//    logger().info "Unit #{@unit.id} finished finalization; updating project."
-		//    @project.finalization_success( status() )
-		// else
-		//    logger().info "Unit #{@unit.id} finished finalization"
-		// end
-		// @unit.update(unit_status: "done")
+		// At this point, finalization has completed successfully and project is done
+		if tgtUnit.ProjectID == nil {
+			svc.logInfo(js, "Unit finished finalization")
+		} else {
+			svc.logInfo(js, fmt.Sprintf("Unit finished finalization, updating project %d", *tgtUnit.ProjectID))
+			//    @project.finalization_success( status() )
+		}
+		svc.setUnitStatus(&tgtUnit, "done")
 
-		// # Cleanup any tmo directories and move unit to ready_to_delete
-		// Images.cleanup(@unit, logger)
-
-		svc.setUnitFatal(js, &tgtUnit, "Fail finalize with incomplete logic")
-		// svc.jobDone(js)
+		// Cleanup any tmo directories and move unit to ready_to_delete
+		svc.cleanupWorkDirectories(js, tgtUnit.ID)
+		svc.jobDone(js)
 	}()
 
 	c.String(http.StatusOK, fmt.Sprintf("%d", js.ID))

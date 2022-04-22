@@ -319,3 +319,22 @@ func (svc *ServiceContext) ensureMD5(js *jobStatus, mf *masterFile, mfPath strin
 		}
 	}
 }
+
+func (svc *ServiceContext) cleanupWorkDirectories(js *jobStatus, unitID int64) {
+	unitDir := fmt.Sprintf("%09d", unitID)
+	svc.logInfo(js, fmt.Sprintf("Cleaning up unit %09d directories", unitID))
+	tmpDir := path.Join(svc.ProcessingDir, "finalization", "tmp", unitDir)
+	os.RemoveAll(tmpDir)
+
+	srcDir := path.Join(svc.ProcessingDir, "finalization", unitDir)
+	delDir := path.Join(svc.ProcessingDir, "ready_to_delete", unitDir)
+	svc.logInfo(js, fmt.Sprintf("Moving %s to %s", srcDir, delDir))
+	if pathExists(delDir) {
+		svc.logInfo(js, fmt.Sprintf("%s already exists; cleaning it up", delDir))
+		os.RemoveAll(delDir)
+	}
+	err := os.Rename(srcDir, delDir)
+	if err != nil {
+		svc.logError(js, fmt.Sprintf("Unable to move working file to %s: %s", delDir, err.Error()))
+	}
+}
