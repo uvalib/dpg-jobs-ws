@@ -52,12 +52,10 @@ func (svc *ServiceContext) finalizeUnit(c *gin.Context) {
 		svc.logInfo(js, "Check for presence of finalization directory")
 		srcDir := path.Join(svc.ProcessingDir, "finalization", fmt.Sprintf("%09d", unitID))
 		if pathExists(srcDir) == false {
-			svc.setUnitStatus(&tgtUnit, "error")
-			svc.logFatal(js, fmt.Sprintf("Finalization directory %s does not exist", srcDir))
+			svc.setUnitFatal(js, &tgtUnit, fmt.Sprintf("Finalization directory %s does not exist", srcDir))
 			return
 		}
 
-		// manage unit status
 		svc.logInfo(js, "Manage unit status")
 		if tgtUnit.UnitStatus == "finalizing" {
 			svc.logFatal(js, "Unit is already finalizing.")
@@ -76,24 +74,62 @@ func (svc *ServiceContext) finalizeUnit(c *gin.Context) {
 
 		err = svc.qaUnit(js, &tgtUnit)
 		if err != nil {
-			svc.setUnitStatus(&tgtUnit, "error")
-			svc.logFatal(js, err.Error())
+			svc.setUnitFatal(js, &tgtUnit, err.Error())
 			return
 		}
 
 		err = svc.qaFilesystem(js, &tgtUnit, srcDir)
 		if err != nil {
-			svc.setUnitStatus(&tgtUnit, "error")
-			svc.logFatal(js, err.Error())
+			svc.setUnitFatal(js, &tgtUnit, err.Error())
 			return
 		}
 
-		svc.setUnitStatus(&tgtUnit, "error")
-		svc.logFatal(js, "Fail finalize with incomplete logic")
+		// Create all of the master files, publish to IIIF then archive the unit
+		err = svc.importImages(js, &tgtUnit, srcDir)
+		if err != nil {
+			svc.setUnitFatal(js, &tgtUnit, err.Error())
+			return
+		}
+
+		// # If OCR has been requested, do it AFTER archive (OCR requires tif to be in archive)
+		// # but before deliverable generation (deliverables require OCR text to be present)
+		// if @unit.ocr_master_files
+		// 	OCR.synchronous(@unit, self)
+		// 	@unit.reload
+		// end
+
+		// # Flag unit for Virgo publication?
+		// if @unit.include_in_dl
+		// 	Virgo.publish(@unit, logger)
+		// end
+
+		// # If desc is not digital collection building, create patron deliverables regardless of any other settings
+		// if @unit.intended_use.description != "Digital Collection Building"
+		// 	create_patron_deliverables()
+		// end
+
+		// # At this point, finalization has completed successfully and project is done
+		// if !@project.nil?
+		//    logger().info "Unit #{@unit.id} finished finalization; updating project."
+		//    @project.finalization_success( status() )
+		// else
+		//    logger().info "Unit #{@unit.id} finished finalization"
+		// end
+		// @unit.update(unit_status: "done")
+
+		// # Cleanup any tmo directories and move unit to ready_to_delete
+		// Images.cleanup(@unit, logger)
+
+		svc.setUnitFatal(js, &tgtUnit, "Fail finalize with incomplete logic")
 		// svc.jobDone(js)
 	}()
 
 	c.String(http.StatusOK, fmt.Sprintf("%d", js.ID))
+}
+
+func (svc *ServiceContext) setUnitFatal(js *jobStatus, tgtUnit *unit, errMsg string) {
+	svc.setUnitStatus(tgtUnit, "error")
+	svc.logFatal(js, errMsg)
 }
 
 func (svc *ServiceContext) setUnitStatus(tgtUnit *unit, status string) {

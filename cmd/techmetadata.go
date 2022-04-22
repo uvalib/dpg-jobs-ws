@@ -73,6 +73,7 @@ func (svc *ServiceContext) createImageTechMetadata(mf *masterFile, mfPath string
 	if err != nil {
 		return err
 	}
+	mf.ImageTechMeta = md
 	return nil
 }
 

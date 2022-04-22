@@ -8,6 +8,7 @@ import (
 	"path"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 )
@@ -150,5 +151,20 @@ func (svc *ServiceContext) renameArchive(js *jobStatus, unitID int64, origFile, 
 	newMD5 := md5Checksum(newArchive)
 	if newMD5 != origMD5 {
 		svc.logError(js, fmt.Sprintf("MD5 does not match for rename %s -> %s; %s vs %s", origArchive, newArchive, origMD5, newMD5))
+	}
+}
+
+func (svc *ServiceContext) checkOrderArchiveComplete(js *jobStatus, orderID int64) {
+	svc.logInfo(js, fmt.Sprintf("Checking if all units in order %d are complete...", orderID))
+	var cnt int64
+	err := svc.GDB.Table("units").Where("order_id=? and unit_status !=? and date_archived is null", orderID, "canceled").Count(&cnt).Error
+	if err != nil {
+		svc.logError(js, fmt.Sprintf("Unable to determine if all units archived: %s", err.Error()))
+		return
+	}
+
+	if cnt == 0 {
+		svc.GDB.Model(&order{ID: orderID}).Update("date_archiving_complete", time.Now())
+		svc.logInfo(js, fmt.Sprintf("All units in order %d are archived.", orderID))
 	}
 }

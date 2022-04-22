@@ -291,7 +291,7 @@ func getTifFiles(srcDir string, unitID int64) ([]tifInfo, error) {
 	tifFiles := make([]tifInfo, 0)
 	files, err := ioutil.ReadDir(srcDir)
 	if err != nil {
-		return nil, fmt.Errorf("Unable to read %s: %s", srcDir, err.Error())
+		return nil, fmt.Errorf("unable to read %s: %s", srcDir, err.Error())
 	}
 
 	mfRegex := regexp.MustCompile(fmt.Sprintf(`^%09d_\w{4,}\.tif$`, unitID))
@@ -299,7 +299,7 @@ func getTifFiles(srcDir string, unitID int64) ([]tifInfo, error) {
 		fName := fi.Name()
 		if strings.Index(fName, ".tif") > -1 {
 			if !mfRegex.Match([]byte(fName)) {
-				return nil, fmt.Errorf("Invalid tif file name: %s for unit %d", fName, unitID)
+				return nil, fmt.Errorf("invalid tif file name: %s for unit %d", fName, unitID)
 
 			}
 			tifFiles = append(tifFiles, tifInfo{path: path.Join(srcDir, fName), filename: fName, size: fi.Size()})

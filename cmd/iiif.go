@@ -14,6 +14,17 @@ import (
 func (svc *ServiceContext) publishToIIIF(js *jobStatus, mf *masterFile, path string, overwrite bool) error {
 	svc.logInfo(js, fmt.Sprintf("Publish %s to IIIF", mf.PID))
 
+	jp2kInfo := svc.iiifPath(mf)
+	if overwrite == false && pathExists(jp2kInfo.absolutePath) {
+		svc.logInfo(js, fmt.Sprintf("MasterFile %s already has JP2k file at %s; skipping creation", mf.PID, jp2kInfo.absolutePath))
+		return nil
+	}
+
+	err := ensureDirExists(jp2kInfo.basePath, 0777)
+	if err != nil {
+		return err
+	}
+
 	if strings.Index(mf.Filename, ".tif") > -1 {
 		// kakadu cant handle compression. remove it if detected
 		if mf.ImageTechMeta.Compression != "Uncompressed" {
@@ -29,20 +40,10 @@ func (svc *ServiceContext) publishToIIIF(js *jobStatus, mf *masterFile, path str
 		}
 	}
 
-	jp2kInfo := svc.iiifPath(mf)
-	err := ensureDirExists(jp2kInfo.basePath, 0777)
-	if err != nil {
-		return err
-	}
-
 	if strings.Index(mf.Filename, ".jp2") > -1 {
 		copyFile(path, jp2kInfo.absolutePath, 0664)
 		svc.logInfo(js, fmt.Sprintf("Copied JPEG-2000 image using '%s' as input file for the creation of deliverable '%s'", path, jp2kInfo.basePath))
 	} else if strings.Index(mf.Filename, ".tif") > -1 {
-		if overwrite == false && pathExists(jp2kInfo.absolutePath) {
-			svc.logInfo(js, fmt.Sprintf("MasterFile %s already has JP2k file at %s; skipping creation", mf.PID, jp2kInfo.absolutePath))
-			return nil
-		}
 		svc.logInfo(js, fmt.Sprintf("Compressing %s to %s...", path, jp2kInfo.absolutePath))
 		_, err := exec.LookPath("kdu_compress")
 		if err != nil {
