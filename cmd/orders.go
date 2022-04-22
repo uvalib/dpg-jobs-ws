@@ -57,28 +57,32 @@ func (svc *ServiceContext) checkOrderReady(c *gin.Context) {
 		c.String(http.StatusInternalServerError, err.Error())
 		return
 	}
+	err = svc.checkOrderReadyForDelivery(js, orderID)
+	if err != nil {
+		svc.logFatal(js, err.Error())
+		c.String(http.StatusBadRequest, err.Error())
+	}
 
+	svc.jobDone(js)
+	c.String(http.StatusOK, "done")
+}
+
+func (svc *ServiceContext) checkOrderReadyForDelivery(js *jobStatus, orderID int64) error {
 	svc.logInfo(js, fmt.Sprintf("Start CheckOrderReadyForDelivery for order %d", orderID))
 
 	var o order
-	err = svc.GDB.Preload("Customer").Preload("Customer.AcademicStatus").
+	err := svc.GDB.Preload("Customer").Preload("Customer.AcademicStatus").
 		Preload("Invoices").Preload("Units").Preload("Units.IntendedUse").
-		Preload("Units.Metadata").Preload("Units.MasterFiles").First(&o, orderID).Error
+		Preload("Units.Metadata").Preload("Units.MasterFiles").
+		Preload("Units.MasterFiles.Component").
+		Preload("Units.MasterFiles.Component.ComponentType").First(&o, orderID).Error
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			svc.logFatal(js, fmt.Sprintf("order %d not found", orderID))
-			c.String(http.StatusNotFound, fmt.Sprintf("order %d not found", orderID))
-		} else {
-			svc.logFatal(js, fmt.Sprintf("unable to load order %d: %s", orderID, err.Error()))
-			c.String(http.StatusInternalServerError, err.Error())
-		}
-		return
+		return fmt.Errorf("unable to load order %d: %s", orderID, err.Error())
 	}
 
 	if o.DateCustomerNotified != nil {
 		svc.logError(js, "The date_customer_notified field on this order is filled out.  The order appears to have been delivered already.")
-		c.String(http.StatusOK, "done")
-		return
+		return nil
 	}
 
 	incomplete := make([]int64, 0)
@@ -113,9 +117,7 @@ func (svc *ServiceContext) checkOrderReady(c *gin.Context) {
 	// If any units are not comlete, the order is incomplete
 	if len(incomplete) > 0 {
 		svc.logInfo(js, fmt.Sprintf("Order is incomplete with units %v still unfinished", incomplete))
-		svc.jobDone(js)
-		c.String(http.StatusOK, "done")
-		return
+		return nil
 	}
 
 	// The 'patron' units within the order are complete, and customer not yet notified
@@ -127,16 +129,12 @@ func (svc *ServiceContext) checkOrderReady(c *gin.Context) {
 
 	svc.logInfo(js, "QA order status and fees...")
 	if o.OrderStatus != "approved" {
-		svc.logFatal(js, "Order does not have an order status of 'approved'.  Please correct before proceeding.")
-		c.String(http.StatusBadRequest, "failed")
-		return
+		return fmt.Errorf("Order does not have an order status of 'approved'")
 	}
 
 	//  An order whose customer is non-UVA and whose actual fee is blank is invalid.
 	if o.Customer.AcademicStatusID == 1 && o.Fee.Valid == false {
-		svc.logFatal(js, "Order has a non-UVA customer and the fee is blank.")
-		c.String(http.StatusBadRequest, "failed")
-		return
+		return fmt.Errorf("Order has a non-UVA customer and the fee is blank")
 	}
 
 	// If there is a value for order fee then there must be a paid invoice
@@ -155,27 +153,19 @@ func (svc *ServiceContext) checkOrderReady(c *gin.Context) {
 	svc.logInfo(js, "Create order PDF...")
 	pdfGen, err := svc.generateOrderPDF(&o)
 	if err != nil {
-		svc.logFatal(js, fmt.Sprintf("Unable to generate order PDF: %s", err.Error()))
-		c.String(http.StatusInternalServerError, err.Error())
-		return
+		return fmt.Errorf("Unable to generate order PDF: %s", err.Error())
 	}
 
 	err = svc.saveOrderPDF(js, &o, pdfGen)
 	if err != nil {
-		svc.logFatal(js, fmt.Sprintf("Unable to save order PDF: %s", err.Error()))
-		c.String(http.StatusInternalServerError, err.Error())
-		return
+		return fmt.Errorf("Unable to save order PDF: %s", err.Error())
 	}
 
 	err = svc.generateOrderEmail(js, &o)
 	if err != nil {
-		svc.logFatal(js, fmt.Sprintf("Unable to generate email: %s", err.Error()))
-		c.String(http.StatusInternalServerError, err.Error())
-		return
+		return fmt.Errorf("Unable to generate email: %s", err.Error())
 	}
-
-	svc.jobDone(js)
-	c.String(http.StatusOK, "done")
+	return nil
 }
 
 func feePaid(order *order) bool {

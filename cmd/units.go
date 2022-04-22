@@ -188,7 +188,6 @@ func (svc *ServiceContext) createPatronDeliverables(c *gin.Context) {
 		}
 
 		if tgtUnit.IntendedUse.DeliverableFormat == "pdf" {
-			svc.logInfo(js, "Unit requires the creation of PDF patron deliverables.")
 			err = svc.createPatronPDF(js, &tgtUnit)
 			if err != nil {
 				svc.logFatal(js, fmt.Sprintf("Unable to create patron PDF deliverable: %s", err.Error()))

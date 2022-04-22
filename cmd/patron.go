@@ -14,6 +14,7 @@ import (
 )
 
 func (svc *ServiceContext) createPatronPDF(js *jobStatus, tgtUnit *unit) error {
+	svc.logInfo(js, "Unit requires the creation of PDF patron deliverables.")
 	svc.logInfo(js, "Setting up assemble delivery directory to be used to build the PDF...")
 	assembleDir := path.Join(svc.ProcessingDir, "finalization", "tmp", fmt.Sprintf("%09d", tgtUnit.ID))
 	err := ensureDirExists(assembleDir, 0755)
