@@ -172,25 +172,31 @@ func (svc *ServiceContext) generateOrderPDF(order *order) (*wkhtmltopdf.PDFGener
 			item.Citation = svc.getCitation(unit.Metadata)
 		}
 		var currContainer *containerData
-		hasComponents := unit.MasterFiles[0].ComponentID != nil
+		var component *component
+		if unit.MasterFiles[0].ComponentID != nil {
+			component = unit.MasterFiles[0].Component
+		}
 		for mfIdx, mf := range unit.MasterFiles {
 			m := mfData{Title: mf.Title, Description: mf.Description, Filename: mf.Filename}
 			if mfIdx%2 != 0 {
 				m.Even = true
 			}
-			if hasComponents == false {
+			if component == nil {
 				item.Files = append(item.Files, m)
 			} else {
 				if mf.ComponentID != nil && (currContainer == nil || currContainer.ID != *mf.ComponentID) {
 					if currContainer != nil {
 						item.Containers = append(item.Containers, *currContainer)
 					}
-					newContainer := containerData{ID: *mf.ComponentID, Type: mf.Component.Type(), Name: mf.Component.Name(),
+					newContainer := containerData{ID: *mf.ComponentID, Type: component.Type(), Name: component.Name(),
 						Date: mf.Component.Date, Files: make([]mfData, 0)}
 					currContainer = &newContainer
 				}
 				currContainer.Files = append(currContainer.Files, m)
 			}
+		}
+		if currContainer != nil && len(currContainer.Files) > 0 {
+			item.Containers = append(item.Containers, *currContainer)
 		}
 
 		data.Items = append(data.Items, item)
