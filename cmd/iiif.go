@@ -65,6 +65,7 @@ func (svc *ServiceContext) publishToIIIF(js *jobStatus, mf *masterFile, path str
 		return fmt.Errorf("%s is not a .tif or .jp2", path)
 	}
 
+	svc.logInfo(js, fmt.Sprintf("%s has been published to IIIF", mf.PID))
 	return nil
 }
 

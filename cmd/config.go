@@ -30,6 +30,12 @@ type IIIFConfig struct {
 	URL string
 }
 
+// TrackSysConfig contains the configuration data for tracksys endpoints
+type TrackSysConfig struct {
+	API   string
+	Admin string
+}
+
 // ServiceConfig defines all of the JRML pool configuration parameters
 type ServiceConfig struct {
 	Port          int
@@ -39,7 +45,7 @@ type ServiceConfig struct {
 	IIIF          IIIFConfig
 	ProcessingDir string
 	DeliveryDir   string
-	TrackSysURL   string
+	TrackSys      TrackSysConfig
 	ReindexURL    string
 }
 
@@ -53,8 +59,11 @@ func LoadConfiguration() *ServiceConfig {
 	flag.StringVar(&cfg.ArchiveDir, "archive", "", "Archive directory")
 	flag.StringVar(&cfg.DeliveryDir, "delivery", "", "Delivery directory")
 	flag.StringVar(&cfg.ProcessingDir, "work", "", "Processing directory")
-	flag.StringVar(&cfg.TrackSysURL, "tsapi", "https://tracksys-api-ws.internal.lib.virginia.edu", "URL for TrackSys API")
 	flag.StringVar(&cfg.ReindexURL, "reindex", "https://virgo4-sirsi-cache-reprocess-ws.internal.lib.virginia.edu", "Reindex URL")
+
+	// TrackSys
+	flag.StringVar(&cfg.TrackSys.API, "tsapi", "https://tracksys-api-ws.internal.lib.virginia.edu", "URL for TrackSys API")
+	flag.StringVar(&cfg.TrackSys.Admin, "tsadmin", "https://tracksys.lib.virginia.edu/admin", "URL for TrackSys ADMIN interface")
 
 	// IIIF
 	flag.StringVar(&cfg.IIIF.Dir, "iiif", "", "IIIF directory")
@@ -103,7 +112,6 @@ func LoadConfiguration() *ServiceConfig {
 	}
 
 	log.Printf("[CONFIG] port          = [%d]", cfg.Port)
-	log.Printf("[CONFIG] tsapi         = [%s]", cfg.TrackSysURL)
 	log.Printf("[CONFIG] dbhost        = [%s]", cfg.DB.Host)
 	log.Printf("[CONFIG] dbport        = [%d]", cfg.DB.Port)
 	log.Printf("[CONFIG] dbname        = [%s]", cfg.DB.Name)

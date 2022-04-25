@@ -40,7 +40,7 @@ type ServiceContext struct {
 	IIIF          IIIFConfig
 	ProcessingDir string
 	DeliveryDir   string
-	TrackSysURL   string
+	TrackSys      TrackSysConfig
 	ReindexURL    string
 	HTTPClient    *http.Client
 	Templates     htmlTemplates
@@ -60,7 +60,7 @@ func InitializeService(version string, cfg *ServiceConfig) *ServiceContext {
 		IIIF:          cfg.IIIF,
 		DeliveryDir:   cfg.DeliveryDir,
 		ProcessingDir: cfg.ProcessingDir,
-		TrackSysURL:   cfg.TrackSysURL,
+		TrackSys:      cfg.TrackSys,
 		ReindexURL:    cfg.ReindexURL,
 	}
 

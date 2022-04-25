@@ -79,7 +79,7 @@ func (svc *ServiceContext) getMarcLocation(md *metadata) string {
 
 func (svc *ServiceContext) getMarcMetadata(md *metadata) (*marcMetadata, error) {
 	log.Printf("INFO: get marc metadata for pid [%s] barcode [%s]", md.PID, md.Barcoode)
-	out, err := svc.getRequest(fmt.Sprintf("%s/api/metadata/%s?type=marc", svc.TrackSysURL, md.PID))
+	out, err := svc.getRequest(fmt.Sprintf("%s/api/metadata/%s?type=marc", svc.TrackSys.API, md.PID))
 	if err != nil {
 		return nil, fmt.Errorf("%d:%s", err.StatusCode, err.Message)
 	}

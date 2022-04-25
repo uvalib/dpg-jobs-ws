@@ -22,6 +22,7 @@ cd bin; ./dpg-jobs-ws              \
   -smtppass   ${SMPT_PASS}         \
   -smtpsender ${SMPT_SENDER}       \
   -tsapi      ${TSAPI}             \
+  -tsadmin    ${TSADMIN}           \
   -reindex    ${REINDEX}
 
 # return the status
