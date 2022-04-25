@@ -105,7 +105,7 @@ func (svc *ServiceContext) iiifPath(mf *masterFile) iiifPathInfo {
 	pidDirs := strings.Join(parts, "/")
 	return iiifPathInfo{
 		fileName:     jp2kFilename,
-		basePath:     path.Join(svc.IIIFDir, pidParts[0], pidDirs),
-		absolutePath: path.Join(svc.IIIFDir, pidParts[0], pidDirs, jp2kFilename),
+		basePath:     path.Join(svc.IIIF.Dir, pidParts[0], pidDirs),
+		absolutePath: path.Join(svc.IIIF.Dir, pidParts[0], pidDirs, jp2kFilename),
 	}
 }

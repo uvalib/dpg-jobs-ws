@@ -108,9 +108,13 @@ func (svc *ServiceContext) finalizeUnit(c *gin.Context) {
 		// end
 
 		// Flag unit for Virgo publication?
-		// if @unit.include_in_dl
-		// 	Virgo.publish(@unit, logger)
-		// end
+		if tgtUnit.IncludeInDL {
+			err = svc.publishToVirgo(js, &tgtUnit)
+			if err != nil {
+				svc.setUnitFatal(js, &tgtUnit, err.Error())
+				return
+			}
+		}
 
 		// If desc is not digital collection building, create patron deliverables regardless of any other settings
 		if tgtUnit.IntendedUse.ID != 110 {

@@ -9,6 +9,7 @@ cd bin; ./dpg-jobs-ws              \
   -archive    ${DPG_ARCHIVE_PATH}  \
   -delivery   ${DPG_DELIVERY_PATH} \
   -iiif       ${DPG_IIIF_PATH}     \
+  -iiifman    ${IIIF_MAN}          \
   -work       ${DPG_WORK_PATH}     \
   -dbhost     ${DBHOST}            \
   -dbport     ${DBPORT}            \
@@ -20,7 +21,8 @@ cd bin; ./dpg-jobs-ws              \
   -smtpuser   ${SMPT_USER}         \
   -smtppass   ${SMPT_PASS}         \
   -smtpsender ${SMPT_SENDER}       \
-  -tsapi      ${TSAPI}
+  -tsapi      ${TSAPI}             \
+  -reindex    ${REINDEX}
 
 # return the status
 exit $?

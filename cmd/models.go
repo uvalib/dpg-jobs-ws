@@ -98,6 +98,7 @@ type metadata struct {
 	Type                 string
 	Title                string
 	CreatorName          string
+	CatalogKey           string
 	CallNumber           string
 	Barcoode             string
 	IsPersonalItem       bool

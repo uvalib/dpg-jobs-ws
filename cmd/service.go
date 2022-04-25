@@ -37,10 +37,11 @@ type ServiceContext struct {
 	SMTP          SMTPConfig
 	GDB           *gorm.DB
 	ArchiveDir    string
-	IIIFDir       string
+	IIIF          IIIFConfig
 	ProcessingDir string
 	DeliveryDir   string
 	TrackSysURL   string
+	ReindexURL    string
 	HTTPClient    *http.Client
 	Templates     htmlTemplates
 }
@@ -56,10 +57,11 @@ func InitializeService(version string, cfg *ServiceConfig) *ServiceContext {
 	ctx := ServiceContext{Version: version,
 		SMTP:          cfg.SMTP,
 		ArchiveDir:    cfg.ArchiveDir,
-		IIIFDir:       cfg.IIIFDir,
+		IIIF:          cfg.IIIF,
 		DeliveryDir:   cfg.DeliveryDir,
 		ProcessingDir: cfg.ProcessingDir,
 		TrackSysURL:   cfg.TrackSysURL,
+		ReindexURL:    cfg.ReindexURL,
 	}
 
 	log.Printf("INFO: connecting to DB...")
@@ -152,9 +154,16 @@ func (svc *ServiceContext) healthCheck(c *gin.Context) {
 }
 
 func (svc *ServiceContext) getRequest(url string) ([]byte, *RequestError) {
-	log.Printf("POST request: %s", url)
+	return svc.sendRequest("GET", url)
+}
+func (svc *ServiceContext) putRequest(url string) ([]byte, *RequestError) {
+	return svc.sendRequest("PUT", url)
+}
+
+func (svc *ServiceContext) sendRequest(verb string, url string) ([]byte, *RequestError) {
+	log.Printf("%s request: %s", verb, url)
 	startTime := time.Now()
-	req, _ := http.NewRequest("GET", url, nil)
+	req, _ := http.NewRequest(verb, url, nil)
 	httpClient := svc.HTTPClient
 	rawResp, rawErr := httpClient.Do(req)
 	resp, err := handleAPIResponse(url, rawResp, rawErr)

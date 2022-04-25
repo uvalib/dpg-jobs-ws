@@ -24,16 +24,23 @@ type SMTPConfig struct {
 	FakeSMTP bool
 }
 
+// IIIFConfig contains the configuration data for the IIIF server
+type IIIFConfig struct {
+	Dir string
+	URL string
+}
+
 // ServiceConfig defines all of the JRML pool configuration parameters
 type ServiceConfig struct {
 	Port          int
 	SMTP          SMTPConfig
 	DB            DBConfig
 	ArchiveDir    string
-	IIIFDir       string
+	IIIF          IIIFConfig
 	ProcessingDir string
 	DeliveryDir   string
 	TrackSysURL   string
+	ReindexURL    string
 }
 
 // LoadConfiguration will load the service configuration from the commandline
@@ -45,9 +52,13 @@ func LoadConfiguration() *ServiceConfig {
 
 	flag.StringVar(&cfg.ArchiveDir, "archive", "", "Archive directory")
 	flag.StringVar(&cfg.DeliveryDir, "delivery", "", "Delivery directory")
-	flag.StringVar(&cfg.IIIFDir, "iiif", "", "IIIF directory")
 	flag.StringVar(&cfg.ProcessingDir, "work", "", "Processing directory")
 	flag.StringVar(&cfg.TrackSysURL, "tsapi", "https://tracksys-api-ws.internal.lib.virginia.edu", "URL for TrackSys API")
+	flag.StringVar(&cfg.ReindexURL, "reindex", "https://virgo4-sirsi-cache-reprocess-ws.internal.lib.virginia.edu", "Reindex URL")
+
+	// IIIF
+	flag.StringVar(&cfg.IIIF.Dir, "iiif", "", "IIIF directory")
+	flag.StringVar(&cfg.IIIF.URL, "iiifman", "https://iiifman.lib.virginia.edu", "IIIF manifest URL")
 
 	// SMTP
 	flag.BoolVar(&cfg.SMTP.FakeSMTP, "stubsmtp", false, "Log email insted of sending (dev mode)")
@@ -84,7 +95,7 @@ func LoadConfiguration() *ServiceConfig {
 	if cfg.DeliveryDir == "" {
 		log.Fatal("Parameter delivery is required")
 	}
-	if cfg.IIIFDir == "" {
+	if cfg.IIIF.Dir == "" {
 		log.Fatal("Parameter iif is required")
 	}
 	if cfg.ProcessingDir == "" {
@@ -99,8 +110,10 @@ func LoadConfiguration() *ServiceConfig {
 	log.Printf("[CONFIG] dbuser        = [%s]", cfg.DB.User)
 	log.Printf("[CONFIG] archive       = [%s]", cfg.ArchiveDir)
 	log.Printf("[CONFIG] delivery      = [%s]", cfg.DeliveryDir)
-	log.Printf("[CONFIG] iiif          = [%s]", cfg.IIIFDir)
+	log.Printf("[CONFIG] iiif          = [%s]", cfg.IIIF.Dir)
+	log.Printf("[CONFIG] iiifman       = [%s]", cfg.IIIF.URL)
 	log.Printf("[CONFIG] work          = [%s]", cfg.ProcessingDir)
+	log.Printf("[CONFIG] reindex       = [%s]", cfg.ReindexURL)
 
 	if cfg.SMTP.FakeSMTP {
 		log.Printf("[CONFIG] fakesmtp      = [true]")
