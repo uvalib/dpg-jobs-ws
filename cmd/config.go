@@ -122,6 +122,8 @@ func LoadConfiguration() *ServiceConfig {
 	log.Printf("[CONFIG] iiifman       = [%s]", cfg.IIIF.URL)
 	log.Printf("[CONFIG] work          = [%s]", cfg.ProcessingDir)
 	log.Printf("[CONFIG] reindex       = [%s]", cfg.ReindexURL)
+	log.Printf("[CONFIG] tsadmin       = [%s]", cfg.TrackSys.Admin)
+	log.Printf("[CONFIG] tsapi         = [%s]", cfg.TrackSys.API)
 
 	if cfg.SMTP.FakeSMTP {
 		log.Printf("[CONFIG] fakesmtp      = [true]")
