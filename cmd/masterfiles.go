@@ -180,7 +180,7 @@ func (svc *ServiceContext) deleteMasterFiles(c *gin.Context) {
 		}
 
 		delCount := uint(len(req.Filenames))
-		unitDir := padLeft(c.Param("id"), 9)
+		unitDir := fmt.Sprintf("%09d", unitID)
 		tgtFN := req.Filenames[0]
 		req.Filenames = req.Filenames[1:]
 		for _, mf := range tgtUnit.MasterFiles {
@@ -292,8 +292,7 @@ func (svc *ServiceContext) addMasterFiles(c *gin.Context) {
 			return
 		}
 
-		unitDir := padLeft(c.Param("id"), 9)
-		srcDir := path.Join(svc.ProcessingDir, "finalization", "unit_update", unitDir)
+		srcDir := path.Join(svc.ProcessingDir, "finalization", "unit_update", fmt.Sprintf("%09d", tgtUnit.ID))
 		svc.logInfo(js, fmt.Sprintf("Looking for new *.tif files in %s", srcDir))
 		files, err := getTifFiles(srcDir, unitID)
 		if err != nil {
@@ -493,7 +492,7 @@ func (svc *ServiceContext) makeGapForInsertion(js *jobStatus, tgtUnit *unit, tif
 		origFN := mf.Filename
 		origPageNum := getMasterFilePageNum(origFN)
 		newPageNum := origPageNum + gapSize
-		paddedPageNum := padLeft(fmt.Sprintf("%d", newPageNum), 4)
+		paddedPageNum := fmt.Sprintf("%04d", newPageNum)
 		newFN := fmt.Sprintf("%s_%s.tif", strings.Split(origFN, "_")[0], paddedPageNum)
 		newTitle := mf.Title
 		titleInt, _ := strconv.Atoi(newTitle)

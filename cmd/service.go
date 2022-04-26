@@ -204,15 +204,6 @@ func handleAPIResponse(logURL string, resp *http.Response, err error) ([]byte, *
 	return bodyBytes, nil
 }
 
-func padLeft(str string, tgtLen int) string {
-	for {
-		if len(str) == tgtLen {
-			return str
-		}
-		str = "0" + str
-	}
-}
-
 func md5Checksum(filename string) string {
 	if pathExists(filename) {
 		data, _ := os.ReadFile(filename)
