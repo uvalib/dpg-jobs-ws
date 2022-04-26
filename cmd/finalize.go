@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -13,6 +14,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 )
 
 func (svc *ServiceContext) finalizeUnit(c *gin.Context) {
@@ -24,6 +26,7 @@ func (svc *ServiceContext) finalizeUnit(c *gin.Context) {
 		return
 	}
 
+	// preconditions for starting job; unit exists and is in a valid state and not a reorder
 	var tgtUnit unit
 	err = svc.GDB.Preload("Metadata").Preload("Metadata.OcrHint").
 		Preload("Order").Preload("IntendedUse").First(&tgtUnit, unitID).Error
@@ -32,22 +35,23 @@ func (svc *ServiceContext) finalizeUnit(c *gin.Context) {
 		c.String(http.StatusBadRequest, err.Error())
 		return
 	}
-
+	if tgtUnit.UnitStatus == "finalizing" {
+		svc.logFatal(js, "Unit is already finalizing.")
+		c.String(http.StatusBadRequest, err.Error())
+		return
+	}
 	if tgtUnit.Reorder {
 		svc.logFatal(js, "Unit is a re-order and should not be finalized.")
-		c.String(http.StatusBadRequest, "unit is a reorder and cannot be finalized")
+		c.String(http.StatusBadRequest, err.Error())
 		return
 	}
 
+	// log the start / restart of finalization
 	act := "begins"
 	if tgtUnit.UnitStatus == "error" {
 		act = "restarts"
 	}
-	if tgtUnit.ProjectID != nil {
-		svc.logInfo(js, fmt.Sprintf("Project %d, unit %d %s finalization.", *tgtUnit.ProjectID, unitID, act))
-	} else {
-		svc.logInfo(js, fmt.Sprintf("Unit %d %s finalization without project.", unitID, act))
-	}
+	svc.logInfo(js, fmt.Sprintf("Unit %d %s finalization", unitID, act))
 
 	go func() {
 		defer func() {
@@ -61,13 +65,7 @@ func (svc *ServiceContext) finalizeUnit(c *gin.Context) {
 		svc.logInfo(js, "Check for presence of finalization directory")
 		srcDir := path.Join(svc.ProcessingDir, "finalization", fmt.Sprintf("%09d", unitID))
 		if pathExists(srcDir) == false {
-			svc.setUnitFatal(js, &tgtUnit, fmt.Sprintf("Finalization directory %s does not exist", srcDir))
-			return
-		}
-
-		svc.logInfo(js, "Manage unit status")
-		if tgtUnit.UnitStatus == "finalizing" {
-			svc.logFatal(js, "Unit is already finalizing.")
+			svc.setUnitFatal(js, &tgtUnit, fmt.Sprintf("Finalization directory %s does not exist. FAKE ERROR", srcDir))
 			return
 		}
 
@@ -75,7 +73,7 @@ func (svc *ServiceContext) finalizeUnit(c *gin.Context) {
 			svc.GDB.Model(order{ID: tgtUnit.OrderID}).Update("date_finalization_begun", time.Now())
 			svc.logInfo(js, fmt.Sprintf("Date Finalization Begun updated for order %d", tgtUnit.OrderID))
 		} else if tgtUnit.UnitStatus != "error" {
-			svc.logFatal(js, "Unit has not been approved.")
+			svc.setUnitFatal(js, &tgtUnit, "Unit has not been approved.")
 			return
 		}
 		svc.setUnitStatus(&tgtUnit, "finalizing")
@@ -100,12 +98,13 @@ func (svc *ServiceContext) finalizeUnit(c *gin.Context) {
 			return
 		}
 
-		// # If OCR has been requested, do it AFTER archive (OCR requires tif to be in archive)
-		// # but before deliverable generation (deliverables require OCR text to be present)
-		// if @unit.ocr_master_files
-		// 	OCR.synchronous(@unit, self)
-		// 	@unit.reload
-		// end
+		// If OCR has been requested, do it AFTER archive (OCR requires tif to be in archive)
+		// but before deliverable generation (deliverables require OCR text to be present)
+		if tgtUnit.OcrMasterFiles {
+			// TODO
+			// OCR.synchronous(@unit, self)
+			// @unit.reload
+		}
 
 		// Flag unit for Virgo publication?
 		if tgtUnit.IncludeInDL {
@@ -149,16 +148,16 @@ func (svc *ServiceContext) finalizeUnit(c *gin.Context) {
 			}
 		}
 
-		// At this point, finalization has completed successfully and project is done
-		if tgtUnit.ProjectID == nil {
-			svc.logInfo(js, "Unit finished finalization")
-		} else {
-			svc.logInfo(js, fmt.Sprintf("Unit finished finalization, updating project %d", *tgtUnit.ProjectID))
-			//    @project.finalization_success( status() )
+		// At this point, finalization has completed and project (if it exists) can be validated.
+		// any project validation failures will fail the finalization job. for units that have no projects,
+		// finalization is done now and will be marked as successful
+		err = svc.unitFinishedFinalization(js, &tgtUnit)
+		if err != nil {
+			svc.setUnitFatal(js, &tgtUnit, err.Error())
+			return
 		}
-		svc.setUnitStatus(&tgtUnit, "done")
 
-		// Cleanup any tmo directories and move unit to ready_to_delete
+		// Cleanup any tmo directories and move unit to ready_to_delete, then end the outstanding job
 		svc.cleanupWorkDirectories(js, tgtUnit.ID)
 		svc.jobDone(js)
 	}()
@@ -166,102 +165,33 @@ func (svc *ServiceContext) finalizeUnit(c *gin.Context) {
 	c.String(http.StatusOK, fmt.Sprintf("%d", js.ID))
 }
 
-/*
-   # Finalization of the associated unit was successful
-   #
-   def finalization_success(job)
-      Rails.logger.info("Project [#{self.project_name}] completed finalization")
-      processing_mins = ((Time.now - job.started_at)/60.0).round
-      validate_finalization(processing_mins)
-   end
-
-	def validate_finalization(processing_mins)
-      Rails.logger.info("Validating finalized unit")
-      if !unit.throw_away
-         if unit.date_archived.nil?
-            validation_failed("Unit was not archived")
-            return
-         end
-
-         # archive OK; make sure masterfiles all have metadata (tech and desc)
-         # and that the archived file count matches masterfile count
-         archive_dir = File.join(ARCHIVE_DIR, unit.directory)
-         archived_tif_count = Dir[File.join(archive_dir, '*.tif')].count
-         if archived_tif_count == 0
-            validation_failed("No tif files found in archive")
-            return
-         end
-      end
-
-      mf_count = 0
-      unit.master_files.each do |mf|
-         mf_count += 1
-         if mf.metadata.nil?
-            validation_failed("Masterfile #{mf.filename} missing desc metadata")
-            return
-         end
-         if mf.image_tech_meta.nil?
-            validation_failed("Masterfile #{mf.filename} missing tech metadata")
-            return
-         end
-      end
-
-      if !unit.throw_away
-         if archived_tif_count != mf_count
-            validation_failed("MasterFile / tif count mismatch. #{archived_tif_count} tif files vs #{mf_count} MasterFiles")
-            return
-         end
-      end
-
-      # deliverables ready (patron or dl)
-      if unit.intended_use_id == 110
-         if unit.date_dl_deliverables_ready.nil? && unit.include_in_dl
-            validation_failed("DL deliverables ready date not set")
-            return
-         end
-      else
-         if unit.date_patron_deliverables_ready.nil?
-            validation_failed("Patron deliverables ready date not set")
-            return
-         end
-      end
-
-      # Validations all passed, complete the workflow
-      Rails.logger.info("Workflow [#{self.workflow.name}] is now complete")
-      # self.active_assignment.update(finished_at: Time.now, status: :finished)
-      self.update(finished_at: Time.now, owner: nil, current_step: nil)
-      qa_mins = self.active_assignment.duration_minutes
-      qa_mins = 0 if qa_mins.nil?
-      Rails.logger.info("Project [#{self.project_name}] finalization minutes: #{processing_mins}, prior minutes: #{qa_mins}")
-      self.active_assignment.update(finished_at: Time.now, status: :finished, duration_minutes: (processing_mins+qa_mins) )
-   end
-end
-
-   # Finalzation of the associated unit failed
-   #
-   def finalization_failure(job)
-      Rails.logger.error("Project [#{self.project_name}] FAILED finalization")
-
-      # Fail the step and increase time spent
-      processing_mins = ((job.ended_at - job.started_at)/60.0).round
-      qa_mins = self.active_assignment.duration_minutes
-      qa_mins = 0 if qa_mins.nil?
-      Rails.logger.info("Project [#{self.project_name}] finalization minutes: #{processing_mins}, prior minutes: #{qa_mins}")
-      self.active_assignment.update(duration_minutes: (processing_mins+qa_mins), status: :error )
-
-      # Add a problem note with a summary of the issue
-      prob = Problem.find(6) # Finalization
-      msg = "<p>#{job.error}</p>"
-      msg << "<p>Please manually correct the finalization problems. Once complete, press the Finish button to restart finalization.</p>"
-      msg << "<p>Error details <a href='/admin/job_statuses/#{job.id}'>here</a></p>"
-      note = Note.create(staff_member: self.owner, project: self, note_type: :problem, note: msg, step: self.current_step )
-      note.problems << prob
-   end
-*/
-
 func (svc *ServiceContext) setUnitFatal(js *jobStatus, tgtUnit *unit, errMsg string) {
 	svc.setUnitStatus(tgtUnit, "error")
 	svc.logFatal(js, errMsg)
+
+	var currProj project
+	err := svc.GDB.Preload("Notes").Where("unit_id=?", tgtUnit.ID).First(&currProj).Error
+	if err == nil {
+		svc.projectFailedFinalization(js, &currProj)
+	}
+}
+
+func (svc *ServiceContext) unitFinishedFinalization(js *jobStatus, tgtUnit *unit) error {
+	var currProj project
+	err := svc.GDB.Where("unit_id=?", tgtUnit.ID).First(&currProj).Error
+	if err != nil {
+		// no unit found. this is fine, just call it done
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			svc.logInfo(js, "Unit finished finalization")
+			svc.setUnitStatus(tgtUnit, "done")
+			return nil
+		}
+		// some other error occurred... return it. this will fail finalization
+		return fmt.Errorf("error looking up project for unit %d: %s", tgtUnit.ID, err.Error())
+	}
+
+	// a project is associated, walk through some final project validations. any errors will fail finalization.
+	return svc.projectFinishedFinalization(js, &currProj, tgtUnit)
 }
 
 func (svc *ServiceContext) setUnitStatus(tgtUnit *unit, status string) {
