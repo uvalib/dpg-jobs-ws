@@ -75,7 +75,7 @@ func (svc *ServiceContext) projectFailedFinalization(js *jobStatus, currProj *pr
 func (svc *ServiceContext) projectFinishedFinalization(js *jobStatus, currProj *project, tgtUnit *unit) error {
 	log.Printf("INFO: Project [%d] completed finalization", currProj.ID)
 	startTime := *js.StartedAt
-	endTime := *js.EndedAt
+	endTime := time.Now()
 	diff := endTime.Sub(startTime)
 	processingMins := uint(math.Round(diff.Seconds() / 60.0))
 
@@ -164,7 +164,7 @@ func (svc *ServiceContext) addFinalizeFailNote(currProj *project, message string
 		newNote.StepID = *currProj.CurrentStepID
 	}
 	if currProj.OwnerID != nil {
-		newNote.StepID = *currProj.OwnerID
+		newNote.StaffMemberID = *currProj.OwnerID
 	}
 	err := svc.GDB.Model(currProj).Association("Notes").Append(&newNote)
 	if err != nil {
