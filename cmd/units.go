@@ -372,7 +372,7 @@ func (svc *ServiceContext) unitImagesAvailable(js *jobStatus, tgtUnit *unit, uni
 		ensureDirExists(unitDir, 0775)
 		return false
 	}
-	files, err := getTifFiles(unitDir, tgtUnit.ID)
+	files, err := svc.getTifFiles(js, unitDir, tgtUnit.ID)
 	if err != nil {
 		svc.logError(js, fmt.Sprintf("Unable to read tif files from %s: %s", unitDir, err.Error()))
 		return false

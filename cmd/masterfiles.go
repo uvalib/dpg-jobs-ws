@@ -27,7 +27,7 @@ func (svc *ServiceContext) replaceMasterFiles(c *gin.Context) {
 		unitDir := fmt.Sprintf("%09d", unitID)
 		srcDir := path.Join(svc.ProcessingDir, "finalization", "unit_update", unitDir)
 		svc.logInfo(js, fmt.Sprintf("Looking for new *.tif files in %s", srcDir))
-		files, err := getTifFiles(srcDir, unitID)
+		files, err := svc.getTifFiles(js, srcDir, unitID)
 		if err != nil {
 			svc.logFatal(js, fmt.Sprintf("Unable to get .tif files in %s: %s", srcDir, err.Error()))
 			return
@@ -294,7 +294,7 @@ func (svc *ServiceContext) addMasterFiles(c *gin.Context) {
 
 		srcDir := path.Join(svc.ProcessingDir, "finalization", "unit_update", fmt.Sprintf("%09d", tgtUnit.ID))
 		svc.logInfo(js, fmt.Sprintf("Looking for new *.tif files in %s", srcDir))
-		files, err := getTifFiles(srcDir, unitID)
+		files, err := svc.getTifFiles(js, srcDir, unitID)
 		if err != nil {
 			svc.logFatal(js, fmt.Sprintf("Unable to get .tif files in %s: %s", srcDir, err.Error()))
 			return

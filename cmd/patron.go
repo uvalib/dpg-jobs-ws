@@ -27,7 +27,7 @@ func (svc *ServiceContext) createPatronPDF(js *jobStatus, tgtUnit *unit) error {
 	os.Remove(pdfPath)
 
 	unitDir := path.Join(svc.ProcessingDir, "finalization", fmt.Sprintf("%09d", tgtUnit.ID))
-	tifFiles, err := getTifFiles(unitDir, tgtUnit.ID)
+	tifFiles, err := svc.getTifFiles(js, unitDir, tgtUnit.ID)
 	if err != nil {
 		return fmt.Errorf("Unable to read tif files from %s: %s", unitDir, err.Error())
 	}

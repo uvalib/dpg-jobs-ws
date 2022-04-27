@@ -287,7 +287,8 @@ type tifInfo struct {
 	size     int64
 }
 
-func getTifFiles(srcDir string, unitID int64) ([]tifInfo, error) {
+func (svc *ServiceContext) getTifFiles(js *jobStatus, srcDir string, unitID int64) ([]tifInfo, error) {
+	svc.logInfo(js, fmt.Sprintf("Get all .tif files from %s", srcDir))
 	tifFiles := make([]tifInfo, 0)
 	mfRegex := regexp.MustCompile(fmt.Sprintf(`^%09d_\w{4,}\.tif$`, unitID))
 	err := filepath.Walk(srcDir, func(fullPath string, entry os.FileInfo, err error) error {
@@ -301,9 +302,6 @@ func getTifFiles(srcDir string, unitID int64) ([]tifInfo, error) {
 		if !mfRegex.Match([]byte(entry.Name())) {
 			return fmt.Errorf("invalid file in %s: %s", srcDir, entry.Name())
 		}
-		test := filepath.Dir(fullPath)
-		test = test[len(srcDir)+1:]
-		log.Printf(test)
 		tifFiles = append(tifFiles, tifInfo{path: fullPath, filename: entry.Name(), size: entry.Size()})
 		return nil
 	})

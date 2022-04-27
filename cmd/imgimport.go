@@ -46,7 +46,7 @@ func (svc *ServiceContext) importImages(js *jobStatus, tgtUnit *unit, srcDir str
 
 	// iterate through all of the .tif files in the unit directory
 	mfCount := 0
-	tifFiles, err := getTifFiles(srcDir, tgtUnit.ID)
+	tifFiles, err := svc.getTifFiles(js, srcDir, tgtUnit.ID)
 	if err != nil {
 		return err
 	}
@@ -158,7 +158,7 @@ func (svc *ServiceContext) importImages(js *jobStatus, tgtUnit *unit, srcDir str
 		subDirs = subDirs[len(srcDir)+1:]
 		unitProj, _ := svc.getUnitProject(tgtUnit.ID)
 		if newMF.location() == nil && unitProj != nil {
-			svc.logInfo(js, fmt.Sprintf("Creating location metadata based on subdirs [%s]", subDirs))
+			svc.logInfo(js, fmt.Sprintf("Sub directories exist for this masterfile: %s", subDirs))
 			if unitProj.ContainerTypeID == nil {
 				svc.logInfo(js, "Location data available, but container type not set. Defaulting to box")
 				firstContainerID := int64(1) // default to first; box
@@ -222,9 +222,9 @@ func extractTifMetadata(tifPath string) (*tifMetadata, error) {
 	}
 	return &out, nil
 }
-
 func (svc *ServiceContext) findOrCreateLocation(js *jobStatus, mdID int64, ctID int64, baseDir, subDir string) (*location, error) {
-	bits := strings.Split("/", subDir)
+	svc.logInfo(js, fmt.Sprintf("Find or create location based on %s", subDir))
+	bits := strings.Split(subDir, "/")
 	var tgtLoc location
 	err := svc.GDB.Where("metadata_id=?", mdID).Where("container_type_id=?", ctID).
 		Where("container_id=?", bits[0]).Where("folder_id=?", bits[1]).

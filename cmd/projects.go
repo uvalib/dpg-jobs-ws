@@ -43,8 +43,6 @@ type project struct {
 	ContainerTypeID *int64
 	FinishedAt      *time.Time
 	Notes           []*note `gorm:"foreignKey:ProjectID"`
-	CreatedAt       time.Time
-	UpdatedAt       time.Time
 }
 
 func (svc *ServiceContext) projectFailedFinalization(js *jobStatus, currProj *project) {
@@ -101,7 +99,7 @@ func (svc *ServiceContext) projectFinishedFinalization(js *jobStatus, currProj *
 			return fmt.Errorf("unit was not archived")
 		}
 		archiveDir := path.Join(svc.ArchiveDir, fmt.Sprintf("%09d", tgtUnit.ID))
-		tifFiles, _ := getTifFiles(archiveDir, tgtUnit.ID)
+		tifFiles, _ := svc.getTifFiles(js, archiveDir, tgtUnit.ID)
 		if len(tifFiles) == 0 {
 			svc.validationFailed(currProj, &activeAssign, "No tif files found in archive")
 			return fmt.Errorf("No tif files found in archive")
