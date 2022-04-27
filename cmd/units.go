@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -10,6 +11,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 )
 
 func (svc *ServiceContext) attachFile(c *gin.Context) {
@@ -376,4 +378,17 @@ func (svc *ServiceContext) unitImagesAvailable(js *jobStatus, tgtUnit *unit, uni
 		return false
 	}
 	return len(files) == len(tgtUnit.MasterFiles)
+}
+
+func (svc *ServiceContext) getUnitProject(unitID int64) (*project, error) {
+	var currProj project
+	err := svc.GDB.Preload("Notes").Where("unit_id=?", unitID).First(&currProj).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			// normal - the unit has no associated project
+			return nil, nil
+		}
+		return nil, err
+	}
+	return &currProj, nil
 }

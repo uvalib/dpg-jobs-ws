@@ -1,7 +1,6 @@
 package main
 
 import (
-	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -14,7 +13,6 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"gorm.io/gorm"
 )
 
 func (svc *ServiceContext) finalizeUnit(c *gin.Context) {
@@ -169,29 +167,30 @@ func (svc *ServiceContext) setUnitFatal(js *jobStatus, tgtUnit *unit, errMsg str
 	svc.setUnitStatus(tgtUnit, "error")
 	svc.logFatal(js, errMsg)
 
-	var currProj project
-	err := svc.GDB.Preload("Notes").Where("unit_id=?", tgtUnit.ID).First(&currProj).Error
-	if err == nil {
-		svc.projectFailedFinalization(js, &currProj)
+	currProj, err := svc.getUnitProject(tgtUnit.ID)
+	if err != nil {
+		svc.logError(js, fmt.Sprintf("Project lookup failed: %s", err.Error()))
+		return
+	}
+	if currProj != nil {
+		svc.projectFailedFinalization(js, currProj)
 	}
 }
 
 func (svc *ServiceContext) unitFinishedFinalization(js *jobStatus, tgtUnit *unit) error {
-	var currProj project
-	err := svc.GDB.Where("unit_id=?", tgtUnit.ID).First(&currProj).Error
+	currProj, err := svc.getUnitProject(tgtUnit.ID)
 	if err != nil {
-		// no unit found. this is fine, just call it done
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			svc.logInfo(js, "Unit finished finalization")
-			svc.setUnitStatus(tgtUnit, "done")
-			return nil
-		}
-		// some other error occurred... return it. this will fail finalization
-		return fmt.Errorf("error looking up project for unit %d: %s", tgtUnit.ID, err.Error())
+		return fmt.Errorf("error looking up project: %s", err.Error())
+	}
+
+	if currProj == nil {
+		svc.logInfo(js, "Unit finished finalization")
+		svc.setUnitStatus(tgtUnit, "done")
+		return nil
 	}
 
 	// a project is associated, walk through some final project validations. any errors will fail finalization.
-	return svc.projectFinishedFinalization(js, &currProj, tgtUnit)
+	return svc.projectFinishedFinalization(js, currProj, tgtUnit)
 }
 
 func (svc *ServiceContext) setUnitStatus(tgtUnit *unit, status string) {
