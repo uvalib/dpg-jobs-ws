@@ -289,23 +289,27 @@ type tifInfo struct {
 
 func getTifFiles(srcDir string, unitID int64) ([]tifInfo, error) {
 	tifFiles := make([]tifInfo, 0)
-	files, err := ioutil.ReadDir(srcDir)
-	if err != nil {
-		return nil, fmt.Errorf("unable to read %s: %s", srcDir, err.Error())
-	}
-
 	mfRegex := regexp.MustCompile(fmt.Sprintf(`^%09d_\w{4,}\.tif$`, unitID))
-	for _, fi := range files {
-		fName := fi.Name()
-		if strings.Index(fName, ".tif") > -1 {
-			if !mfRegex.Match([]byte(fName)) {
-				return nil, fmt.Errorf("invalid tif file name: %s for unit %d", fName, unitID)
-
-			}
-			tifFiles = append(tifFiles, tifInfo{path: path.Join(srcDir, fName), filename: fName, size: fi.Size()})
+	err := filepath.Walk(srcDir, func(fullPath string, entry os.FileInfo, err error) error {
+		if err != nil || entry.IsDir() {
+			return nil
 		}
+		ext := filepath.Ext(entry.Name())
+		if ext != ".tif" {
+			return nil
+		}
+		if !mfRegex.Match([]byte(entry.Name())) {
+			return fmt.Errorf("invalid file in %s: %s", srcDir, entry.Name())
+		}
+		test := filepath.Dir(fullPath)
+		test = test[len(srcDir)+1:]
+		log.Printf(test)
+		tifFiles = append(tifFiles, tifInfo{path: fullPath, filename: entry.Name(), size: entry.Size()})
+		return nil
+	})
+	if err != nil {
+		return nil, err
 	}
-
 	return tifFiles, nil
 }
 

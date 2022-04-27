@@ -37,11 +37,14 @@ type assignment struct {
 }
 
 type project struct {
-	ID            int64
-	OwnerID       *int64
-	CurrentStepID *int64
-	FinishedAt    *time.Time
-	Notes         []*note `gorm:"foreignKey:ProjectID"`
+	ID              int64
+	OwnerID         *int64
+	CurrentStepID   *int64
+	ContainerTypeID *int64
+	FinishedAt      *time.Time
+	Notes           []*note `gorm:"foreignKey:ProjectID"`
+	CreatedAt       time.Time
+	UpdatedAt       time.Time
 }
 
 func (svc *ServiceContext) projectFailedFinalization(js *jobStatus, currProj *project) {

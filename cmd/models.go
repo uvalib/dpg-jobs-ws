@@ -121,9 +121,12 @@ type containerType struct {
 
 type location struct {
 	ID              int64
+	MetadataID      int64 `gorm:"column:metadata_id"`
 	ContainerTypeID int64
 	ContainerType   containerType `gorm:"foreignKey:ContainerTypeID"`
+	ContainerID     string        `gorm:"column:container_id"`
 	FolderID        string        `gorm:"column:folder_id"`
+	Notes           string
 }
 
 type imageTechMeta struct {

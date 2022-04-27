@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"os/exec"
@@ -10,6 +11,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"gorm.io/gorm"
 )
 
 type tifMetadata struct {
@@ -103,60 +106,74 @@ func (svc *ServiceContext) importImages(js *jobStatus, tgtUnit *unit, srcDir str
 			svc.logInfo(js, "Image tech metadata already exists")
 		}
 
-		if tgtUnit.Reorder == false {
-			err = svc.publishToIIIF(js, &newMF, fi.path, false)
+		if tgtUnit.Reorder {
+			continue
+		}
+
+		err = svc.publishToIIIF(js, &newMF, fi.path, false)
+		if err != nil {
+			return fmt.Errorf("IIIF publish failed: %s", err.Error())
+		}
+
+		if tgtUnit.ThrowAway == false && tgtUnit.DateArchived == nil {
+			archiveMD5, err := svc.archiveFile(js, fi.path, tgtUnit.ID, fi.filename)
 			if err != nil {
-				return fmt.Errorf("IIIF publish failed: %s", err.Error())
+				return fmt.Errorf("Archive failed: %s", err.Error())
 			}
+			if archiveMD5 != newMF.MD5 {
+				svc.logError(js, "Archive MD5 does not match source MD5")
+			}
+		}
 
-			if tgtUnit.ThrowAway == false && tgtUnit.DateArchived == nil {
-				archiveMD5, err := svc.archiveFile(js, fi.path, tgtUnit.ID, fi.filename)
+		if tgtUnit.IntendedUse.ID != 110 && tgtUnit.IntendedUse.DeliverableFormat != "pdf" {
+			err = svc.createPatronDeliverable(js, tgtUnit, &newMF, fi.path, assembleDir, callNumber, location)
+			if err != nil {
+				return fmt.Errorf("Create patron deliverable failed: %s", err.Error())
+			}
+		}
+
+		// check for transcription text file
+		baseFN := strings.TrimSuffix(newMF.Filename, filepath.Ext(newMF.Filename))
+		textFilePath := path.Join(srcDir, fmt.Sprintf("%s.txt", baseFN))
+		if pathExists(textFilePath) {
+			svc.logInfo(js, fmt.Sprintf("Add transcription text for %s", fi.filename))
+			bytes, err := ioutil.ReadFile(textFilePath)
+			if err != nil {
+				svc.logError(js, fmt.Sprintf("Unable to read txt file %s: %s", textFilePath, err.Error()))
+			} else {
+				newMF.TranscriptionText = string(bytes)
+				svc.GDB.Model(&newMF).Select("TranscriptionText").Updates(newMF)
+			}
+		}
+
+		// fi.path is the full path to the image Strip out the srcDir and filename.
+		// The remaining bit will be the subdirectories or nothing.
+		// use this info to know if there is box/folder info encoded in the filename
+		// subdir structure: [box|oversize|tray].{box_name}/{folder_name} EXAMPLE: Created location metadata for [140/3]
+		subDirs := filepath.Dir(fi.path) // strip filename
+		if subDirs == srcDir {
+			// there are no subdirs, so there is no box/folder info. continue.
+			continue
+		}
+		subDirs = subDirs[len(srcDir)+1:]
+		unitProj, _ := svc.getUnitProject(tgtUnit.ID)
+		if newMF.location() == nil && unitProj != nil {
+			svc.logInfo(js, fmt.Sprintf("Creating location metadata based on subdirs [%s]", subDirs))
+			if unitProj.ContainerTypeID == nil {
+				svc.logInfo(js, "Location data available, but container type not set. Defaulting to box")
+				firstContainerID := int64(1) // default to first; box
+				unitProj.ContainerTypeID = &firstContainerID
+				svc.GDB.Model(unitProj).Select("ContainerTypeID").Updates(*unitProj)
+			}
+			loc, err := svc.findOrCreateLocation(js, *tgtUnit.MetadataID, *unitProj.ContainerTypeID, srcDir, subDirs)
+			if err != nil {
+				svc.logError(js, fmt.Sprintf("Unable to create location ofr %s: %s", newMF.Filename, err.Error()))
+			} else {
+				err = svc.GDB.Exec("INSERT into master_file_locations (master_file_id, location_id) values (?,?)", newMF.ID, loc.ID).Error
 				if err != nil {
-					return fmt.Errorf("Archive failed: %s", err.Error())
-				}
-				if archiveMD5 != newMF.MD5 {
-					svc.logError(js, "Archive MD5 does not match source MD5")
+					svc.logError(js, fmt.Sprintf("Unable to add location %d [%s] to %s: %s", loc.ID, subDirs, newMF.Filename, err.Error()))
 				}
 			}
-
-			if tgtUnit.IntendedUse.ID != 110 && tgtUnit.IntendedUse.DeliverableFormat != "pdf" {
-				err = svc.createPatronDeliverable(js, tgtUnit, &newMF, fi.path, assembleDir, callNumber, location)
-				if err != nil {
-					return fmt.Errorf("Create patron deliverable failed: %s", err.Error())
-				}
-			}
-
-			// check for transcription text file
-			baseFN := strings.TrimSuffix(newMF.Filename, filepath.Ext(newMF.Filename))
-			textFilePath := path.Join(srcDir, fmt.Sprintf("%s.txt", baseFN))
-			if pathExists(textFilePath) {
-				svc.logInfo(js, fmt.Sprintf("Add transcription text for %s", fi.filename))
-				bytes, err := ioutil.ReadFile(textFilePath)
-				if err != nil {
-					svc.logError(js, fmt.Sprintf("Unable to read txt file %s: %s", textFilePath, err.Error()))
-				} else {
-					newMF.TranscriptionText = string(bytes)
-					svc.GDB.Model(&newMF).Select("TranscriptionText").Updates(newMF)
-				}
-			}
-
-			// FIXME!!
-			// // mf_path is the full path to the image. Strip off the base
-			// // in_process dir. The remaining bit will be the subdirectory or nothing.
-			// // use this info to know if there is box/folder info encoded in the filename
-			// subdir_str = File.dirname( mf_path )[unit_path.length+1..-1]
-			// if !subdir_str.blank? && master_file.location.nil? && !unit.project.nil?
-			//    # subdir structure: [box|oversize|tray].{box_name}/{folder_name}
-			//    logger.info "Creating location metadata based on subdirs [#{subdir_str}]"
-			//    if unit.project.container_type.nil?
-			//       unit.project.container_type = ContainerType.first
-			//       unit.project.save!
-			//       logger.warn "Location data available, but container type not set. Defaulting to #{unit.project.container_type.name}"
-			//    end
-			//    location = Location.find_or_create(unit.metadata, unit.project.container_type, unit_path, subdir_str)
-			//    master_file.set_location(location)
-			//    logger.info "Created location metadata for [#{subdir_str}]"
-			// end
 		}
 	}
 
@@ -204,4 +221,36 @@ func extractTifMetadata(tifPath string) (*tifMetadata, error) {
 		out.Description = fmt.Sprintf("%v", parsedExif[0].Description)
 	}
 	return &out, nil
+}
+
+func (svc *ServiceContext) findOrCreateLocation(js *jobStatus, mdID int64, ctID int64, baseDir, subDir string) (*location, error) {
+	bits := strings.Split("/", subDir)
+	var tgtLoc location
+	err := svc.GDB.Where("metadata_id=?", mdID).Where("container_type_id=?", ctID).
+		Where("container_id=?", bits[0]).Where("folder_id=?", bits[1]).
+		First(&tgtLoc).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) == false {
+			return nil, err
+		}
+		tgtLoc = location{MetadataID: mdID, ContainerTypeID: ctID,
+			ContainerID: bits[0], FolderID: bits[1]}
+		notesFile := path.Join(baseDir, "notes.txt")
+		if pathExists(notesFile) {
+			bytes, err := ioutil.ReadFile(notesFile)
+			if err != nil {
+				svc.logError(js, fmt.Sprintf("Unable to read location notes file: %s", err.Error()))
+			} else {
+				tgtLoc.Notes = string(bytes)
+			}
+		}
+		err = svc.GDB.Create(&tgtLoc).Error
+		if err != nil {
+			return nil, err
+		}
+		svc.logInfo(js, fmt.Sprintf("Created location metadata for [%s]", subDir))
+	} else {
+		svc.logInfo(js, fmt.Sprintf("Found existing location metadata for [%s]", subDir))
+	}
+	return &tgtLoc, nil
 }
