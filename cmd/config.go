@@ -47,6 +47,7 @@ type ServiceConfig struct {
 	DeliveryDir   string
 	TrackSys      TrackSysConfig
 	ReindexURL    string
+	OcrURL        string
 }
 
 // LoadConfiguration will load the service configuration from the commandline
@@ -56,10 +57,14 @@ func LoadConfiguration() *ServiceConfig {
 	var cfg ServiceConfig
 	flag.IntVar(&cfg.Port, "port", 8080, "API service port (default 8080)")
 
+	// working directories
 	flag.StringVar(&cfg.ArchiveDir, "archive", "", "Archive directory")
 	flag.StringVar(&cfg.DeliveryDir, "delivery", "", "Delivery directory")
 	flag.StringVar(&cfg.ProcessingDir, "work", "", "Processing directory")
+
+	// other external services
 	flag.StringVar(&cfg.ReindexURL, "reindex", "https://virgo4-sirsi-cache-reprocess-ws.internal.lib.virginia.edu", "Reindex URL")
+	flag.StringVar(&cfg.OcrURL, "ocr", "http://docker1.lib.virginia.edu:8389/ocr", "OCR service URL")
 
 	// TrackSys
 	flag.StringVar(&cfg.TrackSys.API, "tsapi", "https://tracksys-api-ws.internal.lib.virginia.edu", "URL for TrackSys API")
@@ -122,6 +127,7 @@ func LoadConfiguration() *ServiceConfig {
 	log.Printf("[CONFIG] iiifman       = [%s]", cfg.IIIF.URL)
 	log.Printf("[CONFIG] work          = [%s]", cfg.ProcessingDir)
 	log.Printf("[CONFIG] reindex       = [%s]", cfg.ReindexURL)
+	log.Printf("[CONFIG] ocr           = [%s]", cfg.OcrURL)
 	log.Printf("[CONFIG] tsadmin       = [%s]", cfg.TrackSys.Admin)
 	log.Printf("[CONFIG] tsapi         = [%s]", cfg.TrackSys.API)
 

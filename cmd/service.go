@@ -42,6 +42,7 @@ type ServiceContext struct {
 	DeliveryDir   string
 	TrackSys      TrackSysConfig
 	ReindexURL    string
+	OcrURL        string
 	HTTPClient    *http.Client
 	Templates     htmlTemplates
 }
@@ -62,6 +63,7 @@ func InitializeService(version string, cfg *ServiceConfig) *ServiceContext {
 		ProcessingDir: cfg.ProcessingDir,
 		TrackSys:      cfg.TrackSys,
 		ReindexURL:    cfg.ReindexURL,
+		OcrURL:        cfg.OcrURL,
 	}
 
 	log.Printf("INFO: connecting to DB...")

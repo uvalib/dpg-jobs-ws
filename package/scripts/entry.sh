@@ -23,7 +23,8 @@ cd bin; ./dpg-jobs-ws              \
   -smtpsender ${SMPT_SENDER}       \
   -tsapi      ${TSAPI}             \
   -tsadmin    ${TSADMIN}           \
-  -reindex    ${REINDEX}
+  -reindex    ${REINDEX}           \
+  -ocr        ${DPG_OCR}
 
 # return the status
 exit $?
