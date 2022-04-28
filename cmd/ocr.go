@@ -47,6 +47,24 @@ func (svc *ServiceContext) requestOCR(js *jobStatus, tgtUnit *unit) error {
 func (svc *ServiceContext) ocrDoneCallback(c *gin.Context) {
 	jobID, _ := strconv.ParseInt(c.Param("jid"), 10, 64)
 	log.Printf("INFO: received ocr done callback for job %d", jobID)
+	defer func() {
+		// whatever happens, clear out the pending request when done
+		log.Printf("INFO: remove pending ocr job %d", jobID)
+		jsIdx := -1
+		for idx, jsID := range svc.OcrRequests {
+			if jsID == jobID {
+				jsIdx = idx
+				break
+			}
+		}
+
+		if jsIdx > -1 {
+			svc.OcrRequests = append(svc.OcrRequests[:jsIdx], svc.OcrRequests[jsIdx+1:]...)
+		} else {
+			log.Printf("ERROR: could npt find pending OCR job %d", jobID)
+		}
+	}()
+
 	var pendingJob jobStatus
 	err := svc.GDB.First(&pendingJob, jobID).Error
 	if err != nil {
@@ -72,18 +90,6 @@ func (svc *ServiceContext) ocrDoneCallback(c *gin.Context) {
 		svc.logInfo(&pendingJob, "OCR request completed successfully")
 	} else {
 		svc.logInfo(&pendingJob, fmt.Sprintf("OCR request failed: %s", cbResp.Message))
-	}
-
-	jsIdx := -1
-	for idx, jsID := range svc.OcrRequests {
-		if jsID == jobID {
-			jsIdx = idx
-			break
-		}
-	}
-
-	if jsIdx > -1 {
-		svc.OcrRequests = append(svc.OcrRequests[:jsIdx], svc.OcrRequests[jsIdx+1:]...)
 	}
 
 	c.String(http.StatusOK, "ok")
