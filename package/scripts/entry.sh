@@ -24,7 +24,8 @@ cd bin; ./dpg-jobs-ws              \
   -tsapi      ${TSAPI}             \
   -tsadmin    ${TSADMIN}           \
   -reindex    ${REINDEX}           \
-  -ocr        ${DPG_OCR}
+  -ocr        ${DPG_OCR}           \
+  -service    ${DPG_SERVICE_URL}
 
 # return the status
 exit $?

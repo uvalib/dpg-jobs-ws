@@ -48,6 +48,7 @@ type ServiceConfig struct {
 	TrackSys      TrackSysConfig
 	ReindexURL    string
 	OcrURL        string
+	ServiceURL    string
 }
 
 // LoadConfiguration will load the service configuration from the commandline
@@ -56,6 +57,7 @@ func LoadConfiguration() *ServiceConfig {
 	log.Printf("INFO: loading configuration...")
 	var cfg ServiceConfig
 	flag.IntVar(&cfg.Port, "port", 8080, "API service port (default 8080)")
+	flag.StringVar(&cfg.ServiceURL, "service", "", "This service base URL")
 
 	// working directories
 	flag.StringVar(&cfg.ArchiveDir, "archive", "", "Archive directory")
@@ -115,8 +117,12 @@ func LoadConfiguration() *ServiceConfig {
 	if cfg.ProcessingDir == "" {
 		log.Fatal("Parameter work is required")
 	}
+	if cfg.ServiceURL == "" {
+		log.Fatal("Parameter service is required")
+	}
 
 	log.Printf("[CONFIG] port          = [%d]", cfg.Port)
+	log.Printf("[CONFIG] service       = [%s]", cfg.ServiceURL)
 	log.Printf("[CONFIG] dbhost        = [%s]", cfg.DB.Host)
 	log.Printf("[CONFIG] dbport        = [%d]", cfg.DB.Port)
 	log.Printf("[CONFIG] dbname        = [%s]", cfg.DB.Name)

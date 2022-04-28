@@ -34,6 +34,7 @@ type htmlTemplates struct {
 // ServiceContext contains common data used by all handlers
 type ServiceContext struct {
 	Version       string
+	ServiceURL    string
 	SMTP          SMTPConfig
 	GDB           *gorm.DB
 	ArchiveDir    string
@@ -64,6 +65,7 @@ func InitializeService(version string, cfg *ServiceConfig) *ServiceContext {
 		TrackSys:      cfg.TrackSys,
 		ReindexURL:    cfg.ReindexURL,
 		OcrURL:        cfg.OcrURL,
+		ServiceURL:    cfg.ServiceURL,
 	}
 
 	log.Printf("INFO: connecting to DB...")
