@@ -233,7 +233,7 @@ func (svc *ServiceContext) qaUnit(js *jobStatus, tgtUnit *unit) error {
 		hasFailures = true
 	} else {
 		if tgtUnit.OcrMasterFiles {
-			if !tgtUnit.Metadata.OcrHint.OcrCandidate == false {
+			if tgtUnit.Metadata.OcrHint.OcrCandidate == false {
 				svc.logError(js, "Unit is flagged to perform OCR, but the metadata setting indicates OCR is not possible.")
 				hasFailures = true
 			}
