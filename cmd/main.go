@@ -55,6 +55,8 @@ func main() {
 	router.POST("/units/:id/masterfiles/replace", svc.replaceMasterFiles)
 	router.POST("/units/:id/masterfiles/clone", svc.cloneMasterFiles)
 
+	router.POST("/callbacks/:jid/ocr", svc.ocrDoneCallback)
+
 	portStr := fmt.Sprintf(":%d", cfg.Port)
 	log.Printf("INFO: start service v%s on port %s", version, portStr)
 	log.Fatal(router.Run(portStr))

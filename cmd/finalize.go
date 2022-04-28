@@ -99,9 +99,10 @@ func (svc *ServiceContext) finalizeUnit(c *gin.Context) {
 		// If OCR has been requested, do it AFTER archive (OCR requires tif to be in archive)
 		// but before deliverable generation (deliverables require OCR text to be present)
 		if tgtUnit.OcrMasterFiles {
-			// TODO
-			// OCR.synchronous(@unit, self)
-			// @unit.reload
+			err = svc.requestOCR(js, &tgtUnit)
+			if err != nil {
+				svc.logError(js, fmt.Sprintf("Unable to request OCR: %s", err.Error()))
+			}
 		}
 
 		// Flag unit for Virgo publication?

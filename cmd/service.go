@@ -46,6 +46,7 @@ type ServiceContext struct {
 	OcrURL        string
 	HTTPClient    *http.Client
 	Templates     htmlTemplates
+	OcrRequests   []int64
 }
 
 // RequestError contains http status code and message for a failed HTTP request
@@ -66,6 +67,7 @@ func InitializeService(version string, cfg *ServiceConfig) *ServiceContext {
 		ReindexURL:    cfg.ReindexURL,
 		OcrURL:        cfg.OcrURL,
 		ServiceURL:    cfg.ServiceURL,
+		OcrRequests:   make([]int64, 0),
 	}
 
 	log.Printf("INFO: connecting to DB...")
