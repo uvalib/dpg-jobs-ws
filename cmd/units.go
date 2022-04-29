@@ -1,7 +1,6 @@
 package main
 
 import (
-	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -11,7 +10,6 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"gorm.io/gorm"
 )
 
 func (svc *ServiceContext) attachFile(c *gin.Context) {
@@ -381,14 +379,15 @@ func (svc *ServiceContext) unitImagesAvailable(js *jobStatus, tgtUnit *unit, uni
 }
 
 func (svc *ServiceContext) getUnitProject(unitID int64) (*project, error) {
+	// use limit(1) and find to avoid errors when project does not exist
 	var currProj project
-	err := svc.GDB.Preload("Notes").Where("unit_id=?", unitID).First(&currProj).Error
+	err := svc.GDB.Preload("Notes").Where("unit_id=?", unitID).Limit(1).Find(&currProj).Error
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			// normal - the unit has no associated project
-			return nil, nil
-		}
 		return nil, err
+	}
+	if currProj.ID == 0 {
+		// no project available
+		return nil, nil
 	}
 	return &currProj, nil
 }

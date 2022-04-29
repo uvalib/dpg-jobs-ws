@@ -63,7 +63,7 @@ func (svc *ServiceContext) finalizeUnit(c *gin.Context) {
 		svc.logInfo(js, "Check for presence of finalization directory")
 		srcDir := path.Join(svc.ProcessingDir, "finalization", fmt.Sprintf("%09d", unitID))
 		if pathExists(srcDir) == false {
-			svc.setUnitFatal(js, &tgtUnit, fmt.Sprintf("Finalization directory %s does not exist. FAKE ERROR", srcDir))
+			svc.setUnitFatal(js, &tgtUnit, fmt.Sprintf("Finalization directory %s does not exist.", srcDir))
 			return
 		}
 

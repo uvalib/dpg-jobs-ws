@@ -5,6 +5,7 @@ import (
 	"bufio"
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"os/exec"
 	"path"
@@ -159,7 +160,7 @@ func (svc *ServiceContext) createPatronDeliverable(js *jobStatus, tgtUnit *unit,
 		cmdArray = append(cmdArray, "-bordercolor", "lightgray", "-border", "0x10")
 		cmdArray = append(cmdArray, "-pointsize", fmt.Sprintf("%.2f", pointSize), "-size", fmt.Sprintf("%dx", mf.ImageTechMeta.Width))
 		cmdArray = append(cmdArray, "-background", "lightgray", "-gravity", "center")
-		cmdArray = append(cmdArray, fmt.Sprintf("caption:%s", notice))
+		cmdArray = append(cmdArray, fmt.Sprintf("caption:\"%s\"", notice))
 
 		// append the notoce to bottom center
 		cmdArray = append(cmdArray, "-gravity", "Center", "-append")
@@ -172,7 +173,9 @@ func (svc *ServiceContext) createPatronDeliverable(js *jobStatus, tgtUnit *unit,
 		cmdArray = append(cmdArray, "-resample", fmt.Sprintf("%d", resample))
 	}
 	cmdArray = append(cmdArray, destPath)
-	_, err := exec.Command("convert", cmdArray...).Output()
+	cmd := exec.Command("convert", cmdArray...)
+	log.Printf("INFO: command for patron deliverable: %v", cmd)
+	_, err := cmd.Output()
 	if err != nil {
 		return err
 	}
