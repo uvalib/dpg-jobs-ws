@@ -21,6 +21,8 @@ cd bin; ./dpg-jobs-ws              \
   -smtpuser   ${SMPT_USER}         \
   -smtppass   ${SMPT_PASS}         \
   -smtpsender ${SMPT_SENDER}       \
+  -asuser     ${AS_USER}           \
+  -aspass     ${AS_PASS}           \
   -tsapi      ${TSAPI}             \
   -tsadmin    ${TSADMIN}           \
   -reindex    ${REINDEX}           \

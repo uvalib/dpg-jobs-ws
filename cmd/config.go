@@ -30,6 +30,12 @@ type IIIFConfig struct {
 	URL string
 }
 
+// ArchivesSpaceConfig contains the configuration data for AS
+type ArchivesSpaceConfig struct {
+	User string
+	Pass string
+}
+
 // TrackSysConfig contains the configuration data for tracksys endpoints
 type TrackSysConfig struct {
 	API   string
@@ -45,6 +51,7 @@ type ServiceConfig struct {
 	IIIF          IIIFConfig
 	ProcessingDir string
 	DeliveryDir   string
+	ArchivesSpace ArchivesSpaceConfig
 	TrackSys      TrackSysConfig
 	ReindexURL    string
 	OcrURL        string
@@ -67,6 +74,10 @@ func LoadConfiguration() *ServiceConfig {
 	// other external services
 	flag.StringVar(&cfg.ReindexURL, "reindex", "https://virgo4-sirsi-cache-reprocess-ws.internal.lib.virginia.edu", "Reindex URL")
 	flag.StringVar(&cfg.OcrURL, "ocr", "http://docker1.lib.virginia.edu:8389/ocr", "OCR service URL")
+
+	// ArchivesSpace
+	flag.StringVar(&cfg.ArchivesSpace.User, "asuser", "", "ArchivesSpace user")
+	flag.StringVar(&cfg.ArchivesSpace.Pass, "aspass", "", "ArchivesSpace password")
 
 	// TrackSys
 	flag.StringVar(&cfg.TrackSys.API, "tsapi", "https://tracksys-api-ws.internal.lib.virginia.edu", "URL for TrackSys API")
@@ -120,6 +131,12 @@ func LoadConfiguration() *ServiceConfig {
 	if cfg.ServiceURL == "" {
 		log.Fatal("Parameter service is required")
 	}
+	if cfg.ArchivesSpace.User == "" {
+		log.Fatal("Parameter asuser is required")
+	}
+	if cfg.ArchivesSpace.Pass == "" {
+		log.Fatal("Parameter aspass is required")
+	}
 
 	log.Printf("[CONFIG] port          = [%d]", cfg.Port)
 	log.Printf("[CONFIG] service       = [%s]", cfg.ServiceURL)
@@ -136,6 +153,7 @@ func LoadConfiguration() *ServiceConfig {
 	log.Printf("[CONFIG] ocr           = [%s]", cfg.OcrURL)
 	log.Printf("[CONFIG] tsadmin       = [%s]", cfg.TrackSys.Admin)
 	log.Printf("[CONFIG] tsapi         = [%s]", cfg.TrackSys.API)
+	log.Printf("[CONFIG] asuser        = [%s]", cfg.ArchivesSpace.User)
 
 	if cfg.SMTP.FakeSMTP {
 		log.Printf("[CONFIG] fakesmtp      = [true]")

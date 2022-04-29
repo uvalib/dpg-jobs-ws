@@ -31,6 +31,13 @@ type htmlTemplates struct {
 	PDFOrderSummary *template.Template
 }
 
+type archivesSpaceContext struct {
+	User      string
+	Pass      string
+	AuthToken string
+	ExpiresAt *time.Time
+}
+
 // ServiceContext contains common data used by all handlers
 type ServiceContext struct {
 	Version       string
@@ -42,6 +49,7 @@ type ServiceContext struct {
 	ProcessingDir string
 	DeliveryDir   string
 	TrackSys      TrackSysConfig
+	ArchivesSpace archivesSpaceContext
 	ReindexURL    string
 	OcrURL        string
 	HTTPClient    *http.Client
@@ -69,6 +77,8 @@ func InitializeService(version string, cfg *ServiceConfig) *ServiceContext {
 		ServiceURL:    cfg.ServiceURL,
 		OcrRequests:   make([]int64, 0),
 	}
+	ctx.ArchivesSpace.User = cfg.ArchivesSpace.User
+	ctx.ArchivesSpace.Pass = cfg.ArchivesSpace.Pass
 
 	log.Printf("INFO: connecting to DB...")
 	connectStr := fmt.Sprintf("%s:%s@tcp(%s)/%s?parseTime=true",
