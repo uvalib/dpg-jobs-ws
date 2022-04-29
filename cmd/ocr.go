@@ -47,8 +47,9 @@ func (svc *ServiceContext) requestOCR(js *jobStatus, tgtUnit *unit) error {
 func (svc *ServiceContext) ocrDoneCallback(c *gin.Context) {
 	jobID, _ := strconv.ParseInt(c.Param("jid"), 10, 64)
 	log.Printf("INFO: received ocr done callback for job %d", jobID)
+
+	// whatever happens, clear out the pending request when done using a defer func
 	defer func() {
-		// whatever happens, clear out the pending request when done
 		log.Printf("INFO: remove pending ocr job %d", jobID)
 		jsIdx := -1
 		for idx, jsID := range svc.OcrRequests {
@@ -57,11 +58,10 @@ func (svc *ServiceContext) ocrDoneCallback(c *gin.Context) {
 				break
 			}
 		}
-
 		if jsIdx > -1 {
 			svc.OcrRequests = append(svc.OcrRequests[:jsIdx], svc.OcrRequests[jsIdx+1:]...)
 		} else {
-			log.Printf("ERROR: could npt find pending OCR job %d", jobID)
+			log.Printf("ERROR: could not find pending OCR job %d", jobID)
 		}
 	}()
 
@@ -72,13 +72,11 @@ func (svc *ServiceContext) ocrDoneCallback(c *gin.Context) {
 		c.String(http.StatusBadRequest, err.Error())
 		return
 	}
-
 	svc.logInfo(&pendingJob, "Received OCR callback")
+
 	type ocrRespData struct {
-		JSON struct {
-			Status  string `json:"status"`
-			Message string `json:"message"`
-		} `json:"json"`
+		Status  string `json:"status"`
+		Message string `json:"message"`
 	}
 	var cbResp ocrRespData
 	qpErr := c.ShouldBindJSON(&cbResp)
@@ -88,10 +86,10 @@ func (svc *ServiceContext) ocrDoneCallback(c *gin.Context) {
 		return
 	}
 
-	if cbResp.JSON.Status == "success" {
+	if cbResp.Status == "success" {
 		svc.logInfo(&pendingJob, "OCR request completed successfully")
 	} else {
-		svc.logInfo(&pendingJob, fmt.Sprintf("OCR request failed: %s", cbResp.JSON.Message))
+		svc.logInfo(&pendingJob, fmt.Sprintf("OCR request failed: %s", cbResp.Message))
 	}
 
 	c.String(http.StatusOK, "ok")
