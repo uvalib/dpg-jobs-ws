@@ -9,6 +9,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"path"
 	"path/filepath"
@@ -35,7 +36,7 @@ type archivesSpaceContext struct {
 	User      string
 	Pass      string
 	AuthToken string
-	ExpiresAt *time.Time
+	ExpiresAt time.Time
 }
 
 // ServiceContext contains common data used by all handlers
@@ -170,18 +171,28 @@ func (svc *ServiceContext) healthCheck(c *gin.Context) {
 }
 
 func (svc *ServiceContext) getRequest(url string) ([]byte, *RequestError) {
-	return svc.sendRequest("GET", url)
+	return svc.sendRequest("GET", url, nil)
 }
 func (svc *ServiceContext) putRequest(url string) ([]byte, *RequestError) {
-	return svc.sendRequest("PUT", url)
+	return svc.sendRequest("PUT", url, nil)
+}
+func (svc *ServiceContext) postFormRequest(url string, payload *url.Values) ([]byte, *RequestError) {
+	return svc.sendRequest("POST", url, payload)
 }
 
-func (svc *ServiceContext) sendRequest(verb string, url string) ([]byte, *RequestError) {
+func (svc *ServiceContext) sendRequest(verb string, url string, payload *url.Values) ([]byte, *RequestError) {
 	log.Printf("%s request: %s", verb, url)
 	startTime := time.Now()
-	req, _ := http.NewRequest(verb, url, nil)
-	httpClient := svc.HTTPClient
-	rawResp, rawErr := httpClient.Do(req)
+
+	var req *http.Request
+	if verb == "POST" && payload != nil {
+		req, _ = http.NewRequest("POST", url, strings.NewReader(payload.Encode()))
+		req.Header.Add("Content-Type", "application/x-www-form-urlencoded")
+	} else {
+		req, _ = http.NewRequest(verb, url, nil)
+	}
+
+	rawResp, rawErr := svc.HTTPClient.Do(req)
 	resp, err := handleAPIResponse(url, rawResp, rawErr)
 	elapsedNanoSec := time.Since(startTime)
 	elapsedMS := int64(elapsedNanoSec / time.Millisecond)

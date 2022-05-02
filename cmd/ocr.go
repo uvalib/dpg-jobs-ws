@@ -18,7 +18,7 @@ func (svc *ServiceContext) requestOCR(js *jobStatus, tgtUnit *unit) error {
 	callbackURL = url.QueryEscape(callbackURL)
 	ocrURL := fmt.Sprintf("%s/%s?lang=%s&unit=%d&force=true&callback=%s", svc.OcrURL, tgtUnit.Metadata.PID, lang, tgtUnit.ID, callbackURL)
 	svc.logInfo(js, fmt.Sprintf("OCR request URL: %s", ocrURL))
-	_, getErr := svc.sendRequest("GET", ocrURL)
+	_, getErr := svc.getRequest(ocrURL)
 	if getErr != nil {
 		return fmt.Errorf("ocr request failed %d:%s", getErr.StatusCode, getErr.Message)
 	}

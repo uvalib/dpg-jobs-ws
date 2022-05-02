@@ -35,6 +35,8 @@ func main() {
 	router.GET("/version", svc.getVersion)
 	router.GET("/healthcheck", svc.healthCheck)
 
+	router.GET("/archivesspace/validate", svc.archivesSpaceMiddleware, svc.validateArchivesSpaceURL)
+
 	router.POST("/orders/:id/check", svc.checkOrderReady)
 	router.POST("/orders/:id/pdf", svc.createOrderPDF)
 	router.GET("/orders/:id/pdf", svc.viewOrderPDF)
