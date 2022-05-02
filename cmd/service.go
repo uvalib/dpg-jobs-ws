@@ -37,6 +37,7 @@ type archivesSpaceContext struct {
 	Pass      string
 	AuthToken string
 	ExpiresAt time.Time
+	APIURL    string
 }
 
 // ServiceContext contains common data used by all handlers
@@ -78,8 +79,6 @@ func InitializeService(version string, cfg *ServiceConfig) *ServiceContext {
 		ServiceURL:    cfg.ServiceURL,
 		OcrRequests:   make([]int64, 0),
 	}
-	ctx.ArchivesSpace.User = cfg.ArchivesSpace.User
-	ctx.ArchivesSpace.Pass = cfg.ArchivesSpace.Pass
 
 	log.Printf("INFO: connecting to DB...")
 	connectStr := fmt.Sprintf("%s:%s@tcp(%s)/%s?parseTime=true",
@@ -90,6 +89,16 @@ func InitializeService(version string, cfg *ServiceConfig) *ServiceContext {
 	}
 	ctx.GDB = gdb
 	log.Printf("INFO: DB Connection established")
+
+	log.Printf("INFO: initialize archivesSpace")
+	var es externalSystem
+	err = ctx.GDB.Where("name=?", "ArchivesSpace").Find(&es).Error
+	if err != nil {
+		log.Fatal(err)
+	}
+	ctx.ArchivesSpace.User = cfg.ArchivesSpace.User
+	ctx.ArchivesSpace.Pass = cfg.ArchivesSpace.Pass
+	ctx.ArchivesSpace.APIURL = es.APIURL
 
 	log.Printf("INFO: load html templates")
 	ctx.Templates.Fees, err = template.New("fees.html").ParseFiles("./templates/fees.html")
@@ -181,7 +190,7 @@ func (svc *ServiceContext) postFormRequest(url string, payload *url.Values) ([]b
 }
 
 func (svc *ServiceContext) sendRequest(verb string, url string, payload *url.Values) ([]byte, *RequestError) {
-	log.Printf("%s request: %s", verb, url)
+	log.Printf("INFO: %s request: %s", verb, url)
 	startTime := time.Now()
 
 	var req *http.Request
@@ -192,6 +201,29 @@ func (svc *ServiceContext) sendRequest(verb string, url string, payload *url.Val
 		req, _ = http.NewRequest(verb, url, nil)
 	}
 
+	rawResp, rawErr := svc.HTTPClient.Do(req)
+	resp, err := handleAPIResponse(url, rawResp, rawErr)
+	elapsedNanoSec := time.Since(startTime)
+	elapsedMS := int64(elapsedNanoSec / time.Millisecond)
+
+	if err != nil {
+		log.Printf("ERROR: Failed response from GET %s - %d:%s. Elapsed Time: %d (ms)",
+			url, err.StatusCode, err.Message, elapsedMS)
+	} else {
+		log.Printf("Successful response from POST %s. Elapsed Time: %d (ms)", url, elapsedMS)
+	}
+	return resp, err
+}
+
+func (svc *ServiceContext) sendASGetRequest(url string) ([]byte, *RequestError) {
+	fullURL := fmt.Sprintf("%s%s", svc.ArchivesSpace.APIURL, url)
+	log.Printf("INFO: archivesspace request: %s", fullURL)
+	startTime := time.Now()
+
+	req, _ := http.NewRequest("GET", fullURL, nil)
+	req.Header.Add("Content-type", "application/json")
+	req.Header.Add("Accept", "application/json")
+	req.Header.Add("X-ArchivesSpace-Session", svc.ArchivesSpace.AuthToken)
 	rawResp, rawErr := svc.HTTPClient.Do(req)
 	resp, err := handleAPIResponse(url, rawResp, rawErr)
 	elapsedNanoSec := time.Since(startTime)
