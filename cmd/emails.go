@@ -64,6 +64,13 @@ func (svc *ServiceContext) sendOrderEmail(c *gin.Context) {
 		return
 	}
 
+	now := time.Now()
+	o.DateCustomerNotified = &now
+	err = svc.GDB.Model(&o).Select("DateCustomerNotified").Updates(o).Error
+	if err != nil {
+		svc.logError(js, fmt.Sprintf("Unable to set date customer notified: %s", err.Error()))
+	}
+
 	svc.jobDone(js)
 	c.String(http.StatusOK, "done")
 }
