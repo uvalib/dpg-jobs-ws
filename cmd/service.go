@@ -1,7 +1,9 @@
 package main
 
 import (
+	"bytes"
 	"crypto/md5"
+	"encoding/json"
 	"fmt"
 	"io"
 	"io/fs"
@@ -207,20 +209,33 @@ func (svc *ServiceContext) sendRequest(verb string, url string, payload *url.Val
 	elapsedMS := int64(elapsedNanoSec / time.Millisecond)
 
 	if err != nil {
-		log.Printf("ERROR: Failed response from GET %s - %d:%s. Elapsed Time: %d (ms)",
-			url, err.StatusCode, err.Message, elapsedMS)
+		log.Printf("ERROR: Failed response from %s %s - %d:%s. Elapsed Time: %d (ms)",
+			verb, url, err.StatusCode, err.Message, elapsedMS)
 	} else {
-		log.Printf("Successful response from POST %s. Elapsed Time: %d (ms)", url, elapsedMS)
+		log.Printf("Successful response from %s %s. Elapsed Time: %d (ms)", verb, url, elapsedMS)
 	}
 	return resp, err
 }
 
 func (svc *ServiceContext) sendASGetRequest(url string) ([]byte, *RequestError) {
+	return svc.sendASRequest("GET", url, nil)
+}
+func (svc *ServiceContext) sendASPostRequest(url string, payload interface{}) ([]byte, *RequestError) {
+	return svc.sendASRequest("POST", url, payload)
+}
+func (svc *ServiceContext) sendASRequest(verb string, url string, payload interface{}) ([]byte, *RequestError) {
 	fullURL := fmt.Sprintf("%s%s", svc.ArchivesSpace.APIURL, url)
-	log.Printf("INFO: archivesspace request: %s", fullURL)
+	log.Printf("INFO: archivesspace %s request: %s", verb, fullURL)
 	startTime := time.Now()
 
-	req, _ := http.NewRequest("GET", fullURL, nil)
+	var req *http.Request
+	if verb == "POST" {
+		b, _ := json.Marshal(payload)
+		req, _ = http.NewRequest("POST", fullURL, bytes.NewBuffer(b))
+	} else {
+		req, _ = http.NewRequest("GET", fullURL, nil)
+	}
+
 	req.Header.Add("Content-type", "application/json")
 	req.Header.Add("Accept", "application/json")
 	req.Header.Add("X-ArchivesSpace-Session", svc.ArchivesSpace.AuthToken)
@@ -230,10 +245,10 @@ func (svc *ServiceContext) sendASGetRequest(url string) ([]byte, *RequestError) 
 	elapsedMS := int64(elapsedNanoSec / time.Millisecond)
 
 	if err != nil {
-		log.Printf("ERROR: Failed response from GET %s - %d:%s. Elapsed Time: %d (ms)",
-			url, err.StatusCode, err.Message, elapsedMS)
+		log.Printf("ERROR: Failed response from %s %s - %d:%s. Elapsed Time: %d (ms)",
+			verb, url, err.StatusCode, err.Message, elapsedMS)
 	} else {
-		log.Printf("Successful response from POST %s. Elapsed Time: %d (ms)", url, elapsedMS)
+		log.Printf("Successful response from %s %s. Elapsed Time: %d (ms)", verb, url, elapsedMS)
 	}
 	return resp, err
 }

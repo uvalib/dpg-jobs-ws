@@ -100,7 +100,8 @@ type metadata struct {
 	CreatorName          string
 	CatalogKey           string
 	CallNumber           string
-	Barcoode             string
+	Barcode              string
+	DescMetadata         string
 	IsPersonalItem       bool
 	IsManuscript         bool
 	AvailabilityPolicyID *int64
@@ -109,6 +110,8 @@ type metadata struct {
 	OcrLanguageHint      string
 	DateDlIngest         *time.Time `gorm:"column:date_dl_ingest"`
 	DateDlUpdate         *time.Time `gorm:"column:date_dl_update"`
+	ExternalSystemID     int64      `gorm:"column:external_system_id"`
+	ExternalURI          string     `gorm:"column:external_uri"`
 	CreatedAt            time.Time
 	UpdatedAt            time.Time
 }

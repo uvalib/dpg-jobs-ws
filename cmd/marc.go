@@ -22,7 +22,7 @@ type marcMetadata = struct {
 }
 
 func (svc *ServiceContext) getMarcPublicationYear(md *metadata) int {
-	log.Printf("INFO: get publication date from marc for pid [%s] barcode [%s]", md.PID, md.Barcoode)
+	log.Printf("INFO: get publication date from marc for pid [%s] barcode [%s]", md.PID, md.Barcode)
 	parsed, err := svc.getMarcMetadata(md)
 	if err != nil {
 		log.Printf("ERROR: get marc metadata failed: %s", err.Error())
@@ -48,7 +48,7 @@ func (svc *ServiceContext) getMarcPublicationYear(md *metadata) int {
 }
 
 func (svc *ServiceContext) getMarcLocation(md *metadata) string {
-	log.Printf("INFO: get location from marc for pid [%s] barcode [%s]", md.PID, md.Barcoode)
+	log.Printf("INFO: get location from marc for pid [%s] barcode [%s]", md.PID, md.Barcode)
 	parsed, err := svc.getMarcMetadata(md)
 	if err != nil {
 		log.Printf("ERROR: get marc metadata failed: %s", err.Error())
@@ -61,7 +61,7 @@ func (svc *ServiceContext) getMarcLocation(md *metadata) string {
 			// pick the data that matches the target barcode and grab location from 'l'
 			barcodeMatch := false
 			for _, sf := range df.Subfields {
-				if sf.Code == "i" && sf.Value == md.Barcoode {
+				if sf.Code == "i" && sf.Value == md.Barcode {
 					barcodeMatch = true
 				}
 				if sf.Code == "l" && barcodeMatch {
@@ -78,7 +78,7 @@ func (svc *ServiceContext) getMarcLocation(md *metadata) string {
 }
 
 func (svc *ServiceContext) getMarcMetadata(md *metadata) (*marcMetadata, error) {
-	log.Printf("INFO: get marc metadata for pid [%s] barcode [%s]", md.PID, md.Barcoode)
+	log.Printf("INFO: get marc metadata for pid [%s] barcode [%s]", md.PID, md.Barcode)
 	out, err := svc.getRequest(fmt.Sprintf("%s/api/metadata/%s?type=marc", svc.TrackSys.API, md.PID))
 	if err != nil {
 		return nil, fmt.Errorf("%d:%s", err.StatusCode, err.Message)
@@ -93,7 +93,7 @@ func (svc *ServiceContext) getMarcMetadata(md *metadata) (*marcMetadata, error) 
 }
 
 func (svc *ServiceContext) getCitation(md *metadata) string {
-	log.Printf("INFO: get citation from marc for pid [%s] barcode [%s]", md.PID, md.Barcoode)
+	log.Printf("INFO: get citation from marc for pid [%s] barcode [%s]", md.PID, md.Barcode)
 
 	parsed, err := svc.getMarcMetadata(md)
 	if err != nil {
@@ -118,7 +118,7 @@ func (svc *ServiceContext) getCitation(md *metadata) string {
 			// pick the data that matches the target barcode and grab location from 'l'
 			barcodeMatch := false
 			for _, sf := range df.Subfields {
-				if sf.Code == "i" && sf.Value == md.Barcoode {
+				if sf.Code == "i" && sf.Value == md.Barcode {
 					barcodeMatch = true
 				}
 				if sf.Code == "l" && barcodeMatch {
