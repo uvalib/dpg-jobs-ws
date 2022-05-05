@@ -295,7 +295,7 @@ func (svc *ServiceContext) validateArchivesSpaceURL(c *gin.Context) {
 
 func (svc *ServiceContext) publishToArchivesSpace(c *gin.Context) {
 	type pubReqData struct {
-		UserID     int64 `json:"userId"`
+		UserID     int64 `json:"userID"`
 		MetadataID int64 `json:"metadataID"`
 	}
 	var req pubReqData
@@ -353,7 +353,7 @@ func (svc *ServiceContext) publishToArchivesSpace(c *gin.Context) {
 
 func (svc *ServiceContext) convertToArchivesSpace(c *gin.Context) {
 	type convReqData struct {
-		UserID     int64  `json:"userId"`
+		UserID     int64  `json:"userID"`
 		MetadataID int64  `json:"metadataID"`
 		ASURL      string `json:"asURL"`
 	}
