@@ -6,7 +6,6 @@ import (
 	"log"
 	"net/http"
 	"net/url"
-	"runtime/debug"
 	"strconv"
 	"strings"
 	"time"
@@ -295,8 +294,8 @@ func (svc *ServiceContext) validateArchivesSpaceURL(c *gin.Context) {
 
 func (svc *ServiceContext) publishToArchivesSpace(c *gin.Context) {
 	type pubReqData struct {
-		UserID     int64 `json:"userID"`
-		MetadataID int64 `json:"metadataID"`
+		UserID     string `json:"userID"`
+		MetadataID string `json:"metadataID"`
 	}
 	var req pubReqData
 	err := c.ShouldBindJSON(&req)
@@ -306,17 +305,18 @@ func (svc *ServiceContext) publishToArchivesSpace(c *gin.Context) {
 		return
 	}
 
-	js, err := svc.createJobStatus("PublishToAS", "StaffMember", req.UserID)
+	userID, _ := strconv.ParseInt(req.UserID, 10, 64)
+	js, err := svc.createJobStatus("PublishToAS", "StaffMember", userID)
 	if err != nil {
 		log.Printf("ERROR: unable to create PublishToAS job status: %s", err.Error())
 		c.String(http.StatusInternalServerError, err.Error())
 		return
 	}
-	svc.logInfo(js, fmt.Sprintf("Publish TrackSys metadata %d to ArchivesSpace", req.MetadataID))
+	svc.logInfo(js, fmt.Sprintf("Publish TrackSys metadata %s to ArchivesSpace", req.MetadataID))
 	var tgtMetadata metadata
 	err = svc.GDB.Find(&tgtMetadata, req.MetadataID).Error
 	if err != nil {
-		svc.logFatal(js, fmt.Sprintf("Unable to get metadata %d", req.MetadataID))
+		svc.logFatal(js, fmt.Sprintf("Unable to get metadata %s", req.MetadataID))
 		return
 	}
 
@@ -353,8 +353,8 @@ func (svc *ServiceContext) publishToArchivesSpace(c *gin.Context) {
 
 func (svc *ServiceContext) convertToArchivesSpace(c *gin.Context) {
 	type convReqData struct {
-		UserID     int64  `json:"userID"`
-		MetadataID int64  `json:"metadataID"`
+		UserID     string `json:"userID"`
+		MetadataID string `json:"metadataID"`
 		ASURL      string `json:"asURL"`
 	}
 	var req convReqData
@@ -365,85 +365,82 @@ func (svc *ServiceContext) convertToArchivesSpace(c *gin.Context) {
 		return
 	}
 
-	js, err := svc.createJobStatus("ConvertToAs", "StaffMember", req.UserID)
+	userID, _ := strconv.ParseInt(req.UserID, 10, 64)
+	js, err := svc.createJobStatus("ConvertToAs", "StaffMember", userID)
 	if err != nil {
 		log.Printf("ERROR: unable to create ConvertToAs job status: %s", err.Error())
 		c.String(http.StatusInternalServerError, err.Error())
 		return
 	}
 
-	go func() {
-		defer func() {
-			if r := recover(); r != nil {
-				log.Printf("ERROR: Panic recovered: %v", r)
-				debug.PrintStack()
-				svc.logFatal(js, fmt.Sprintf("%v", r))
-			}
-		}()
+	svc.logInfo(js, fmt.Sprintf("Convert TrackSys metadata %s to External ArchivesSpace referece %s", req.MetadataID, req.ASURL))
+	var tgtMetadata metadata
+	err = svc.GDB.Find(&tgtMetadata, req.MetadataID).Error
+	if err != nil {
+		svc.logFatal(js, fmt.Sprintf("Unable to get metadata %s", req.MetadataID))
+		c.String(http.StatusInternalServerError, fmt.Sprintf("unable to get metadata %s:%s", req.MetadataID, err.Error()))
+		return
+	}
+	asURL := parsePublicASURL(req.ASURL)
+	if asURL == nil {
+		svc.logFatal(js, fmt.Sprintf("%s is not a valid public AS URL", req.ASURL))
+		c.String(http.StatusBadRequest, fmt.Sprintf("%s is not a valid public AS URL", req.ASURL))
+		return
+	}
 
-		svc.logInfo(js, fmt.Sprintf("Convert TrackSys metadata %d to External ArchivesSpace referece %s", req.MetadataID, req.ASURL))
-		var tgtMetadata metadata
-		err = svc.GDB.Find(&tgtMetadata, req.MetadataID).Error
+	tgtASObj, err := svc.getASDetails(js, asURL)
+	if err != nil {
+		svc.logFatal(js, fmt.Sprintf("%s:%s not found in repo %s", asURL.ParentType, asURL.ParentID, asURL.RepositoryID))
+		c.String(http.StatusBadRequest, fmt.Sprintf("%s:%s not found in repo %s", asURL.ParentType, asURL.ParentID, asURL.RepositoryID))
+		return
+	}
+
+	dObj := svc.getDigitalObject(js, tgtASObj, tgtMetadata.PID)
+	if dObj != nil {
+		svc.logInfo(js, fmt.Sprintf("%s:%s already has digital object. Use existing.", asURL.ParentType, asURL.ParentID))
+	} else {
+		svc.logInfo(js, fmt.Sprintf("No digital object found; creating one for PID %s", tgtMetadata.PID))
+		err = svc.createDigitalObject(js, asURL.RepositoryID, tgtASObj, &tgtMetadata)
 		if err != nil {
-			svc.logFatal(js, fmt.Sprintf("Unable to get metadata %d", req.MetadataID))
+			svc.logFatal(js, fmt.Sprintf("Unable to create digital object %s", err.Error()))
+			c.String(http.StatusInternalServerError, fmt.Sprintf("Unable to create digital object %s", err.Error()))
 			return
 		}
-		asURL := parsePublicASURL(req.ASURL)
-		if asURL == nil {
-			svc.logFatal(js, fmt.Sprintf("%s is not a valid public AS URL", req.ASURL))
-			return
-		}
+	}
 
-		tgtASObj, err := svc.getASDetails(js, asURL)
+	if tgtMetadata.Type != "ExternalMetadata" {
+		svc.logInfo(js, fmt.Sprintf("Converting existing metadata record %s to ExternalMetadata", tgtMetadata.PID))
+		var es externalSystem
+		err = svc.GDB.Where("name=?", "ArchivesSpace").Find(&es).Error
 		if err != nil {
-			svc.logFatal(js, fmt.Sprintf("%s:%s not found in repo %s", asURL.ParentType, asURL.ParentID, asURL.RepositoryID))
+			svc.logFatal(js, fmt.Sprintf("Unable to get archivesspace external system data %s", err.Error()))
+			c.String(http.StatusInternalServerError, fmt.Sprintf("Unable to get archivesspace external system data %s", err.Error()))
 			return
 		}
-
-		dObj := svc.getDigitalObject(js, tgtASObj, tgtMetadata.PID)
-		if dObj != nil {
-			svc.logInfo(js, fmt.Sprintf("%s:%s already has digital object. Use existing.", asURL.ParentType, asURL.ParentID))
-		} else {
-			svc.logInfo(js, fmt.Sprintf("No digital object found; creating one for PID %s", tgtMetadata.PID))
-			err = svc.createDigitalObject(js, asURL.RepositoryID, tgtASObj, &tgtMetadata)
-			if err != nil {
-				svc.logFatal(js, fmt.Sprintf("Unable to create digital object %s", err.Error()))
-				return
-			}
+		tgtMetadata.Type = "ExternalMetadata"
+		tgtMetadata.ExternalURI = fmt.Sprintf("/repositories/%s/%s/%s", asURL.RepositoryID, asURL.ParentType, asURL.ParentID)
+		tgtMetadata.CreatorName = ""
+		tgtMetadata.CatalogKey = ""
+		tgtMetadata.CallNumber = ""
+		tgtMetadata.Barcode = ""
+		tgtMetadata.DescMetadata = ""
+		tgtMetadata.ExternalSystemID = es.ID
+		err := svc.GDB.Model(&tgtMetadata).
+			Select("Type", "ExternalSystemID", "ExternalURI", "CreatorName", "CatalogKey", "CallNumber", "Barcode", "DescMetadata").
+			Updates(tgtMetadata).Error
+		if err != nil {
+			svc.logFatal(js, fmt.Sprintf("Unable to convert %s to ArchivesSpace: %s", tgtMetadata.PID, err.Error()))
+			c.String(http.StatusInternalServerError, fmt.Sprintf("Unable to convert %s to ArchivesSpace: %s", tgtMetadata.PID, err.Error()))
+			return
 		}
+	} else {
+		svc.logInfo(js, fmt.Sprintf("Metadata record %s is already ExternalMetadata", tgtMetadata.PID))
+	}
 
-		if tgtMetadata.Type != "ExternalMetadata" {
-			svc.logInfo(js, fmt.Sprintf("Converting existing metadata record %s to ExternalMetadata", tgtMetadata.PID))
-			var es externalSystem
-			err = svc.GDB.Where("name=?", "ArchivesSpace").Find(&es).Error
-			if err != nil {
-				svc.logFatal(js, fmt.Sprintf("Unable to get archivesspace external system data %s", err.Error()))
-				return
-			}
-			tgtMetadata.Type = "ExternalMetadata"
-			tgtMetadata.ExternalURI = fmt.Sprintf("/repositories/%s/%s/%s", asURL.RepositoryID, asURL.ParentType, asURL.ParentID)
-			tgtMetadata.CreatorName = ""
-			tgtMetadata.CatalogKey = ""
-			tgtMetadata.CallNumber = ""
-			tgtMetadata.Barcode = ""
-			tgtMetadata.DescMetadata = ""
-			tgtMetadata.ExternalSystemID = es.ID
-			err := svc.GDB.Model(&tgtMetadata).
-				Select("Type", "ExternalSystemID", "ExternalURI", "CreatorName", "CatalogKey", "CallNumber", "Barcode", "DescMetadata").
-				Updates(tgtMetadata).Error
-			if err != nil {
-				svc.logFatal(js, fmt.Sprintf("Unable to convert %s to ArchivesSpace: %s", tgtMetadata.PID, err.Error()))
-				return
-			}
-		} else {
-			svc.logInfo(js, fmt.Sprintf("Metadata record %s is already ExternalMetadata", tgtMetadata.PID))
-		}
+	svc.logInfo(js, "ArchivesSpace link successfully created")
+	svc.jobDone(js)
 
-		svc.logInfo(js, "ArchivesSpace link successfully created")
-		svc.jobDone(js)
-	}()
-
-	c.String(http.StatusOK, fmt.Sprintf("%d", js.ID))
+	c.String(http.StatusOK, "done")
 }
 
 func (svc *ServiceContext) getDigitalObject(js *jobStatus, tgtObj asObjectDetails, metadataPID string) *asDigitalObject {
