@@ -77,6 +77,33 @@ func (svc *ServiceContext) archivesSpaceMiddleware(c *gin.Context) {
 	c.Next()
 }
 
+func (svc *ServiceContext) lookupArchivesSpaceURL(c *gin.Context) {
+	tgtURI := c.Query("uri")
+	log.Printf("INFO: lookup details for aSpace uri %s", tgtURI)
+	js, err := svc.createJobStatus("LookupASDetails", "System", 1)
+	if err != nil {
+		log.Printf("ERROR: unable to create PublishToAS job status: %s", err.Error())
+		c.String(http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	asURL := parsePublicASURL(tgtURI)
+	if asURL == nil {
+		c.String(http.StatusBadRequest, fmt.Sprintf("%s is not a valid aSpace URL", tgtURI))
+		return
+	}
+
+	tgtASObj, err := svc.getASDetails(js, asURL)
+	if err != nil {
+		svc.logFatal(js, fmt.Sprintf("%s:%s not found in repo %s", asURL.ParentType, asURL.ParentID, asURL.RepositoryID))
+		c.String(http.StatusBadRequest, fmt.Sprintf("%s was not found in aSpace", tgtURI))
+		return
+	}
+
+	svc.jobDone(js)
+	c.JSON(http.StatusOK, tgtASObj)
+}
+
 func (svc *ServiceContext) validateArchivesSpaceURL(c *gin.Context) {
 	asURL := c.Query("url")
 	log.Printf("INFO: validate archivesspace url %s", asURL)
