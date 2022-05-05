@@ -15,9 +15,10 @@ import (
 )
 
 type externalSystem struct {
-	ID     int64
-	Name   string
-	APIURL string `gorm:"column:api_url"`
+	ID        int64
+	Name      string
+	APIURL    string `gorm:"column:api_url"`
+	PublicURL string `gorm:"column:public_url"`
 }
 
 type asObjectDetails map[string]interface{}
@@ -79,11 +80,19 @@ func (svc *ServiceContext) archivesSpaceMiddleware(c *gin.Context) {
 
 func (svc *ServiceContext) lookupArchivesSpaceURL(c *gin.Context) {
 	tgtURI := c.Query("uri")
+	tgtPID := c.Query("pid")
 	log.Printf("INFO: lookup details for aSpace uri %s", tgtURI)
 	js, err := svc.createJobStatus("LookupASDetails", "System", 1)
 	if err != nil {
 		log.Printf("ERROR: unable to create PublishToAS job status: %s", err.Error())
 		c.String(http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	var es externalSystem
+	err = svc.GDB.Where("name=?", "ArchivesSpace").Find(&es).Error
+	if err != nil {
+		c.String(http.StatusInternalServerError, fmt.Sprintf("unable to get external system data: %s", err.Error()))
 		return
 	}
 
@@ -100,8 +109,106 @@ func (svc *ServiceContext) lookupArchivesSpaceURL(c *gin.Context) {
 		return
 	}
 
+	type detailResp struct {
+		ID              string `json:"id"`
+		Title           string `json:"title"`
+		CreatedBy       string `json:"created_by"`
+		CreateTime      string `json:"create_time"`
+		Level           string `json:"level"`
+		URL             string `json:"url"`
+		Dates           string `json:"dates,omitempty"`
+		PublishedAt     string `json:"published_at,omitempty"`
+		Repo            string `json:"repo"`
+		CollectionTitle string `json:"collection_title"`
+		Language        string `json:"language,omitempty"`
+	}
+	out := detailResp{
+		ID:         fmt.Sprintf("%v", tgtASObj["id_0"]),
+		URL:        fmt.Sprintf("%s/%s", es.PublicURL, tgtURI),
+		CreatedBy:  fmt.Sprintf("%v", tgtASObj["created_by"]),
+		CreateTime: fmt.Sprintf("%v", tgtASObj["create_time"]),
+		Level:      fmt.Sprintf("%v", tgtASObj["level"]),
+	}
+	if tgtASObj["id_1"] != nil {
+		out.ID += fmt.Sprintf(" %v", tgtASObj["id_1"])
+	}
+	if tgtASObj["id_2"] != nil {
+		out.ID += fmt.Sprintf("-%v", tgtASObj["id_2"])
+	}
+	if tgtASObj["title"] != nil {
+		out.Title = fmt.Sprintf("%v", tgtASObj["title"])
+	} else {
+		out.Title = fmt.Sprintf("%v", tgtASObj["display_string"])
+	}
+	if tgtASObj["finding_aid_language_note"] != nil {
+		out.Language = fmt.Sprintf("%v", tgtASObj["finding_aid_language_note"])
+	}
+
+	if tgtASObj["dates"] != nil {
+		svc.logInfo(js, "Extract date info")
+		dates := tgtASObj["dates"].([]interface{})
+		if len(dates) > 0 {
+			tgtDate := dates[0].(map[string]interface{})
+			if tgtDate["expression"] != nil {
+				out.Dates = fmt.Sprintf("%v", tgtDate["expression"])
+			} else if tgtDate["begin"] != nil {
+				out.Dates = fmt.Sprintf("%v", tgtDate["begin"])
+			}
+		}
+	}
+
+	svc.logInfo(js, "Lookup repository name")
+	resp, asErr := svc.sendASGetRequest(fmt.Sprintf("/repositories/%s", asURL.RepositoryID))
+	if err != nil {
+		svc.logFatal(js, fmt.Sprintf("Unable to get repoisitory %s info: %s", asURL.RepositoryID, asErr.Message))
+		c.String(http.StatusInternalServerError, asErr.Message)
+		return
+	}
+	var repo map[string]interface{}
+	json.Unmarshal(resp, &repo)
+	out.Repo = fmt.Sprintf("%v", repo["name"])
+
+	if tgtPID != "" {
+		dObj := svc.getDigitalObject(js, tgtASObj, tgtPID)
+		if dObj != nil {
+			out.PublishedAt = strings.Split(dObj.Created, "T")[0]
+		}
+	}
+
+	if tgtASObj["finding_aid_title"] != nil {
+		ft := fmt.Sprintf("%v", tgtASObj["finding_aid_title"])
+		out.CollectionTitle = strings.Split(ft, "<num")[0]
+	}
+
+	if tgtASObj["ancestors"] != nil {
+		svc.logInfo(js, "Record has ancestors; looking up details")
+		ancIface := tgtASObj["ancestors"]
+		ancestors := ancIface.([]interface{})
+		ancestor := ancestors[len(ancestors)-1].(map[string]interface{})
+		colBytes, asErr := svc.sendASGetRequest(fmt.Sprintf("%v", ancestor["ref"]))
+		if asErr != nil {
+			svc.logError(js, fmt.Sprintf("Unable to get ancestor info: %s", asErr.Message))
+		} else {
+			var coll asObjectDetails
+			json.Unmarshal(colBytes, &coll)
+			out.ID = fmt.Sprintf("%v", coll["id_0"])
+			if coll["id_1"] != nil {
+				out.ID += fmt.Sprintf(" %v", coll["id_1"])
+			}
+			if coll["id_2"] != nil {
+				out.ID += fmt.Sprintf("-%v", coll["id_2"])
+			}
+			if coll["finding_aid_title"] != nil {
+				ft := fmt.Sprintf("%v", coll["finding_aid_title"])
+				out.CollectionTitle = strings.Split(ft, "<num")[0]
+			} else if coll["title"] != nil {
+				out.CollectionTitle = fmt.Sprintf("%v", coll["title"])
+			}
+		}
+	}
+
 	svc.jobDone(js)
-	c.JSON(http.StatusOK, tgtASObj)
+	c.JSON(http.StatusOK, out)
 }
 
 func (svc *ServiceContext) validateArchivesSpaceURL(c *gin.Context) {
@@ -439,7 +546,6 @@ func (svc *ServiceContext) createDigitalObject(js *jobStatus, repoID string, tgt
 	if asErr != nil {
 		return fmt.Errorf("ArchivesSpace create DigitalObject request failed: %d:%s", asErr.StatusCode, asErr.Message)
 	}
-	log.Printf("%s", resp)
 	createJSON := struct {
 		ID int64 `json:"id"`
 	}{}
