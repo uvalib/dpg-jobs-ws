@@ -171,7 +171,7 @@ func (svc *ServiceContext) lookupArchivesSpaceURL(c *gin.Context) {
 	if tgtPID != "" {
 		dObj := svc.getDigitalObject(js, tgtASObj, tgtPID)
 		if dObj != nil {
-			out.PublishedAt = strings.Split(dObj.Created, "T")[0]
+			out.PublishedAt = dObj.Created
 		}
 	}
 
