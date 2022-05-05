@@ -37,6 +37,7 @@ func main() {
 
 	router.GET("/archivesspace/validate", svc.archivesSpaceMiddleware, svc.validateArchivesSpaceURL)
 	router.POST("/archivesspace/convert", svc.archivesSpaceMiddleware, svc.convertToArchivesSpace)
+	router.POST("/archivesspace/publish", svc.archivesSpaceMiddleware, svc.publishToArchivesSpace)
 
 	router.POST("/orders/:id/check", svc.checkOrderReady)
 	router.POST("/orders/:id/pdf", svc.createOrderPDF)

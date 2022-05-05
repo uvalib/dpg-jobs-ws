@@ -29,7 +29,7 @@ type asDigitalObject struct {
 	Created string `json:"created"`
 }
 
-type asRepoInfo struct {
+type asURLInfo struct {
 	RepositoryID string
 	ParentType   string
 	ParentID     string
@@ -159,6 +159,64 @@ func (svc *ServiceContext) validateArchivesSpaceURL(c *gin.Context) {
 	c.String(http.StatusOK, outURL)
 }
 
+func (svc *ServiceContext) publishToArchivesSpace(c *gin.Context) {
+	type pubReqData struct {
+		UserID     int64 `json:"userId"`
+		MetadataID int64 `json:"metadataID"`
+	}
+	var req pubReqData
+	err := c.ShouldBindJSON(&req)
+	if err != nil {
+		log.Printf("ERROR: bad request to publish item to as: %s", err.Error())
+		c.String(http.StatusBadRequest, err.Error())
+		return
+	}
+
+	js, err := svc.createJobStatus("PublishToAS", "StaffMember", req.UserID)
+	if err != nil {
+		log.Printf("ERROR: unable to create PublishToAS job status: %s", err.Error())
+		c.String(http.StatusInternalServerError, err.Error())
+		return
+	}
+	svc.logInfo(js, fmt.Sprintf("Publish TrackSys metadata %d to ArchivesSpace", req.MetadataID))
+	var tgtMetadata metadata
+	err = svc.GDB.Find(&tgtMetadata, req.MetadataID).Error
+	if err != nil {
+		svc.logFatal(js, fmt.Sprintf("Unable to get metadata %d", req.MetadataID))
+		return
+	}
+
+	asURL := parsePublicASURL(tgtMetadata.ExternalURI)
+	if asURL == nil {
+		svc.logFatal(js, fmt.Sprintf("Metadata contains an invalid ArchivesSpace URL: %s", tgtMetadata.ExternalURI))
+		c.String(http.StatusBadRequest, fmt.Sprintf("%s is not a valid aSpace URL", tgtMetadata.ExternalURI))
+		return
+	}
+
+	tgtASObj, err := svc.getASDetails(js, asURL)
+	if err != nil {
+		svc.logFatal(js, fmt.Sprintf("%s:%s not found in repo %s", asURL.ParentType, asURL.ParentID, asURL.RepositoryID))
+		c.String(http.StatusBadRequest, fmt.Sprintf("%s was not found in aSpace", tgtMetadata.ExternalURI))
+		return
+	}
+
+	dObj := svc.getDigitalObject(js, tgtASObj, tgtMetadata.PID)
+	if dObj != nil {
+		svc.logInfo(js, fmt.Sprintf("%s:%s already has digital object. Nothing more to do.", asURL.ParentType, asURL.ParentID))
+	} else {
+		svc.logInfo(js, fmt.Sprintf("Creating aSpace digital object for  %s", tgtMetadata.PID))
+		err = svc.createDigitalObject(js, asURL.RepositoryID, tgtASObj, &tgtMetadata)
+		if err != nil {
+			svc.logFatal(js, fmt.Sprintf("Unable to create digital object %s", err.Error()))
+			return
+		}
+	}
+
+	svc.logInfo(js, "ArchivesSpace publish complete")
+	svc.jobDone(js)
+	c.String(http.StatusOK, "done")
+}
+
 func (svc *ServiceContext) convertToArchivesSpace(c *gin.Context) {
 	type convReqData struct {
 		UserID     int64  `json:"userId"`
@@ -196,24 +254,24 @@ func (svc *ServiceContext) convertToArchivesSpace(c *gin.Context) {
 			svc.logFatal(js, fmt.Sprintf("Unable to get metadata %d", req.MetadataID))
 			return
 		}
-		asInfo := parsePublicASURL(req.ASURL)
-		if asInfo == nil {
+		asURL := parsePublicASURL(req.ASURL)
+		if asURL == nil {
 			svc.logFatal(js, fmt.Sprintf("%s is not a valid public AS URL", req.ASURL))
 			return
 		}
 
-		tgtASObj, err := svc.getASDetails(js, asInfo)
+		tgtASObj, err := svc.getASDetails(js, asURL)
 		if err != nil {
-			svc.logFatal(js, fmt.Sprintf("%s:%s not found in repo %s", asInfo.ParentType, asInfo.ParentID, asInfo.RepositoryID))
+			svc.logFatal(js, fmt.Sprintf("%s:%s not found in repo %s", asURL.ParentType, asURL.ParentID, asURL.RepositoryID))
 			return
 		}
 
 		dObj := svc.getDigitalObject(js, tgtASObj, tgtMetadata.PID)
 		if dObj != nil {
-			svc.logInfo(js, fmt.Sprintf("%s:%s already has digital object. Use existing.", asInfo.ParentType, asInfo.ParentID))
+			svc.logInfo(js, fmt.Sprintf("%s:%s already has digital object. Use existing.", asURL.ParentType, asURL.ParentID))
 		} else {
 			svc.logInfo(js, fmt.Sprintf("No digital object found; creating one for PID %s", tgtMetadata.PID))
-			err = svc.createDigitalObject(js, asInfo.RepositoryID, tgtASObj, &tgtMetadata)
+			err = svc.createDigitalObject(js, asURL.RepositoryID, tgtASObj, &tgtMetadata)
 			if err != nil {
 				svc.logFatal(js, fmt.Sprintf("Unable to create digital object %s", err.Error()))
 				return
@@ -229,7 +287,7 @@ func (svc *ServiceContext) convertToArchivesSpace(c *gin.Context) {
 				return
 			}
 			tgtMetadata.Type = "ExternalMetadata"
-			tgtMetadata.ExternalURI = fmt.Sprintf("/repositories/%s/%s/%s", asInfo.RepositoryID, asInfo.ParentType, asInfo.ParentID)
+			tgtMetadata.ExternalURI = fmt.Sprintf("/repositories/%s/%s/%s", asURL.RepositoryID, asURL.ParentType, asURL.ParentID)
 			tgtMetadata.CreatorName = ""
 			tgtMetadata.CatalogKey = ""
 			tgtMetadata.CallNumber = ""
@@ -388,35 +446,35 @@ func (svc *ServiceContext) createDigitalObject(js *jobStatus, repoID string, tgt
 	return nil
 }
 
-func (svc *ServiceContext) getASDetails(js *jobStatus, asInfo *asRepoInfo) (asObjectDetails, error) {
-	svc.logInfo(js, fmt.Sprintf("Get details for %+v", *asInfo))
+func (svc *ServiceContext) getASDetails(js *jobStatus, asURL *asURLInfo) (asObjectDetails, error) {
+	svc.logInfo(js, fmt.Sprintf("Get details for /repositories/%s/%s/%s", asURL.RepositoryID, asURL.ParentType, asURL.ParentID))
 	var respBytes []byte
-	if asInfo.ParentType == "resources" {
-		svc.logInfo(js, fmt.Sprintf("Looking up parent resource %s in repo %s...", asInfo.ParentID, asInfo.RepositoryID))
-		url := fmt.Sprintf("/repositories/%s/resources/%s", asInfo.RepositoryID, asInfo.ParentID)
+	if asURL.ParentType == "resources" {
+		svc.logInfo(js, fmt.Sprintf("Looking up parent resource %s in repo %s...", asURL.ParentID, asURL.RepositoryID))
+		url := fmt.Sprintf("/repositories/%s/resources/%s", asURL.RepositoryID, asURL.ParentID)
 		resp, err := svc.sendASGetRequest(url)
 		if err != nil {
 			return nil, fmt.Errorf("%d:%s", err.StatusCode, err.Message)
 		}
 		respBytes = resp
-	} else if asInfo.ParentType == "archival_objects" {
-		svc.logInfo(js, fmt.Sprintf("Looking up parent archival object %s in repo %s...", asInfo.ParentID, asInfo.RepositoryID))
-		url := fmt.Sprintf("/repositories/%s/archival_objects/%s", asInfo.RepositoryID, asInfo.ParentID)
+	} else if asURL.ParentType == "archival_objects" {
+		svc.logInfo(js, fmt.Sprintf("Looking up parent archival object %s in repo %s...", asURL.ParentID, asURL.RepositoryID))
+		url := fmt.Sprintf("/repositories/%s/archival_objects/%s", asURL.RepositoryID, asURL.ParentID)
 		resp, err := svc.sendASGetRequest(url)
 		if err != nil {
 			return nil, fmt.Errorf("%d:%s", err.StatusCode, err.Message)
 		}
 		respBytes = resp
-	} else if asInfo.ParentType == "accessions" {
-		svc.logInfo(js, fmt.Sprintf("Looking up parent accession %s in repo %s...", asInfo.ParentID, asInfo.RepositoryID))
-		url := fmt.Sprintf("/repositories/%s/accessions/%s", asInfo.RepositoryID, asInfo.ParentID)
+	} else if asURL.ParentType == "accessions" {
+		svc.logInfo(js, fmt.Sprintf("Looking up parent accession %s in repo %s...", asURL.ParentID, asURL.RepositoryID))
+		url := fmt.Sprintf("/repositories/%s/accessions/%s", asURL.RepositoryID, asURL.ParentID)
 		resp, err := svc.sendASGetRequest(url)
 		if err != nil {
 			return nil, fmt.Errorf("%d:%s", err.StatusCode, err.Message)
 		}
 		respBytes = resp
 	} else {
-		return nil, fmt.Errorf("Unsupported parent type: %s", asInfo.ParentType)
+		return nil, fmt.Errorf("Unsupported parent type: %s", asURL.ParentType)
 	}
 
 	var out asObjectDetails
@@ -464,7 +522,7 @@ func (svc *ServiceContext) lookupASObjectSlug(repoID, slug string) (string, erro
 	return parts[len(parts)-1], nil
 }
 
-func parsePublicASURL(asURL string) *asRepoInfo {
+func parsePublicASURL(asURL string) *asURLInfo {
 	//public AS urls look like this:
 	//   https://archives.lib.virginia.edu/repositories/3/archival_objects/62839
 	//OR Relative:
@@ -472,7 +530,7 @@ func parsePublicASURL(asURL string) *asRepoInfo {
 	//only care about the repoID, object type and objID
 	bits := strings.Split(asURL, "/")
 	if len(bits) >= 4 {
-		out := asRepoInfo{
+		out := asURLInfo{
 			RepositoryID: bits[len(bits)-3],
 			ParentType:   bits[len(bits)-2],
 			ParentID:     bits[len(bits)-1],
