@@ -212,7 +212,7 @@ func (svc *ServiceContext) sendRequest(verb string, url string, payload *url.Val
 		log.Printf("ERROR: Failed response from %s %s - %d:%s. Elapsed Time: %d (ms)",
 			verb, url, err.StatusCode, err.Message, elapsedMS)
 	} else {
-		log.Printf("Successful response from %s %s. Elapsed Time: %d (ms)", verb, url, elapsedMS)
+		log.Printf("INFO: Successful response from %s %s. Elapsed Time: %d (ms)", verb, url, elapsedMS)
 	}
 	return resp, err
 }
@@ -248,7 +248,7 @@ func (svc *ServiceContext) sendASRequest(verb string, url string, payload interf
 		log.Printf("ERROR: Failed response from %s %s - %d:%s. Elapsed Time: %d (ms)",
 			verb, url, err.StatusCode, err.Message, elapsedMS)
 	} else {
-		log.Printf("Successful response from %s %s. Elapsed Time: %d (ms)", verb, url, elapsedMS)
+		log.Printf("INFO: Successful response from %s %s. Elapsed Time: %d (ms)", verb, url, elapsedMS)
 	}
 	return resp, err
 }
