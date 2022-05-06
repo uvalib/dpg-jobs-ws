@@ -54,6 +54,10 @@ func (svc *ServiceContext) jobDone(status *jobStatus) {
 }
 
 func (svc *ServiceContext) logInfo(status *jobStatus, text string) {
+	if status == nil {
+		log.Printf("INFO: %s", text)
+		return
+	}
 	log.Printf("INFO: [job %d info]: %s", status.ID, text)
 	e := event{JobStatusID: status.ID, Level: 0, Text: text}
 	err := svc.GDB.Create(&e).Error
@@ -63,6 +67,10 @@ func (svc *ServiceContext) logInfo(status *jobStatus, text string) {
 }
 
 func (svc *ServiceContext) logError(status *jobStatus, text string) {
+	if status == nil {
+		log.Printf("WARNING: %s", text)
+		return
+	}
 	log.Printf("INFO: [job %d error]: %s", status.ID, text)
 	e := event{JobStatusID: status.ID, Level: 2, Text: text}
 	err := svc.GDB.Create(&e).Error

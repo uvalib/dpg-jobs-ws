@@ -81,15 +81,9 @@ func (svc *ServiceContext) lookupArchivesSpaceURL(c *gin.Context) {
 	tgtURI := c.Query("uri")
 	tgtPID := c.Query("pid")
 	log.Printf("INFO: lookup details for aSpace uri %s", tgtURI)
-	js, err := svc.createJobStatus("LookupASDetails", "System", 1)
-	if err != nil {
-		log.Printf("ERROR: unable to create PublishToAS job status: %s", err.Error())
-		c.String(http.StatusInternalServerError, err.Error())
-		return
-	}
 
 	var es externalSystem
-	err = svc.GDB.Where("name=?", "ArchivesSpace").Find(&es).Error
+	err := svc.GDB.Where("name=?", "ArchivesSpace").Find(&es).Error
 	if err != nil {
 		c.String(http.StatusInternalServerError, fmt.Sprintf("unable to get external system data: %s", err.Error()))
 		return
@@ -97,13 +91,14 @@ func (svc *ServiceContext) lookupArchivesSpaceURL(c *gin.Context) {
 
 	asURL := parsePublicASURL(tgtURI)
 	if asURL == nil {
+		log.Printf("INFO: %s is not a valid aSpace URL", tgtURI)
 		c.String(http.StatusBadRequest, fmt.Sprintf("%s is not a valid aSpace URL", tgtURI))
 		return
 	}
 
-	tgtASObj, err := svc.getASDetails(js, asURL)
+	tgtASObj, err := svc.getASDetails(nil, asURL)
 	if err != nil {
-		svc.logFatal(js, fmt.Sprintf("%s:%s not found in repo %s", asURL.ParentType, asURL.ParentID, asURL.RepositoryID))
+		log.Printf("INFO: %s:%s not found in repo %s", asURL.ParentType, asURL.ParentID, asURL.RepositoryID)
 		c.String(http.StatusBadRequest, fmt.Sprintf("%s was not found in aSpace", tgtURI))
 		return
 	}
@@ -144,7 +139,7 @@ func (svc *ServiceContext) lookupArchivesSpaceURL(c *gin.Context) {
 	}
 
 	if tgtASObj["dates"] != nil {
-		svc.logInfo(js, "Extract date info")
+		log.Printf("INFO: Extract date info")
 		dates := tgtASObj["dates"].([]interface{})
 		if len(dates) > 0 {
 			tgtDate := dates[0].(map[string]interface{})
@@ -156,10 +151,10 @@ func (svc *ServiceContext) lookupArchivesSpaceURL(c *gin.Context) {
 		}
 	}
 
-	svc.logInfo(js, "Lookup repository name")
+	log.Printf("INFO: Lookup repository name")
 	resp, asErr := svc.sendASGetRequest(fmt.Sprintf("/repositories/%s", asURL.RepositoryID))
 	if err != nil {
-		svc.logFatal(js, fmt.Sprintf("Unable to get repoisitory %s info: %s", asURL.RepositoryID, asErr.Message))
+		log.Printf("ERROR: Unable to get repoisitory %s info: %s", asURL.RepositoryID, asErr.Message)
 		c.String(http.StatusInternalServerError, asErr.Message)
 		return
 	}
@@ -168,7 +163,7 @@ func (svc *ServiceContext) lookupArchivesSpaceURL(c *gin.Context) {
 	out.Repo = fmt.Sprintf("%v", repo["name"])
 
 	if tgtPID != "" {
-		dObj := svc.getDigitalObject(js, tgtASObj, tgtPID)
+		dObj := svc.getDigitalObject(nil, tgtASObj, tgtPID)
 		if dObj != nil {
 			out.PublishedAt = dObj.Created
 		}
@@ -180,13 +175,13 @@ func (svc *ServiceContext) lookupArchivesSpaceURL(c *gin.Context) {
 	}
 
 	if tgtASObj["ancestors"] != nil {
-		svc.logInfo(js, "Record has ancestors; looking up details")
+		log.Printf("INFO: Record has ancestors; looking up details")
 		ancIface := tgtASObj["ancestors"]
 		ancestors := ancIface.([]interface{})
 		ancestor := ancestors[len(ancestors)-1].(map[string]interface{})
 		colBytes, asErr := svc.sendASGetRequest(fmt.Sprintf("%v", ancestor["ref"]))
 		if asErr != nil {
-			svc.logError(js, fmt.Sprintf("Unable to get ancestor info: %s", asErr.Message))
+			log.Printf("WARNING: Unable to get ancestor info: %s", asErr.Message)
 		} else {
 			var coll asObjectDetails
 			json.Unmarshal(colBytes, &coll)
@@ -206,7 +201,6 @@ func (svc *ServiceContext) lookupArchivesSpaceURL(c *gin.Context) {
 		}
 	}
 
-	svc.jobDone(js)
 	c.JSON(http.StatusOK, out)
 }
 
