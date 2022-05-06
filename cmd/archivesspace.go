@@ -277,7 +277,7 @@ func (svc *ServiceContext) validateArchivesSpaceURL(c *gin.Context) {
 	partVal, _ = strconv.Atoi(parts[3])
 	if partVal == 0 {
 		log.Printf("ObjectID [%s] is not numeric, search for match", parts[3])
-		slugID, err := svc.lookupASObjectSlug(parts[1], parts[3])
+		slugID, err := svc.lookupASObjectSlug(parts[1], parts[2], parts[3])
 		if err != nil {
 			log.Printf("INFO: invalid object slug %s: %s", parts[3], err.Error())
 			c.String(http.StatusBadRequest, fmt.Sprintf("%s is not a valid object slug", parts[3]))
@@ -630,7 +630,7 @@ func (svc *ServiceContext) getASRepositories() ([]asRepository, error) {
 	return out, nil
 }
 
-func (svc *ServiceContext) lookupASObjectSlug(repoID, slug string) (string, error) {
+func (svc *ServiceContext) lookupASObjectSlug(repoID, tgtObjType, slug string) (string, error) {
 	resp, asErr := svc.sendASGetRequest(fmt.Sprintf("/repositories/%s/search?q=%s&page=1", repoID, slug))
 	if asErr != nil {
 		return "", fmt.Errorf("%d:%s", asErr.StatusCode, asErr.Message)
@@ -645,11 +645,21 @@ func (svc *ServiceContext) lookupASObjectSlug(repoID, slug string) (string, erro
 	if err != nil {
 		return "", err
 	}
-	if parsed.TotalHits != 1 {
-		return "", fmt.Errorf("%s has more than one match", slug)
+
+	// sample response: [{URI:/repositories/3/resources/886} {URI:/repositories/3/classification_terms/4}]}
+	out := ""
+	for _, r := range parsed.Results {
+		uriParts := strings.Split(r.URI, "/")
+		objType := uriParts[len(uriParts)-2]
+		if objType == tgtObjType {
+			out = uriParts[len(uriParts)-1]
+			break
+		}
 	}
-	parts := strings.Split(parsed.Results[0].URI, "/")
-	return parts[len(parts)-1], nil
+	if out == "" {
+		return "", fmt.Errorf("no match found for %s", slug)
+	}
+	return out, nil
 }
 
 func parsePublicASURL(asURL string) *asURLInfo {
