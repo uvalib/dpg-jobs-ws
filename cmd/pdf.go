@@ -161,6 +161,9 @@ func (svc *ServiceContext) generateOrderPDF(order *order) (*wkhtmltopdf.PDFGener
 	}
 
 	for idx, unit := range order.Units {
+		if len(unit.MasterFiles) == 0 {
+			continue
+		}
 		item := itemData{Number: idx + 1,
 			Title:      unit.Metadata.Title,
 			Author:     unit.Metadata.CreatorName,
