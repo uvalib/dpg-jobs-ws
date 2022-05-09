@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 )
 
 func (svc *ServiceContext) downloadFromArchive(c *gin.Context) {
@@ -71,7 +72,9 @@ func (svc *ServiceContext) downloadFromArchive(c *gin.Context) {
 // called as goroutine to copy all from the archive. it may take a long time
 func (svc *ServiceContext) copyAllFromArchive(js *jobStatus, unitID int64, destDir string) {
 	var tgtUnit unit
-	err := svc.GDB.Preload("MasterFiles").First(&tgtUnit, unitID).Error
+	err := svc.GDB.Preload("MasterFiles", func(db *gorm.DB) *gorm.DB {
+		return db.Order("master_files.filename ASC")
+	}).First(&tgtUnit, unitID).Error
 	if err != nil {
 		svc.logFatal(js, fmt.Sprintf("Unable to load unit %d: %s", unitID, err.Error()))
 		return

@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 )
 
 func (svc *ServiceContext) replaceMasterFiles(c *gin.Context) {
@@ -105,7 +106,9 @@ func (svc *ServiceContext) renumberMasterFiles(c *gin.Context) {
 
 	svc.logInfo(js, "Load unit and masterfiles")
 	var tgtUnit unit
-	err = svc.GDB.Preload("MasterFiles").First(&tgtUnit, unitID).Error
+	err = svc.GDB.Preload("MasterFiles", func(db *gorm.DB) *gorm.DB {
+		return db.Order("master_files.filename ASC")
+	}).First(&tgtUnit, unitID).Error
 	if err != nil {
 		svc.logFatal(js, fmt.Sprintf("Unable to load unit %d: %s", unitID, err.Error()))
 		c.String(http.StatusBadRequest, err.Error())
@@ -168,7 +171,9 @@ func (svc *ServiceContext) deleteMasterFiles(c *gin.Context) {
 	go func() {
 		svc.logInfo(js, "Load unit and masterfiles")
 		var tgtUnit unit
-		err = svc.GDB.Preload("MasterFiles").First(&tgtUnit, unitID).Error
+		err = svc.GDB.Preload("MasterFiles", func(db *gorm.DB) *gorm.DB {
+			return db.Order("master_files.filename ASC")
+		}).First(&tgtUnit, unitID).Error
 		if err != nil {
 			svc.logFatal(js, fmt.Sprintf("Unable to load unit %d: %s", unitID, err.Error()))
 			return
@@ -217,7 +222,9 @@ func (svc *ServiceContext) deleteMasterFiles(c *gin.Context) {
 		svc.logInfo(js, fmt.Sprintf("Updating unit master files count from %d to %d", tgtUnit.MasterFilesCount, newCnt))
 		tgtUnit.MasterFilesCount = newCnt
 		svc.GDB.Model(&tgtUnit).Select("MasterFilesCount").Updates(tgtUnit)
-		svc.GDB.Preload("MasterFiles").First(&tgtUnit, unitID) // reload masterfiles list
+		svc.GDB.Preload("MasterFiles", func(db *gorm.DB) *gorm.DB {
+			return db.Order("master_files.filename ASC")
+		}).First(&tgtUnit, unitID) // reload masterfiles list
 
 		svc.logInfo(js, "Updating remaining master files to correct page number gaps")
 		prevPage := -1
@@ -282,7 +289,10 @@ func (svc *ServiceContext) addMasterFiles(c *gin.Context) {
 	go func() {
 		svc.logInfo(js, "Load unit and masterfiles")
 		var tgtUnit unit
-		err = svc.GDB.Preload("MasterFiles").
+		err = svc.GDB.
+			Preload("MasterFiles", func(db *gorm.DB) *gorm.DB {
+				return db.Order("master_files.filename ASC")
+			}).
 			Preload("MasterFiles.ImageTechMeta").
 			Preload("MasterFiles.Locations").
 			Preload("MasterFiles.Locations.ContainerType").
@@ -314,14 +324,16 @@ func (svc *ServiceContext) addMasterFiles(c *gin.Context) {
 				prevPage = newPage
 			} else {
 				if pageNum > prevPage+1 {
-					svc.logFatal(js, "Gap in sequence number of new master files")
+					svc.logFatal(js, fmt.Sprintf("Gap in sequence number of new master files; %d to %d", pageNum, prevPage+1))
 					return
 				}
 				prevPage = pageNum
 			}
 		}
 
+		log.Printf("UNIT HAS %d master files. %+v", len(tgtUnit.MasterFiles), tgtUnit.MasterFiles)
 		lastPageNum := getMasterFilePageNum(tgtUnit.MasterFiles[len(tgtUnit.MasterFiles)-1].Filename)
+		log.Printf("UNIT last mf page %d", lastPageNum)
 		if newPage > lastPageNum+1 {
 			svc.logFatal(js, fmt.Sprintf("New master file sequence number gap (from %d to %d)", lastPageNum, newPage))
 			return

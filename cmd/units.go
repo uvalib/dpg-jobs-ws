@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 )
 
 func (svc *ServiceContext) attachFile(c *gin.Context) {
@@ -102,7 +103,10 @@ func (svc *ServiceContext) cloneMasterFiles(c *gin.Context) {
 		for _, cr := range req {
 			svc.logInfo(js, fmt.Sprintf("Loading clone source unit %d", cr.UnitID))
 			var srcUnit unit
-			err = svc.GDB.Preload("MasterFiles").
+			err = svc.GDB.
+				Preload("MasterFiles", func(db *gorm.DB) *gorm.DB {
+					return db.Order("master_files.filename ASC")
+				}).
 				Preload("MasterFiles.ImageTechMeta").
 				Preload("MasterFiles.Locations").
 				First(&srcUnit, cr.UnitID).Error
@@ -161,7 +165,10 @@ func (svc *ServiceContext) createPatronDeliverables(c *gin.Context) {
 	go func() {
 		svc.logInfo(js, fmt.Sprintf("Loading target unit %d", unitID))
 		var tgtUnit unit
-		err = svc.GDB.Preload("MasterFiles").Preload("MasterFiles.ImageTechMeta").
+		err = svc.GDB.
+			Preload("MasterFiles", func(db *gorm.DB) *gorm.DB {
+				return db.Order("master_files.filename ASC")
+			}).Preload("MasterFiles.ImageTechMeta").
 			Preload("IntendedUse").Preload("Metadata").First(&tgtUnit, unitID).Error
 		if err != nil {
 			svc.logFatal(js, fmt.Sprintf("Unable to load unit %d: %s", unitID, err.Error()))
