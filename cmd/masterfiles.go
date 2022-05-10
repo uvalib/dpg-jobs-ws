@@ -331,9 +331,7 @@ func (svc *ServiceContext) addMasterFiles(c *gin.Context) {
 			}
 		}
 
-		log.Printf("UNIT HAS %d master files. %+v", len(tgtUnit.MasterFiles), tgtUnit.MasterFiles)
 		lastPageNum := getMasterFilePageNum(tgtUnit.MasterFiles[len(tgtUnit.MasterFiles)-1].Filename)
-		log.Printf("UNIT last mf page %d", lastPageNum)
 		if newPage > lastPageNum+1 {
 			svc.logFatal(js, fmt.Sprintf("New master file sequence number gap (from %d to %d)", lastPageNum, newPage))
 			return
@@ -414,6 +412,7 @@ func (svc *ServiceContext) addMasterFiles(c *gin.Context) {
 		svc.jobDone(js)
 	}()
 
+	log.Printf("INFO: return add master files job id: %d", js.ID)
 	c.String(http.StatusOK, fmt.Sprintf("%d", js.ID))
 }
 
