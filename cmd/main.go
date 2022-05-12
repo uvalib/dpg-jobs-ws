@@ -40,6 +40,9 @@ func main() {
 	router.POST("/archivesspace/convert", svc.archivesSpaceMiddleware, svc.convertToArchivesSpace)
 	router.POST("/archivesspace/publish", svc.archivesSpaceMiddleware, svc.publishToArchivesSpace)
 
+	router.GET("/ocr/languages", svc.getOCRLanguages)
+	router.POST("/ocr", svc.handleOCRRequest)
+
 	router.POST("/orders/:id/check", svc.checkOrderReady)
 	router.POST("/orders/:id/pdf", svc.createOrderPDF)
 	router.GET("/orders/:id/pdf", svc.viewOrderPDF)
