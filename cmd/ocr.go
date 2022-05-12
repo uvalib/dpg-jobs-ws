@@ -24,7 +24,6 @@ func (svc *ServiceContext) getOCRLanguages(c *gin.Context) {
 	}
 
 	langList := strings.Split(string(langs), "\n")
-	log.Printf("%v", langList)
 	sort.Strings(langList)
 	c.String(http.StatusOK, strings.Join(langList, ","))
 }
