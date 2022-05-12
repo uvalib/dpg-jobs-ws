@@ -233,6 +233,7 @@ type order struct {
 	Invoices                       []invoice `gorm:"foreignKey:OrderID"`
 	Units                          []unit    `gorm:"foreignKey:OrderID"`
 	Email                          string
+	StaffNotes                     string
 	DateRequestSubmitted           time.Time
 	DateOrderApproved              *time.Time
 	DateCustomerNotified           *time.Time

@@ -28,6 +28,7 @@ type emailRequest struct {
 }
 
 func (svc *ServiceContext) sendOrderEmail(c *gin.Context) {
+	altEmail := c.Query("alt")
 	orderIDStr := c.Param("id")
 	orderID, _ := strconv.ParseInt(orderIDStr, 10, 64)
 	js, err := svc.createJobStatus("SendOrderEmail", "Order", orderID)
@@ -36,6 +37,7 @@ func (svc *ServiceContext) sendOrderEmail(c *gin.Context) {
 		c.String(http.StatusInternalServerError, err.Error())
 		return
 	}
+
 	svc.logInfo(js, "Start send order email...")
 	svc.logInfo(js, fmt.Sprintf("Loading customer and order data for order %d", orderID))
 	var o order
@@ -51,9 +53,13 @@ func (svc *ServiceContext) sendOrderEmail(c *gin.Context) {
 		return
 	}
 
-	svc.logInfo(js, fmt.Sprintf("Sending order email to  %s", o.Customer.Email))
+	tgtEmail := o.Customer.Email
+	if altEmail != "" {
+		tgtEmail = altEmail
+	}
+	svc.logInfo(js, fmt.Sprintf("Sending order email to  %s", tgtEmail))
 	req := emailRequest{Subject: fmt.Sprintf("UVA Digital Production Group - Order # %d Complete", o.ID),
-		To:      []string{o.Customer.Email},
+		To:      []string{tgtEmail},
 		From:    svc.SMTP.Sender,
 		ReplyTo: svc.SMTP.Sender,
 		Body:    o.Email,
@@ -66,7 +72,14 @@ func (svc *ServiceContext) sendOrderEmail(c *gin.Context) {
 
 	now := time.Now()
 	o.DateCustomerNotified = &now
-	err = svc.GDB.Model(&o).Select("DateCustomerNotified").Updates(o).Error
+	if altEmail != "" {
+		msg := fmt.Sprintf("Order notification sent to alternate email address: %s on %s.", altEmail, now.Format("2006-01-02"))
+		if o.StaffNotes != "" {
+			o.StaffNotes += " "
+		}
+		o.StaffNotes += msg
+	}
+	err = svc.GDB.Model(&o).Select("DateCustomerNotified", "StaffNotes").Updates(o).Error
 	if err != nil {
 		svc.logError(js, fmt.Sprintf("Unable to set date customer notified: %s", err.Error()))
 	}
@@ -76,6 +89,7 @@ func (svc *ServiceContext) sendOrderEmail(c *gin.Context) {
 }
 
 func (svc *ServiceContext) sendFeesEmail(c *gin.Context) {
+	altEmail := c.Query("alt")
 	orderIDStr := c.Param("id")
 	orderID, _ := strconv.ParseInt(orderIDStr, 10, 64)
 	js, err := svc.createJobStatus("SendFeeEstimateToCustomer", "Order", orderID)
@@ -84,6 +98,7 @@ func (svc *ServiceContext) sendFeesEmail(c *gin.Context) {
 		c.String(http.StatusInternalServerError, err.Error())
 		return
 	}
+
 	svc.logInfo(js, "Start send fees email...")
 	svc.logInfo(js, fmt.Sprintf("Loading customer and invoice data for order %d", orderID))
 	var o order
@@ -113,9 +128,13 @@ func (svc *ServiceContext) sendFeesEmail(c *gin.Context) {
 		c.String(http.StatusInternalServerError, err.Error())
 	}
 
-	svc.logInfo(js, fmt.Sprintf("Sending fees email to  %s", o.Customer.Email))
+	tgtEmail := o.Customer.Email
+	if altEmail != "" {
+		tgtEmail = altEmail
+	}
+	svc.logInfo(js, fmt.Sprintf("Sending fees email to  %s", tgtEmail))
 	req := emailRequest{Subject: fmt.Sprintf("UVA Digital Production Group - Request # %d Estimated Fee", o.ID),
-		To:      []string{o.Customer.Email},
+		To:      []string{tgtEmail},
 		From:    svc.SMTP.Sender,
 		ReplyTo: svc.SMTP.Sender,
 		Body:    renderedEmail.String(),
