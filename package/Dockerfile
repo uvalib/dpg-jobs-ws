@@ -24,7 +24,7 @@ RUN cd /tmp && wget https://github.com/wkhtmltopdf/packaging/releases/download/0
 
 # Create the run user and group
 RUN groupadd -g 10708 libr-snlocal 
-RUN groupadd -g 16339 lb-digiserv && useradd -u 118698 -g lb-digiserv -G libr-snlocal
+RUN groupadd -g 16339 lb-digiserv && useradd -u 118698 -g lb-digiserv -G libr-snlocal libsnlocal
 
 # set the timezone appropriatly
 ENV TZ=UTC
