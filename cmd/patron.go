@@ -187,12 +187,16 @@ func (svc *ServiceContext) createPatronDeliverable(js *jobStatus, tgtUnit *unit,
 func (svc *ServiceContext) zipPatronDeliverables(js *jobStatus, tgtUnit *unit) error {
 	svc.logInfo(js, fmt.Sprintf("Zipping deliverables for unit %d", tgtUnit.ID))
 	deliveryDir := path.Join(svc.DeliveryDir, fmt.Sprintf("order_%d", tgtUnit.OrderID))
-	ensureDirExists(deliveryDir, 0755)
+	err := ensureDirExists(deliveryDir, 0755)
+	if err != nil {
+		log.Printf("ERROR: unable to create delivery dir %s: %s", deliveryDir, err.Error())
+		return err
+	}
 	assembleDir := path.Join(svc.ProcessingDir, "finalization", "tmp", fmt.Sprintf("%09d", tgtUnit.ID))
 
 	svc.logInfo(js, "Getting up-to-date list of master files for unit")
 	var masterfiles []masterFile
-	err := svc.GDB.Where("unit_id=?", tgtUnit.ID).Find(&masterfiles).Error
+	err = svc.GDB.Where("unit_id=?", tgtUnit.ID).Find(&masterfiles).Error
 	if err != nil {
 		return fmt.Errorf("Unable to get masterfiles: %s", err.Error())
 	}
