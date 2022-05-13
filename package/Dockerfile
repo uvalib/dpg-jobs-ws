@@ -23,7 +23,8 @@ RUN apt-get -y update && apt-get -y upgrade && apt-get -y install bash tzdata ca
 RUN cd /tmp && wget https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6-1/wkhtmltox_0.12.6-1.buster_amd64.deb && dpkg -i wkhtmltox_0.12.6-1.buster_amd64.deb && rm wkhtmltox_0.12.6-1.buster_amd64.deb
 
 # Create the run user and group
-RUN groupadd -g 16339 lb-digiserv && useradd -u 118698 -g lb-digiserv libsnlocal
+RUN groupadd -g 10708 libr-snlocal 
+RUN groupadd -g 16339 lb-digiserv && useradd -u 118698 -g lb-digiserv -G libr-snlocal
 
 # set the timezone appropriatly
 ENV TZ=UTC
