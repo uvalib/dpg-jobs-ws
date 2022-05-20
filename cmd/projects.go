@@ -136,6 +136,10 @@ func (svc *ServiceContext) projectFinishedFinalization(js *jobStatus, currProj *
 		}
 	}
 
+	// mark unit as done
+	svc.logInfo(js, "Unit finished finalization")
+	svc.setUnitStatus(tgtUnit, "done")
+
 	// all validations have passed. the project finalization has successfully completed
 	now := time.Now()
 	currProj.FinishedAt = &now
