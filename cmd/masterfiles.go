@@ -59,7 +59,7 @@ func (svc *ServiceContext) replaceMasterFiles(c *gin.Context) {
 			}
 			svc.createImageTechMetadata(&mf, tifFile.path)
 			svc.publishToIIIF(js, &mf, tifFile.path, true)
-			archiveMD5, err := svc.archiveFile(js, tifFile.path, unitID, mf.Filename)
+			archiveMD5, err := svc.archiveFile(js, tifFile.path, unitID, &mf)
 			if err != nil {
 				svc.logError(js, fmt.Sprintf("Unable to archive %s: %s", mf.Filename, err.Error()))
 			}
@@ -389,7 +389,7 @@ func (svc *ServiceContext) addMasterFiles(c *gin.Context) {
 			}
 
 			// archive file, validate checksum and set archived date
-			newMD5, err := svc.archiveFile(js, tf.path, unitID, tf.filename)
+			newMD5, err := svc.archiveFile(js, tf.path, unitID, &newMF)
 			if err != nil {
 				svc.logError(js, fmt.Sprintf("Unable to archive %s: %s", tf.filename, err.Error()))
 			}

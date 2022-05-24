@@ -116,7 +116,7 @@ func (svc *ServiceContext) importImages(js *jobStatus, tgtUnit *unit, srcDir str
 		}
 
 		if tgtUnit.ThrowAway == false && tgtUnit.DateArchived == nil {
-			archiveMD5, err := svc.archiveFile(js, fi.path, tgtUnit.ID, fi.filename)
+			archiveMD5, err := svc.archiveFile(js, fi.path, tgtUnit.ID, &newMF)
 			if err != nil {
 				return fmt.Errorf("Archive failed: %s", err.Error())
 			}

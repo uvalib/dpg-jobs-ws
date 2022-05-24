@@ -109,10 +109,10 @@ func (svc *ServiceContext) copyArchivedFile(js *jobStatus, unitID int64, filenam
 	return nil
 }
 
-// archiveFile will create the unit directory, copy the target file and return an MD5 checksum
-func (svc *ServiceContext) archiveFile(js *jobStatus, srcPath string, unitID int64, filename string) (string, error) {
+// archiveFile will create the unit directory, copy the target file, set the archived date and return an MD5 checksum
+func (svc *ServiceContext) archiveFile(js *jobStatus, srcPath string, unitID int64, tgtMF *masterFile) (string, error) {
 	archiveUnitDir := path.Join(svc.ArchiveDir, fmt.Sprintf("%09d", unitID))
-	archiveFile := path.Join(archiveUnitDir, filename)
+	archiveFile := path.Join(archiveUnitDir, tgtMF.Filename)
 
 	svc.logInfo(js, fmt.Sprintf("Archive %s to %s", srcPath, archiveFile))
 	err := ensureDirExists(archiveUnitDir, 0777)
@@ -124,7 +124,17 @@ func (svc *ServiceContext) archiveFile(js *jobStatus, srcPath string, unitID int
 	if err != nil {
 		return "", err
 	}
-	svc.logInfo(js, fmt.Sprintf("%s archived to %s. MD5 checksum [%s]", filename, archiveFile, newMD5))
+	svc.logInfo(js, fmt.Sprintf("%s archived to %s. MD5 checksum [%s]", tgtMF.Filename, archiveFile, newMD5))
+
+	svc.logInfo(js, fmt.Sprintf("Setting date archived for %s", tgtMF.Filename))
+	now := time.Now()
+	tgtMF.DateArchived = &now
+	err = svc.GDB.Model(tgtMF).Select("DateArchived").Updates(*tgtMF).Error
+	if err != nil {
+		svc.logError(js, fmt.Sprintf("Unable to set date archived for master file %d:%s", tgtMF.ID, err.Error()))
+	}
+
+	svc.logInfo(js, fmt.Sprintf("Masterfile %d : %s successfully archived to %s", tgtMF.ID, tgtMF.Filename, archiveFile))
 	return newMD5, nil
 }
 
