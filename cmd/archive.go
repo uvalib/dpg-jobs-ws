@@ -97,6 +97,10 @@ func (svc *ServiceContext) copyAllFromArchive(js *jobStatus, unitID int64, destD
 
 func (svc *ServiceContext) copyArchivedFile(js *jobStatus, unitID int64, filename string, destDir string) error {
 	archiveFile := path.Join(svc.ArchiveDir, fmt.Sprintf("%09d", unitID), filename)
+	if strings.Contains(filename, "ARCH") {
+		unitDir := strings.Split(filename, "_")[0]
+		archiveFile = path.Join(svc.ArchiveDir, unitDir, filename)
+	}
 	archiveMD5 := md5Checksum(archiveFile)
 	destFile := path.Join(destDir, filename)
 	copyMD5, err := copyFile(archiveFile, destFile, 0666)
@@ -107,6 +111,44 @@ func (svc *ServiceContext) copyArchivedFile(js *jobStatus, unitID int64, filenam
 		svc.logError(js, fmt.Sprintf("MD5 checksum does not match on copied file %s", destFile))
 	}
 	return nil
+}
+
+// archiveFineArtsFile will archive items from finearts which use a different directory and masterfile naming scheme
+// EX: 20160809ARCH/20160809ARCH_0001.tif
+func (svc *ServiceContext) archiveFineArtsFile(srcPath string, fineArtsDir string, tgtMF *masterFile) (string, error) {
+	archiveUnitDir := path.Join(svc.ArchiveDir, fineArtsDir)
+	archiveFile := path.Join(archiveUnitDir, tgtMF.Filename)
+	log.Printf("INFO: archive fine arts file %s to %s", srcPath, archiveFile)
+
+	if pathExists(archiveFile) {
+		log.Printf("INFO: %s is already archived", tgtMF.Filename)
+		archivedMD5 := md5Checksum(archiveFile)
+		if tgtMF.DateArchived == nil {
+			now := time.Now()
+			tgtMF.DateArchived = &now
+			svc.GDB.Model(tgtMF).Select("DateArchived").Updates(*tgtMF)
+		}
+		return archivedMD5, nil
+	}
+
+	err := ensureDirExists(archiveUnitDir, 0777)
+	if err != nil {
+		return "", fmt.Errorf("unable to create %s: %s", archiveUnitDir, err.Error())
+	}
+
+	newMD5, err := copyFile(srcPath, archiveFile, 0664)
+	if err != nil {
+		return "", err
+	}
+	log.Printf("INFO: %s archived to %s. MD5 checksum [%s]", tgtMF.Filename, archiveFile, newMD5)
+
+	now := time.Now()
+	tgtMF.DateArchived = &now
+	err = svc.GDB.Model(tgtMF).Select("DateArchived").Updates(*tgtMF).Error
+	if err != nil {
+		log.Printf("WARNING: unable to set date archived for master file %d:%s", tgtMF.ID, err.Error())
+	}
+	return newMD5, nil
 }
 
 // archiveFile will create the unit directory, copy the target file, set the archived date and return an MD5 checksum

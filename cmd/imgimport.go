@@ -5,6 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"io/ioutil"
+	"log"
+	"net/http"
+	"os"
 	"os/exec"
 	"path"
 	"path/filepath"
@@ -12,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 )
 
@@ -19,6 +23,101 @@ type tifMetadata struct {
 	Title       string
 	Description string
 	ComponentID int64
+}
+
+func (svc *ServiceContext) importGuestImages(c *gin.Context) {
+	unitID, _ := strconv.ParseInt(c.Param("id"), 10, 64)
+	type importReq struct {
+		From   string `json:"from"`
+		Target string `json:"target"`
+	}
+	var req importReq
+	err := c.ShouldBindJSON(&req)
+	if err != nil {
+		log.Printf("ERROR: unable to parse import request: %s", err.Error())
+		c.String(http.StatusBadRequest, err.Error())
+		return
+	}
+
+	// TODO support from="archive" to take previously archived files generate master file records and publish to IIIF
+	log.Printf("INFO: import %s from %s to unit %09d", req.Target, req.From, unitID)
+	srcDir := path.Join(svc.ProcessingDir, "guest_dropoff", req.From, req.Target)
+	if _, err := os.Stat(srcDir); os.IsNotExist(err) {
+		log.Printf("ERROR: %s does not exist", srcDir)
+		c.String(http.StatusBadRequest, fmt.Sprintf("%s does not exist", srcDir))
+		return
+	}
+
+	cnt := 0
+	err = filepath.Walk(srcDir, func(fullPath string, entry os.FileInfo, err error) error {
+		if err != nil || entry.IsDir() {
+			return nil
+		}
+		ext := filepath.Ext(entry.Name())
+		if ext != ".tif" {
+			return nil
+		}
+
+		tifFile := tifInfo{path: fullPath, filename: entry.Name(), size: entry.Size()}
+		log.Printf("INFO: import %+v", tifFile)
+		newMF, err := svc.loadMasterFile(entry.Name())
+		if err != nil {
+			log.Printf("ERROR: unable to load masterfile %s: %s", entry.Name(), err.Error())
+			return err
+		}
+		if newMF.ID == 0 {
+			log.Printf("INFO: create guest masterfile %s", entry.Name())
+			newMD5 := md5Checksum(tifFile.path)
+			newMF = &masterFile{UnitID: unitID, Filename: tifFile.filename, Filesize: tifFile.size, MD5: newMD5}
+			err = svc.GDB.Create(&newMF).Error
+			if err != nil {
+				log.Printf("ERROR: unable to create masterfile %s: %s", entry.Name(), err.Error())
+				return err
+			}
+			newMF.PID = fmt.Sprintf("tsm:%d", newMF.ID)
+			svc.GDB.Model(&newMF).Select("PID").Updates(newMF)
+		} else {
+			log.Printf("INFO: master file %s already exists", tifFile.filename)
+			if newMF.PID == "" {
+				newMF.PID = fmt.Sprintf("tsm:%d", newMF.ID)
+				svc.GDB.Model(&newMF).Select("PID").Updates(newMF)
+			}
+		}
+
+		if newMF.ImageTechMeta.ID == 0 {
+			err = svc.createImageTechMetadata(newMF, tifFile.path)
+			if err != nil {
+				log.Printf("ERROR: unable to create image tech metadata: %s", err.Error())
+			}
+		}
+
+		err = svc.publishToIIIF(nil, newMF, tifFile.path, false)
+		if err != nil {
+			return fmt.Errorf("IIIF publish failed: %s", err.Error())
+		}
+
+		if req.From != "archive" && newMF.DateArchived == nil {
+			archiveMD5, err := svc.archiveFineArtsFile(tifFile.path, req.Target, newMF)
+			if err != nil {
+				return fmt.Errorf("Archive failed: %s", err.Error())
+			}
+			if archiveMD5 != newMF.MD5 {
+				log.Printf("WARNING: archived MD5 does not match source MD5 for %s", newMF.Filename)
+			}
+		}
+		cnt++
+
+		return nil
+	})
+
+	if err != nil {
+		log.Printf("ERROR: unable to get tif files from %s: %s", srcDir, err.Error())
+		c.String(http.StatusBadRequest, err.Error())
+		return
+	}
+	log.Printf("INFO: %d masterfiles processed", cnt)
+
+	c.String(http.StatusOK, fmt.Sprintf("%d masterfiles processed", cnt))
 }
 
 func (svc *ServiceContext) importImages(js *jobStatus, tgtUnit *unit, srcDir string) error {
@@ -55,9 +154,7 @@ func (svc *ServiceContext) importImages(js *jobStatus, tgtUnit *unit, srcDir str
 		mfCount++
 
 		// See if this masterfile has already been created...
-		var newMF masterFile
-		err = svc.GDB.Preload("ImageTechMeta").Preload("Component").Preload("Locations").
-			Where("filename=?", fi.filename).Limit(1).Find(&newMF).Error
+		newMF, err := svc.loadMasterFile(fi.filename)
 		if err != nil {
 			return err
 		}
@@ -68,7 +165,7 @@ func (svc *ServiceContext) importImages(js *jobStatus, tgtUnit *unit, srcDir str
 			if err != nil {
 				return err
 			}
-			newMF = masterFile{UnitID: tgtUnit.ID, MetadataID: tgtUnit.MetadataID, Filename: fi.filename,
+			newMF = &masterFile{UnitID: tgtUnit.ID, MetadataID: tgtUnit.MetadataID, Filename: fi.filename,
 				Filesize: fi.size, MD5: newMD5, Title: tifMD.Title, Description: tifMD.Description}
 			if tgtUnit.Metadata.IsManuscript && tifMD.ComponentID != 0 {
 				var cnt int64
@@ -98,7 +195,7 @@ func (svc *ServiceContext) importImages(js *jobStatus, tgtUnit *unit, srcDir str
 
 		if newMF.ImageTechMeta.ID == 0 {
 			svc.logInfo(js, "Create image tech metadata")
-			err = svc.createImageTechMetadata(&newMF, fi.path)
+			err = svc.createImageTechMetadata(newMF, fi.path)
 			if err != nil {
 				svc.logError(js, fmt.Sprintf("Unable to create image tech metadata: %s", err.Error()))
 			}
@@ -110,13 +207,13 @@ func (svc *ServiceContext) importImages(js *jobStatus, tgtUnit *unit, srcDir str
 			continue
 		}
 
-		err = svc.publishToIIIF(js, &newMF, fi.path, false)
+		err = svc.publishToIIIF(js, newMF, fi.path, false)
 		if err != nil {
 			return fmt.Errorf("IIIF publish failed: %s", err.Error())
 		}
 
 		if tgtUnit.ThrowAway == false && tgtUnit.DateArchived == nil {
-			archiveMD5, err := svc.archiveFile(js, fi.path, tgtUnit.ID, &newMF)
+			archiveMD5, err := svc.archiveFile(js, fi.path, tgtUnit.ID, newMF)
 			if err != nil {
 				return fmt.Errorf("Archive failed: %s", err.Error())
 			}
@@ -126,7 +223,7 @@ func (svc *ServiceContext) importImages(js *jobStatus, tgtUnit *unit, srcDir str
 		}
 
 		if tgtUnit.IntendedUse.ID != 110 && tgtUnit.IntendedUse.DeliverableFormat != "pdf" {
-			err = svc.createPatronDeliverable(js, tgtUnit, &newMF, fi.path, assembleDir, callNumber, location)
+			err = svc.createPatronDeliverable(js, tgtUnit, newMF, fi.path, assembleDir, callNumber, location)
 			if err != nil {
 				return fmt.Errorf("Create patron deliverable failed: %s", err.Error())
 			}
@@ -187,6 +284,16 @@ func (svc *ServiceContext) importImages(js *jobStatus, tgtUnit *unit, srcDir str
 
 	svc.logInfo(js, "Images for Unit successfully imported.")
 	return nil
+}
+
+func (svc *ServiceContext) loadMasterFile(filename string) (*masterFile, error) {
+	var newMF masterFile
+	err := svc.GDB.Preload("ImageTechMeta").Preload("Component").Preload("Locations").
+		Where("filename=?", filename).Limit(1).Find(&newMF).Error
+	if err != nil {
+		return nil, err
+	}
+	return &newMF, nil
 }
 
 func extractTifMetadata(tifPath string) (*tifMetadata, error) {
