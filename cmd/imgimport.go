@@ -39,12 +39,23 @@ func (svc *ServiceContext) importGuestImages(c *gin.Context) {
 		return
 	}
 
-	// TODO support from="archive" to take previously archived files generate master file records and publish to IIIF
 	log.Printf("INFO: import %s from %s to unit %09d", req.Target, req.From, unitID)
 	srcDir := path.Join(svc.ProcessingDir, "guest_dropoff", req.From, req.Target)
+	if req.From == "archive" {
+		srcDir = path.Join(svc.ArchiveDir, req.Target)
+	}
 	if _, err := os.Stat(srcDir); os.IsNotExist(err) {
 		log.Printf("ERROR: %s does not exist", srcDir)
 		c.String(http.StatusBadRequest, fmt.Sprintf("%s does not exist", srcDir))
+		return
+	}
+
+	// validate unit (and get data so archived date can be set)
+	var tgtUnit unit
+	err = svc.GDB.Find(&tgtUnit, unitID).Error
+	if err != nil {
+		log.Printf("ERROR: unable to load target unit: %s", err.Error())
+		c.String(http.StatusBadRequest, err.Error())
 		return
 	}
 
@@ -59,7 +70,7 @@ func (svc *ServiceContext) importGuestImages(c *gin.Context) {
 		}
 
 		tifFile := tifInfo{path: fullPath, filename: entry.Name(), size: entry.Size()}
-		log.Printf("INFO: import %+v", tifFile)
+		log.Printf("INFO: import %s", tifFile.path)
 		newMF, err := svc.loadMasterFile(entry.Name())
 		if err != nil {
 			log.Printf("ERROR: unable to load masterfile %s: %s", entry.Name(), err.Error())
@@ -96,7 +107,13 @@ func (svc *ServiceContext) importGuestImages(c *gin.Context) {
 			return fmt.Errorf("IIIF publish failed: %s", err.Error())
 		}
 
-		if req.From != "archive" && newMF.DateArchived == nil {
+		if req.From == "archive" {
+			if newMF.DateArchived == nil {
+				log.Printf("INFO: update date archived for %s", newMF.Filename)
+				newMF.DateArchived = tgtUnit.DateArchived
+				svc.GDB.Model(newMF).Select("DateArchived").Updates(*newMF)
+			}
+		} else if newMF.DateArchived == nil {
 			archiveMD5, err := svc.archiveFineArtsFile(tifFile.path, req.Target, newMF)
 			if err != nil {
 				return fmt.Errorf("Archive failed: %s", err.Error())
