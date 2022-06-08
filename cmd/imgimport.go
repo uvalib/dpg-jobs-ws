@@ -132,7 +132,11 @@ func (svc *ServiceContext) importGuestImages(c *gin.Context) {
 		c.String(http.StatusBadRequest, err.Error())
 		return
 	}
+
 	log.Printf("INFO: %d masterfiles processed", cnt)
+	tgtUnit.UnitStatus = "done"
+	tgtUnit.MasterFilesCount = uint(cnt)
+	svc.GDB.Model(&tgtUnit).Select("UnitStatus", "MasterFilesCount").Updates(tgtUnit)
 
 	c.String(http.StatusOK, fmt.Sprintf("%d masterfiles processed", cnt))
 }

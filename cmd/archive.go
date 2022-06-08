@@ -97,7 +97,7 @@ func (svc *ServiceContext) copyAllFromArchive(js *jobStatus, unitID int64, destD
 
 func (svc *ServiceContext) copyArchivedFile(js *jobStatus, unitID int64, filename string, destDir string) error {
 	archiveFile := path.Join(svc.ArchiveDir, fmt.Sprintf("%09d", unitID), filename)
-	if strings.Contains(filename, "ARCH") {
+	if strings.Contains(filename, "ARCH") || strings.Contains(filename, "AVRN") {
 		unitDir := strings.Split(filename, "_")[0]
 		archiveFile = path.Join(svc.ArchiveDir, unitDir, filename)
 	}
