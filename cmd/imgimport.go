@@ -143,7 +143,6 @@ func (svc *ServiceContext) importGuestImages(c *gin.Context) {
 	})
 
 	if err != nil {
-		log.Printf("ERROR: unable to get tif files from %s: %s", srcDir, err.Error())
 		c.String(http.StatusBadRequest, err.Error())
 		return
 	}

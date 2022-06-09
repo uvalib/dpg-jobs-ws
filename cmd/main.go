@@ -50,6 +50,7 @@ func main() {
 	router.POST("/orders/:id/email/send", svc.sendOrderEmail)
 	router.POST("/orders/:id/fees", svc.sendFeesEmail)
 
+	router.GET("/archive/exist", svc.archiveExists)
 	router.POST("/units/:id/copy", svc.downloadFromArchive)
 	router.POST("/units/:id/deliverables", svc.createPatronDeliverables)
 	router.POST("/units/:id/finalize", svc.finalizeUnit)

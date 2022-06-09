@@ -14,6 +14,20 @@ import (
 	"gorm.io/gorm"
 )
 
+func (svc *ServiceContext) archiveExists(c *gin.Context) {
+	tgtDir := c.Query("dir")
+	if tgtDir == "" {
+		c.String(http.StatusBadRequest, "dir param is required")
+		return
+	}
+	log.Printf("INFO: check if archive [%s] exists", tgtDir)
+	archiveDir := path.Join(svc.ArchiveDir, tgtDir)
+	if pathExists(archiveDir) {
+		c.String(http.StatusOK, archiveDir)
+		return
+	}
+	c.String(http.StatusNotFound, fmt.Sprintf("%s not found", tgtDir))
+}
 func (svc *ServiceContext) downloadFromArchive(c *gin.Context) {
 	unitID, _ := strconv.ParseInt(c.Param("id"), 10, 64)
 	js, err := svc.createJobStatus("CopyArchivedFilesToProduction", "Unit", unitID)
