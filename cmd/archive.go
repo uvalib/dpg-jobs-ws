@@ -97,7 +97,7 @@ func (svc *ServiceContext) copyAllFromArchive(js *jobStatus, unitID int64, destD
 
 func (svc *ServiceContext) copyArchivedFile(js *jobStatus, unitID int64, filename string, destDir string) error {
 	archiveFile := path.Join(svc.ArchiveDir, fmt.Sprintf("%09d", unitID), filename)
-	if strings.Contains(filename, "ARCH") || strings.Contains(filename, "AVRN") {
+	if strings.Contains(filename, "ARCH") || strings.Contains(filename, "AVRN") || strings.Contains(filename, "VRC") {
 		unitDir := strings.Split(filename, "_")[0]
 		archiveFile = path.Join(svc.ArchiveDir, unitDir, filename)
 	}
@@ -114,7 +114,7 @@ func (svc *ServiceContext) copyArchivedFile(js *jobStatus, unitID int64, filenam
 }
 
 // archiveFineArtsFile will archive items from finearts which use a different directory and masterfile naming scheme
-// EX: 20160809ARCH/20160809ARCH_0001.tif
+// EX: 20160809ARCH/20160809ARCH_0001.tif,  20100725VRC
 func (svc *ServiceContext) archiveFineArtsFile(srcPath string, fineArtsDir string, tgtMF *masterFile) (string, error) {
 	archiveUnitDir := path.Join(svc.ArchiveDir, fineArtsDir)
 	archiveFile := path.Join(archiveUnitDir, tgtMF.Filename)

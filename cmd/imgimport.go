@@ -71,11 +71,26 @@ func (svc *ServiceContext) importGuestImages(c *gin.Context) {
 
 		tifFile := tifInfo{path: fullPath, filename: entry.Name(), size: entry.Size()}
 		log.Printf("INFO: import %s", tifFile.path)
+
+		// be sure the filename is xxxx_sequence.tif. If not, skip
+		test := strings.Split(strings.TrimSuffix(entry.Name(), ".tif"), "_")
+		if len(test) == 1 {
+			log.Printf("ERROR:  %s is missing sequence number", fullPath)
+			return fmt.Errorf("file %s is missing sequence number", fullPath)
+		}
+		seqStr := test[len(test)-1]
+		seq, _ := strconv.Atoi(seqStr)
+		if seq == 0 {
+			log.Printf("ERROR:  %s has invalid sequence number %s", fullPath, seqStr)
+			return fmt.Errorf("%s has invalid sequence number %s", fullPath, seqStr)
+		}
+
 		newMF, err := svc.loadMasterFile(entry.Name())
 		if err != nil {
 			log.Printf("ERROR: unable to load masterfile %s: %s", entry.Name(), err.Error())
 			return err
 		}
+
 		if newMF.ID == 0 {
 			log.Printf("INFO: create guest masterfile %s", entry.Name())
 			newMD5 := md5Checksum(tifFile.path)
