@@ -413,4 +413,20 @@ func (svc *ServiceContext) cleanupWorkDirectories(js *jobStatus, unitID int64) {
 	if err != nil {
 		svc.logError(js, fmt.Sprintf("Unable to move working file to %s: %s", delDir, err.Error()))
 	}
+
+	// now check for a lingering unit directory in scan...
+	srcDir = path.Join(svc.ProcessingDir, "scan", unitDir)
+	if pathExists(srcDir) {
+		svc.logInfo(js, fmt.Sprintf("Cleaning up unit %09d scan directories", unitID))
+		delDir = path.Join(svc.ProcessingDir, "ready_to_delete", "from_scan", unitDir)
+		svc.logInfo(js, fmt.Sprintf("Moving %s to %s", srcDir, delDir))
+		if pathExists(delDir) {
+			svc.logInfo(js, fmt.Sprintf("%s already exists; cleaning it up", delDir))
+			os.RemoveAll(delDir)
+		}
+		err := os.Rename(srcDir, delDir)
+		if err != nil {
+			svc.logError(js, fmt.Sprintf("Unable to move scan directory: %s", err.Error()))
+		}
+	}
 }
