@@ -89,7 +89,7 @@ func (svc *ServiceContext) downloadFromArchive(c *gin.Context) {
 		return
 	}
 	svc.logInfo(js, fmt.Sprintf("%s requests to download %s from unit %d", req.ComputeID, req.Filename, unitID))
-	destPath := path.Join(svc.ProcessingDir, "from_archive", req.ComputeID, tgtDir)
+	destPath := path.Join(svc.ProcessingDir, "from_archive", req.ComputeID, fmt.Sprintf("%09d", unitID))
 	err = ensureDirExists(destPath, 0775)
 	if err != nil {
 		svc.logFatal(js, fmt.Sprintf("Unable to create download directory %s: %s", destPath, err.Error()))
