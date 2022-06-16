@@ -216,6 +216,7 @@ type unit struct {
 	ThrowAway                   bool
 	OcrMasterFiles              bool         `gorm:"column:ocr_master_files"`
 	MasterFiles                 []masterFile `gorm:"foreignKey:UnitID"`
+	StaffNotes                  string
 	MasterFilesCount            uint
 	UnitExtentActual            uint
 	DateArchived                *time.Time

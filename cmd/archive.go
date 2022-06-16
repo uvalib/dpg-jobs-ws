@@ -55,6 +55,19 @@ func (svc *ServiceContext) downloadFromArchive(c *gin.Context) {
 		return
 	}
 
+	var tgtUnit unit
+	tgtDir := fmt.Sprintf("%09d", unitID)
+	err = svc.GDB.Find(&tgtUnit, unitID).Error
+	if err != nil {
+		svc.logFatal(js, fmt.Sprintf("Unable to load unit ID %d: %s", unitID, err.Error()))
+		c.String(http.StatusBadRequest, err.Error())
+		return
+	}
+	if strings.Contains(tgtUnit.StaffNotes, "Archive: ") {
+		tgtDir = strings.Split(tgtUnit.StaffNotes, "Archive: ")[1]
+	}
+	svc.logInfo(js, fmt.Sprintf("Unit archive dir [%s]", tgtDir))
+
 	type dlReq struct {
 		Filename  string `json:"filename"`
 		ComputeID string `json:"computeID"`
@@ -76,7 +89,7 @@ func (svc *ServiceContext) downloadFromArchive(c *gin.Context) {
 		return
 	}
 	svc.logInfo(js, fmt.Sprintf("%s requests to download %s from unit %d", req.ComputeID, req.Filename, unitID))
-	destPath := path.Join(svc.ProcessingDir, "from_archive", req.ComputeID, fmt.Sprintf("%09d", unitID))
+	destPath := path.Join(svc.ProcessingDir, "from_archive", req.ComputeID, tgtDir)
 	err = ensureDirExists(destPath, 0775)
 	if err != nil {
 		svc.logFatal(js, fmt.Sprintf("Unable to create download directory %s: %s", destPath, err.Error()))
@@ -84,12 +97,12 @@ func (svc *ServiceContext) downloadFromArchive(c *gin.Context) {
 		return
 	}
 	if strings.ToLower(req.Filename) == "all" {
-		go svc.copyAllFromArchive(js, unitID, destPath)
+		go svc.copyAllFromArchive(js, unitID, tgtDir, destPath)
 		c.String(http.StatusOK, fmt.Sprintf("%d", js.ID))
 		return
 	}
 
-	err = svc.copyArchivedFile(js, unitID, req.Filename, destPath)
+	err = svc.copyArchivedFile(js, tgtDir, req.Filename, destPath)
 	if err != nil {
 		svc.logFatal(js, fmt.Sprintf("Unable to copy %s: %s", req.Filename, err.Error()))
 		c.String(http.StatusInternalServerError, err.Error())
@@ -102,7 +115,7 @@ func (svc *ServiceContext) downloadFromArchive(c *gin.Context) {
 }
 
 // called as goroutine to copy all from the archive. it may take a long time
-func (svc *ServiceContext) copyAllFromArchive(js *jobStatus, unitID int64, destDir string) {
+func (svc *ServiceContext) copyAllFromArchive(js *jobStatus, unitID int64, unitDir, destDir string) {
 	var tgtUnit unit
 	err := svc.GDB.Preload("MasterFiles", func(db *gorm.DB) *gorm.DB {
 		return db.Order("master_files.filename ASC")
@@ -117,7 +130,7 @@ func (svc *ServiceContext) copyAllFromArchive(js *jobStatus, unitID int64, destD
 			continue
 		}
 		svc.logInfo(js, fmt.Sprintf("Copying %s", mf.Filename))
-		err := svc.copyArchivedFile(js, unitID, mf.Filename, destDir)
+		err := svc.copyArchivedFile(js, unitDir, mf.Filename, destDir)
 		if err != nil {
 			svc.logFatal(js, fmt.Sprintf("Unable to copy %s: %s", mf.Filename, err.Error()))
 			return
@@ -127,11 +140,13 @@ func (svc *ServiceContext) copyAllFromArchive(js *jobStatus, unitID int64, destD
 	svc.jobDone(js)
 }
 
-func (svc *ServiceContext) copyArchivedFile(js *jobStatus, unitID int64, filename string, destDir string) error {
-	archiveFile := path.Join(svc.ArchiveDir, fmt.Sprintf("%09d", unitID), filename)
+func (svc *ServiceContext) copyArchivedFile(js *jobStatus, unitDir, filename, destDir string) error {
+	archiveFile := path.Join(svc.ArchiveDir, unitDir, filename)
 	if strings.Contains(filename, "ARCH") || strings.Contains(filename, "AVRN") || strings.Contains(filename, "VRC") {
-		unitDir := strings.Split(filename, "_")[0]
-		archiveFile = path.Join(svc.ArchiveDir, unitDir, filename)
+		if strings.Contains(filename, "_") {
+			overrideDir := strings.Split(filename, "_")[0]
+			archiveFile = path.Join(svc.ArchiveDir, overrideDir, filename)
+		}
 	}
 	archiveMD5 := md5Checksum(archiveFile)
 	destFile := path.Join(destDir, filename)

@@ -60,6 +60,7 @@ func (svc *ServiceContext) importGuestImages(c *gin.Context) {
 	}
 
 	cnt := 0
+	badSequenceNum := false
 	err = filepath.Walk(srcDir, func(fullPath string, entry os.FileInfo, err error) error {
 		if err != nil || entry.IsDir() {
 			return nil
@@ -75,14 +76,14 @@ func (svc *ServiceContext) importGuestImages(c *gin.Context) {
 		// be sure the filename is xxxx_sequence.tif. If not, skip
 		test := strings.Split(strings.TrimSuffix(entry.Name(), ".tif"), "_")
 		if len(test) == 1 {
-			log.Printf("ERROR:  %s is missing sequence number", fullPath)
-			return fmt.Errorf("file %s is missing sequence number", fullPath)
+			log.Printf("INFO: %s is missing sequence number, import and add staff note to unit", fullPath)
+			badSequenceNum = true
 		}
 		seqStr := test[len(test)-1]
 		seq, _ := strconv.Atoi(seqStr)
 		if seq == 0 {
-			log.Printf("ERROR:  %s has invalid sequence number %s", fullPath, seqStr)
-			return fmt.Errorf("%s has invalid sequence number %s", fullPath, seqStr)
+			log.Printf("INFO: %s has invalid sequence number %s, import and add staff note to unit", fullPath, seqStr)
+			badSequenceNum = true
 		}
 
 		newMF, err := svc.loadMasterFile(entry.Name())
@@ -150,7 +151,10 @@ func (svc *ServiceContext) importGuestImages(c *gin.Context) {
 	log.Printf("INFO: %d masterfiles processed", cnt)
 	tgtUnit.UnitStatus = "done"
 	tgtUnit.MasterFilesCount = uint(cnt)
-	svc.GDB.Model(&tgtUnit).Select("UnitStatus", "MasterFilesCount").Updates(tgtUnit)
+	if badSequenceNum {
+		tgtUnit.StaffNotes += fmt.Sprintf("Archive: %s", req.Target)
+	}
+	svc.GDB.Model(&tgtUnit).Select("UnitStatus", "MasterFilesCount", "StaffNotes").Updates(tgtUnit)
 
 	c.String(http.StatusOK, fmt.Sprintf("%d masterfiles processed", cnt))
 }
