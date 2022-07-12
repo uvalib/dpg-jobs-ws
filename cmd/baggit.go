@@ -114,7 +114,7 @@ func (svc *ServiceContext) createBag(c *gin.Context) {
 
 		svc.logInfo(js, "Adding master files to bag")
 		var masterFiles []masterFile
-		err = svc.GDB.Joins("Unit", svc.GDB.Where("intended_use_id=?", 110)).Where("master_files.metadata_id=?", md.ID).Find(&masterFiles).Error
+		err = svc.GDB.Debug().Joins("Unit").Where("Unit.metadata_id=? and Unit.intended_use_id=?", md.ID, 110).Find(&masterFiles).Error
 		if err != nil {
 			svc.logFatal(js, fmt.Sprintf("Unable to get metadata %d", mdID))
 			return
@@ -126,6 +126,11 @@ func (svc *ServiceContext) createBag(c *gin.Context) {
 
 		svc.logInfo(js, fmt.Sprintf("%d masterfiles found", len(masterFiles)))
 		for _, mf := range masterFiles {
+			// add a failsafe check in case the query above gets master files from non-110 use units. skip them
+			if mf.Unit.IntendedUseID == nil || mf.Unit.IntendedUseID != nil && *mf.Unit.IntendedUseID != 110 {
+				svc.logError(js, fmt.Sprintf("Got masterfile %s from unexpected unit %d; skipping", mf.Filename, mf.UnitID))
+				continue
+			}
 			svc.logInfo(js, fmt.Sprintf("Adding masterfile %s to bag", mf.Filename))
 			archiveFile := path.Join(svc.ArchiveDir, fmt.Sprintf("%09d", mf.UnitID), mf.Filename)
 			destFile := path.Join(dataDir, mf.Filename)
