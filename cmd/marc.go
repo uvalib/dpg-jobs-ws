@@ -92,6 +92,15 @@ func (svc *ServiceContext) getMarcMetadata(md *metadata) (*marcMetadata, error) 
 	return &parsed, nil
 }
 
+func (svc *ServiceContext) getModsMetadata(md *metadata) ([]byte, error) {
+	log.Printf("INFO: get mods metadata for pid [%s]", md.PID)
+	out, err := svc.getRequest(fmt.Sprintf("%s/api/metadata/%s?type=mods", svc.TrackSys.API, md.PID))
+	if err != nil {
+		return nil, fmt.Errorf("%d:%s", err.StatusCode, err.Message)
+	}
+	return out, nil
+}
+
 func (svc *ServiceContext) getCitation(md *metadata) string {
 	log.Printf("INFO: get citation from marc for pid [%s] barcode [%s]", md.PID, md.Barcode)
 

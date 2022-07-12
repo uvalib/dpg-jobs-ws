@@ -272,7 +272,7 @@ func (svc *ServiceContext) qaUnit(js *jobStatus, tgtUnit *unit) error {
 
 func (svc *ServiceContext) autoPublish(js *jobStatus, tgtUnit *unit) {
 	svc.logInfo(js, "Checking unit for auto-publish")
-	if tgtUnit.CommpleteScan == false {
+	if tgtUnit.CompleteScan == false {
 		svc.logInfo(js, "Unit is not a complete scan and cannot be auto-published")
 		return
 	}

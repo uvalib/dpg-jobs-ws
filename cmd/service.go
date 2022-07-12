@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"crypto/md5"
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -282,6 +283,14 @@ func md5Checksum(filename string) string {
 	if pathExists(filename) {
 		data, _ := os.ReadFile(filename)
 		md5 := fmt.Sprintf("%x", md5.Sum(data))
+		return md5
+	}
+	return ""
+}
+func sha256Checksum(filename string) string {
+	if pathExists(filename) {
+		data, _ := os.ReadFile(filename)
+		md5 := fmt.Sprintf("%x", sha256.Sum256(data))
 		return md5
 	}
 	return ""

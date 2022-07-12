@@ -108,6 +108,8 @@ type metadata struct {
 	OcrHintID            *int64
 	OcrHint              *ocrHint `gorm:"foreignKey:OcrHintID"`
 	OcrLanguageHint      string
+	PreservationTierID   int64
+	CollectionID         string
 	DateDlIngest         *time.Time `gorm:"column:date_dl_ingest"`
 	DateDlUpdate         *time.Time `gorm:"column:date_dl_update"`
 	ExternalSystemID     int64      `gorm:"column:external_system_id"`
@@ -164,7 +166,8 @@ type masterFile struct {
 	ComponentID       *int64        `gorm:"column:component_id"`
 	Component         *component    `gorm:"foreignKey:ComponentID"`
 	ImageTechMeta     imageTechMeta `gorm:"foreignKey:MasterFileID"`
-	UnitID            int64
+	UnitID            int64         `gorm:"column:unit_id"`
+	Unit              unit          `gorm:"foreignKey:UnitID"`
 	Filename          string
 	Title             string
 	Description       string
@@ -212,7 +215,7 @@ type unit struct {
 	IncludeInDL                 bool         `gorm:"column:include_in_dl"`
 	RemoveWatermark             bool
 	Reorder                     bool
-	CommpleteScan               bool
+	CompleteScan                bool
 	ThrowAway                   bool
 	OcrMasterFiles              bool         `gorm:"column:ocr_master_files"`
 	MasterFiles                 []masterFile `gorm:"foreignKey:UnitID"`
