@@ -43,6 +43,9 @@ func (svc *ServiceContext) importGuestImages(c *gin.Context) {
 	srcDir := path.Join(svc.ProcessingDir, "guest_dropoff", req.From, req.Target)
 	if req.From == "archive" {
 		srcDir = path.Join(svc.ArchiveDir, req.Target)
+	} else if req.From == "download" {
+		srcDir = req.Target
+		req.Target = fmt.Sprintf("%09d", unitID)
 	}
 	if _, err := os.Stat(srcDir); os.IsNotExist(err) {
 		log.Printf("ERROR: %s does not exist", srcDir)
@@ -73,17 +76,19 @@ func (svc *ServiceContext) importGuestImages(c *gin.Context) {
 		tifFile := tifInfo{path: fullPath, filename: entry.Name(), size: entry.Size()}
 		log.Printf("INFO: import %s", tifFile.path)
 
-		// be sure the filename is xxxx_sequence.tif. If not, skip
-		test := strings.Split(strings.TrimSuffix(entry.Name(), ".tif"), "_")
-		if len(test) == 1 {
-			log.Printf("INFO: %s is missing sequence number, import and add staff note to unit", fullPath)
-			badSequenceNum = true
-		}
-		seqStr := test[len(test)-1]
-		seq, _ := strconv.Atoi(seqStr)
-		if seq == 0 {
-			log.Printf("INFO: %s has invalid sequence number %s, import and add staff note to unit", fullPath, seqStr)
-			badSequenceNum = true
+		// be sure the filename is xxxx_sequence.tif.
+		if req.From != "download" {
+			test := strings.Split(strings.TrimSuffix(entry.Name(), ".tif"), "_")
+			if len(test) == 1 {
+				log.Printf("INFO: %s is missing sequence number, import and add staff note to unit", fullPath)
+				badSequenceNum = true
+			}
+			seqStr := test[len(test)-1]
+			seq, _ := strconv.Atoi(seqStr)
+			if seq == 0 {
+				log.Printf("INFO: %s has invalid sequence number %s, import and add staff note to unit", fullPath, seqStr)
+				badSequenceNum = true
+			}
 		}
 
 		newMF, err := svc.loadMasterFile(entry.Name())
