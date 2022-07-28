@@ -227,7 +227,7 @@ func (svc *ServiceContext) generateOrderEmail(js *jobStatus, o *order) error {
 		}
 	}
 	deliveryDir := path.Join(svc.DeliveryDir, fmt.Sprintf("order_%d", o.ID))
-	data.DeliveryFiles = append(data.DeliveryFiles, fmt.Sprintf("http://digiservdelivery.lib.virginia.edu/order_%d/%d.pdf", o.ID, o.ID))
+	data.DeliveryFiles = append(data.DeliveryFiles, fmt.Sprintf("https://digiservdelivery.lib.virginia.edu/order_%d/%d.pdf", o.ID, o.ID))
 	files, err := ioutil.ReadDir(deliveryDir)
 	if err != nil {
 		svc.logError(js, fmt.Sprintf("Unable to get deliverable zip file list: %s", err.Error()))
@@ -235,7 +235,7 @@ func (svc *ServiceContext) generateOrderEmail(js *jobStatus, o *order) error {
 		// strip off the full path; only add: order_dir/file.zip
 		for _, fi := range files {
 			if strings.Index(fi.Name(), ".zip") > 0 {
-				data.DeliveryFiles = append(data.DeliveryFiles, fmt.Sprintf("http://digiservdelivery.lib.virginia.edu/order_%d/%s", o.ID, fi.Name()))
+				data.DeliveryFiles = append(data.DeliveryFiles, fmt.Sprintf("https://digiservdelivery.lib.virginia.edu/order_%d/%s", o.ID, fi.Name()))
 			}
 		}
 	}
