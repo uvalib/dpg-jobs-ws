@@ -101,15 +101,18 @@ func getFocalLength(data map[string]interface{}) float64 {
 }
 
 func getDepth(data map[string]interface{}) uint {
-	samplePerPixel := data["SamplesPerPixel"].(float64)
-	bitPerSampleStr, ok := data["BitsPerSample"].(string)
+	samplePerPixel, ok := data["SamplesPerPixel"].(float64)
 	if ok == true {
-		bitsPerSampleStr := strings.Split(bitPerSampleStr, " ")[0]
-		bitsPerSample, _ := strconv.ParseFloat(bitsPerSampleStr, 64)
+		bitPerSampleStr, ok := data["BitsPerSample"].(string)
+		if ok == true {
+			bitsPerSampleStr := strings.Split(bitPerSampleStr, " ")[0]
+			bitsPerSample, _ := strconv.ParseFloat(bitsPerSampleStr, 64)
+			return uint(bitsPerSample * samplePerPixel)
+		}
+		bitsPerSample := data["BitsPerSample"].(float64)
 		return uint(bitsPerSample * samplePerPixel)
 	}
-	bitsPerSample := data["BitsPerSample"].(float64)
-	return uint(bitsPerSample * samplePerPixel)
+	return 0
 }
 
 func getDate(data map[string]interface{}, field string) *time.Time {
