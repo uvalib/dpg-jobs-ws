@@ -31,13 +31,19 @@ func (svc *ServiceContext) createImageTechMetadata(mf *masterFile, mfPath string
 		ImageFormat:  fmt.Sprintf("%v", jsonMD["FileType"]),
 		Width:        getUInt(jsonMD, "ImageWidth"),
 		Height:       getUInt(jsonMD, "ImageHeight"),
-		Compression:  fmt.Sprintf("%v", jsonMD["Compression"]),
-		ColorProfile: fmt.Sprintf("%v", jsonMD["ProfileDescription"]),
-		ColorSpace:   fmt.Sprintf("%v", jsonMD["ColorSpaceData"]),
 		Depth:        getDepth(jsonMD),
 		Resolution:   getUInt(jsonMD, "XResolution"),
 	}
 
+	if jsonMD["Compression"] != nil {
+		md.Compression = fmt.Sprintf("%v", jsonMD["Compression"])
+	}
+	if jsonMD["ProfileDescription"] != nil {
+		md.ColorProfile = fmt.Sprintf("%v", jsonMD["ProfileDescription"])
+	}
+	if jsonMD["ColorSpaceData"] != nil {
+		md.ColorSpace = fmt.Sprintf("%v", jsonMD["ColorSpaceData"])
+	}
 	if jsonMD["Make"] != nil {
 		md.Equipment = fmt.Sprintf("%v", jsonMD["Make"])
 	}

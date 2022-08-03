@@ -123,6 +123,11 @@ func (svc *ServiceContext) importGuestImages(c *gin.Context) {
 			}
 		}
 
+		if newMF.ImageTechMeta.Width == 0 || newMF.ImageTechMeta.Height == 0 {
+			log.Printf("ERROR: %s has invalid tech metdata and is likely corrupt; skipping further processing", newMF.PID)
+			return nil
+		}
+
 		err = svc.publishToIIIF(nil, newMF, tifFile.path, false)
 		if err != nil {
 			return fmt.Errorf("IIIF publish failed: %s", err.Error())
