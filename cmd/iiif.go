@@ -11,8 +11,27 @@ import (
 	"strings"
 )
 
-func (svc *ServiceContext) publishToIIIF(js *jobStatus, mf *masterFile, path string, overwrite bool) error {
+func (svc *ServiceContext) publishToIIIF(js *jobStatus, mf *masterFile, srcPath string, overwrite bool) error {
 	svc.logInfo(js, fmt.Sprintf("Publish %s to IIIF", mf.PID))
+
+	svc.logInfo(js, "Validate file type")
+	workPath := srcPath
+	if strings.ToLower(mf.ImageTechMeta.ImageFormat) != "tiff" {
+		workPath = path.Join("/tmp", fmt.Sprintf("%s.tif", mf.PID))
+		svc.logInfo(js, fmt.Sprintf("%s is not a TIFF; converting here: %s", mf.PID, workPath))
+
+		cmdArray := []string{"-quiet", srcPath, workPath}
+		_, err := exec.Command("convert", cmdArray...).Output()
+		if err != nil {
+			svc.logError(js, fmt.Sprintf("Unable to convert %s to a TIF: %s", mf.PID, err.Error()))
+			return err
+		}
+
+		defer func() {
+			svc.logInfo(js, fmt.Sprintf("Cleaning up temporary converted TIF file %s", workPath))
+			os.Remove(workPath)
+		}()
+	}
 
 	jp2kInfo := svc.iiifPath(mf)
 	if overwrite == false && pathExists(jp2kInfo.absolutePath) {
@@ -28,28 +47,28 @@ func (svc *ServiceContext) publishToIIIF(js *jobStatus, mf *masterFile, path str
 	if strings.Index(mf.Filename, ".tif") > -1 {
 		// kakadu cant handle compression. remove it if detected
 		if mf.ImageTechMeta.Compression != "Uncompressed" {
-			cmdArray := []string{"-compress", "none", "-quiet", path, path}
+			cmdArray := []string{"-compress", "none", "-quiet", workPath, workPath}
 			_, err := exec.Command("convert", cmdArray...).Output()
 			if err != nil {
 				svc.logError(js, fmt.Sprintf("Unable to remove compression on %s: %s", mf.PID, err.Error()))
 			} else {
 				svc.logInfo(js, fmt.Sprintf("MasterFile %s is compressed. This has been corrected automatically.", mf.PID))
-				mf.MD5 = md5Checksum(path)
+				mf.MD5 = md5Checksum(workPath)
 				svc.GDB.Model(mf).Select("MD5").Updates(mf)
 			}
 		}
 	}
 
 	if strings.Index(mf.Filename, ".jp2") > -1 {
-		copyFile(path, jp2kInfo.absolutePath, 0664)
-		svc.logInfo(js, fmt.Sprintf("Copied JPEG-2000 image using '%s' as input file for the creation of deliverable '%s'", path, jp2kInfo.basePath))
+		copyFile(workPath, jp2kInfo.absolutePath, 0664)
+		svc.logInfo(js, fmt.Sprintf("Copied JPEG-2000 image using '%s' as input file for the creation of deliverable '%s'", workPath, jp2kInfo.basePath))
 	} else if strings.Index(mf.Filename, ".tif") > -1 {
-		svc.logInfo(js, fmt.Sprintf("Compressing %s to %s...", path, jp2kInfo.absolutePath))
+		svc.logInfo(js, fmt.Sprintf("Compressing %s to %s...", workPath, jp2kInfo.absolutePath))
 		_, err := exec.LookPath("kdu_compress")
 		if err != nil {
 			return errors.New("kdu_compress is not available")
 		}
-		cmdArray := []string{"-i", path, "-o", jp2kInfo.absolutePath, "-rate", "0.5",
+		cmdArray := []string{"-i", workPath, "-o", jp2kInfo.absolutePath, "-rate", "0.5",
 			"Clayers=1", "Clevels=7", "Cuse_sop=yes", "-quiet", "-num_threads", "8",
 			"Cprecincts={256,256},{256,256},{256,256},{128,128},{128,128},{64,64},{64,64},{32,32},{16,16}",
 			"Corder=RPCL", "ORGgen_plt=yes", "ORGtparts=R", "Cblk={64,64}",
@@ -62,7 +81,7 @@ func (svc *ServiceContext) publishToIIIF(js *jobStatus, mf *masterFile, path str
 		}
 		svc.logInfo(js, "...compression complete.")
 	} else {
-		return fmt.Errorf("%s is not a .tif or .jp2", path)
+		return fmt.Errorf("%s is not a .tif or .jp2", workPath)
 	}
 
 	svc.logInfo(js, fmt.Sprintf("%s has been published to IIIF", mf.PID))
