@@ -164,6 +164,38 @@ func (svc *ServiceContext) importGuestImages(c *gin.Context) {
 	c.String(http.StatusOK, fmt.Sprintf("%d masterfiles processed", cnt))
 }
 
+func (svc *ServiceContext) publishMasterFileToIIIF(c *gin.Context) {
+	mfPID := c.Query("pid")
+	if mfPID == "" {
+		log.Printf("ERROR: publish masterfile to iiif request is missing required pid")
+		c.String(http.StatusBadRequest, "missing required PID parameter")
+		return
+	}
+	log.Printf("INFO: publish masterfile %s to iiif", mfPID)
+	var tgtMF masterFile
+	err := svc.GDB.Preload("ImageTechMeta").Preload("Component").Preload("Locations").Preload("Unit").
+		Where("pid=?", mfPID).Limit(1).Find(&tgtMF).Error
+	if err != nil {
+		log.Printf("INFO: unable to load masterfile %s: %s", mfPID, err.Error())
+		c.String(http.StatusBadRequest, err.Error())
+		return
+	}
+
+	srcPath := path.Join(svc.ArchiveDir, fmt.Sprintf("%09d", tgtMF.UnitID))
+	if strings.Contains(tgtMF.Unit.StaffNotes, "Archive: ") {
+		tgtDir := strings.Split(tgtMF.Unit.StaffNotes, "Archive: ")[1]
+		srcPath = path.Join(svc.ArchiveDir, tgtDir)
+	}
+
+	err = svc.publishToIIIF(nil, &tgtMF, srcPath, false)
+	if err != nil {
+		log.Printf("ERROR: publish %s to iiif failed: %s", mfPID, err.Error())
+		c.String(http.StatusInternalServerError, err.Error())
+		return
+	}
+	c.String(http.StatusOK, "published")
+}
+
 func (svc *ServiceContext) importImages(js *jobStatus, tgtUnit *unit, srcDir string) error {
 	svc.logInfo(js, fmt.Sprintf("Import images from %s", srcDir))
 	if tgtUnit.ThrowAway {
