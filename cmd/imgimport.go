@@ -184,7 +184,7 @@ func (svc *ServiceContext) publishMasterFileToIIIF(c *gin.Context) {
 	srcPath := path.Join(svc.ArchiveDir, fmt.Sprintf("%09d", tgtMF.UnitID))
 	if strings.Contains(tgtMF.Unit.StaffNotes, "Archive: ") {
 		tgtDir := strings.Split(tgtMF.Unit.StaffNotes, "Archive: ")[1]
-		srcPath = path.Join(svc.ArchiveDir, tgtDir)
+		srcPath = path.Join(svc.ArchiveDir, tgtDir, tgtMF.Filename)
 	}
 
 	err = svc.publishToIIIF(nil, &tgtMF, srcPath, false)
