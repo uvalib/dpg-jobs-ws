@@ -20,8 +20,10 @@ func (svc *ServiceContext) publishToIIIF(js *jobStatus, mf *masterFile, srcPath 
 		workPath = path.Join("/tmp", fmt.Sprintf("%s.tif", mf.PID))
 		svc.logInfo(js, fmt.Sprintf("%s is not a TIFF; converting here: %s", mf.PID, workPath))
 
-		cmdArray := []string{"-quiet", srcPath, workPath}
-		_, err := exec.Command("convert", cmdArray...).Output()
+		cmdArray := []string{srcPath, workPath}
+		cmd := exec.Command("convert", cmdArray...)
+		svc.logInfo(js, fmt.Sprintf("Conversion command: %+v", cmd))
+		_, err := cmd.Output()
 		if err != nil {
 			svc.logError(js, fmt.Sprintf("Unable to convert %s to a TIF: %s", mf.PID, err.Error()))
 			return err
