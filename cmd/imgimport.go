@@ -39,6 +39,12 @@ func (svc *ServiceContext) importGuestImages(c *gin.Context) {
 		return
 	}
 
+	overwrite := false
+	overwriteStr := c.Query("overwrite")
+	if overwriteStr == "1" || overwriteStr == "true" {
+		overwrite = true
+	}
+
 	log.Printf("INFO: import %s from %s to unit %09d", req.Target, req.From, unitID)
 	srcDir := path.Join(svc.ProcessingDir, "guest_dropoff", req.From, req.Target)
 	if req.From == "archive" {
@@ -116,7 +122,14 @@ func (svc *ServiceContext) importGuestImages(c *gin.Context) {
 			}
 		}
 
-		if newMF.ImageTechMeta.ID == 0 {
+		if newMF.ImageTechMeta.ID == 0 || overwrite {
+			if newMF.ImageTechMeta.ID != 0 {
+				log.Printf("INFO: overwite existing image tech metadata")
+				err = svc.GDB.Delete(&newMF.ImageTechMeta).Error
+				if err != nil {
+					log.Printf("WARNING: unable to delete existing tech metadata record %d: %s", newMF.ImageTechMeta.ID, err.Error())
+				}
+			}
 			err = svc.createImageTechMetadata(newMF, tifFile.path)
 			if err != nil {
 				log.Printf("ERROR: unable to create image tech metadata: %s", err.Error())
@@ -128,12 +141,13 @@ func (svc *ServiceContext) importGuestImages(c *gin.Context) {
 			return nil
 		}
 
-		if newMF.ImageTechMeta.ColorSpace == "Uncalibrated" {
-			log.Printf("ERROR: %s has uncalibrated colorspace; skipping further processing", newMF.PID)
+		colorTest := strings.TrimSpace(newMF.ImageTechMeta.ColorSpace)
+		if colorTest == "CMYK" {
+			log.Printf("ERROR: %s has unsupported colorspace %s; skipping further processing", newMF.PID, colorTest)
 			return nil
 		}
 
-		err = svc.publishToIIIF(nil, newMF, tifFile.path, false)
+		err = svc.publishToIIIF(nil, newMF, tifFile.path, overwrite)
 		if err != nil {
 			return fmt.Errorf("IIIF publish failed: %s", err.Error())
 		}

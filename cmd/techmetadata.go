@@ -43,6 +43,13 @@ func (svc *ServiceContext) createImageTechMetadata(mf *masterFile, mfPath string
 	}
 	if jsonMD["ColorSpace"] != nil {
 		md.ColorSpace = fmt.Sprintf("%v", jsonMD["ColorSpace"])
+		if md.ColorSpace == "Uncalibrated" {
+			if jsonMD["ColorMode"] != nil {
+				md.ColorSpace = fmt.Sprintf("%v", jsonMD["ColorMode"])
+			} else if jsonMD["ColorSpaceData"] != nil {
+				md.ColorSpace = fmt.Sprintf("%v", jsonMD["ColorSpaceData"])
+			}
+		}
 	} else if jsonMD["ColorSpaceData"] != nil {
 		md.ColorSpace = fmt.Sprintf("%v", jsonMD["ColorSpaceData"])
 	}
