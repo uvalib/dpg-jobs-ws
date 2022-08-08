@@ -202,6 +202,13 @@ func (svc *ServiceContext) publishMasterFileToIIIF(c *gin.Context) {
 		c.String(http.StatusBadRequest, "missing required PID parameter")
 		return
 	}
+
+	overwrite := false
+	overwriteStr := c.Query("overwrite")
+	if overwriteStr == "1" || overwriteStr == "true" {
+		overwrite = true
+	}
+
 	log.Printf("INFO: publish masterfile %s to iiif", mfPID)
 	var tgtMF masterFile
 	err := svc.GDB.Preload("ImageTechMeta").Preload("Component").Preload("Locations").Preload("Unit").
@@ -218,7 +225,21 @@ func (svc *ServiceContext) publishMasterFileToIIIF(c *gin.Context) {
 		srcPath = path.Join(svc.ArchiveDir, tgtDir, tgtMF.Filename)
 	}
 
-	err = svc.publishToIIIF(nil, &tgtMF, srcPath, false)
+	if overwrite {
+		if tgtMF.ImageTechMeta.ID != 0 {
+			log.Printf("INFO: overwite existing image tech metadata")
+			err = svc.GDB.Delete(&tgtMF.ImageTechMeta).Error
+			if err != nil {
+				log.Printf("WARNING: unable to delete existing tech metadata record %d: %s", tgtMF.ImageTechMeta.ID, err.Error())
+			}
+		}
+		err = svc.createImageTechMetadata(&tgtMF, srcPath)
+		if err != nil {
+			log.Printf("ERROR: unable to create image tech metadata: %s", err.Error())
+		}
+	}
+
+	err = svc.publishToIIIF(nil, &tgtMF, srcPath, overwrite)
 	if err != nil {
 		log.Printf("ERROR: publish %s to iiif failed: %s", mfPID, err.Error())
 		c.String(http.StatusInternalServerError, err.Error())
