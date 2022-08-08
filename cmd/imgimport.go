@@ -128,6 +128,11 @@ func (svc *ServiceContext) importGuestImages(c *gin.Context) {
 			return nil
 		}
 
+		if newMF.ImageTechMeta.ColorSpace == "Uncalibrated" {
+			log.Printf("ERROR: %s has uncalibrated colorspace; skipping further processing", newMF.PID)
+			return nil
+		}
+
 		err = svc.publishToIIIF(nil, newMF, tifFile.path, false)
 		if err != nil {
 			return fmt.Errorf("IIIF publish failed: %s", err.Error())
@@ -137,7 +142,14 @@ func (svc *ServiceContext) importGuestImages(c *gin.Context) {
 			if newMF.DateArchived == nil {
 				log.Printf("INFO: update date archived for %s", newMF.Filename)
 				newMF.DateArchived = tgtUnit.DateArchived
-				svc.GDB.Model(newMF).Select("DateArchived").Updates(*newMF)
+				if newMF.DateArchived == nil {
+					now := time.Now()
+					newMF.DateArchived = &now
+				}
+				err = svc.GDB.Model(newMF).Select("DateArchived").Updates(*newMF).Error
+				if err != nil {
+					log.Printf("WARNING: unable to set date archived for master file %d:%s", newMF.ID, err.Error())
+				}
 			}
 		} else if newMF.DateArchived == nil {
 			archiveMD5, err := svc.archiveFineArtsFile(tifFile.path, req.Target, newMF)
