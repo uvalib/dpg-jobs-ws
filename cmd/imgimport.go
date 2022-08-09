@@ -239,6 +239,19 @@ func (svc *ServiceContext) publishMasterFileToIIIF(c *gin.Context) {
 		}
 	}
 
+	if tgtMF.ImageTechMeta.Width == 0 || tgtMF.ImageTechMeta.Height == 0 {
+		log.Printf("ERROR: %s has invalid tech metdata and is likely corrupt; skipping further processing", tgtMF.PID)
+		c.String(http.StatusBadRequest, "invalid tech metadata; width and height are zero")
+		return
+	}
+
+	colorTest := strings.TrimSpace(tgtMF.ImageTechMeta.ColorSpace)
+	if colorTest == "CMYK" {
+		log.Printf("ERROR: %s has unsupported colorspace %s; skipping further processing", tgtMF.PID, colorTest)
+		c.String(http.StatusBadRequest, fmt.Sprintf("unsupported colorspace %s", colorTest))
+		return
+	}
+
 	err = svc.publishToIIIF(nil, &tgtMF, srcPath, overwrite)
 	if err != nil {
 		log.Printf("ERROR: publish %s to iiif failed: %s", mfPID, err.Error())
