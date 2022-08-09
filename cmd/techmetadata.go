@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"os/exec"
 	"strconv"
 	"strings"
@@ -12,8 +13,11 @@ import (
 
 func (svc *ServiceContext) createImageTechMetadata(mf *masterFile, mfPath string) error {
 	cmdArray := []string{"-json", mfPath}
-	stdout, err := exec.Command("exiftool", cmdArray...).Output()
+	cmd := exec.Command("exiftool", cmdArray...)
+	log.Printf("INFO: get %s tech metadata with: %+v", mf.PID, cmd)
+	stdout, err := cmd.Output()
 	if err != nil {
+		log.Printf("ERROR: unable to get tech metadata: %s: %s", stdout, err.Error())
 		return err
 	}
 
@@ -84,6 +88,7 @@ func (svc *ServiceContext) createImageTechMetadata(mf *masterFile, mfPath string
 		md.FocalLength = getFocalLength(jsonMD)
 	}
 
+	log.Printf("INFO: %s tech metadata: %+v", mf.PID, md)
 	err = svc.GDB.Create(&md).Error
 	if err != nil {
 		return err

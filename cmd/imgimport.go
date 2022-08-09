@@ -209,7 +209,7 @@ func (svc *ServiceContext) publishMasterFileToIIIF(c *gin.Context) {
 		overwrite = true
 	}
 
-	log.Printf("INFO: publish masterfile %s to iiif", mfPID)
+	log.Printf("INFO: publish masterfile %s to iiif, overwrite=%t", mfPID, overwrite)
 	var tgtMF masterFile
 	err := svc.GDB.Preload("ImageTechMeta").Preload("Component").Preload("Locations").Preload("Unit").
 		Where("pid=?", mfPID).Limit(1).Find(&tgtMF).Error
