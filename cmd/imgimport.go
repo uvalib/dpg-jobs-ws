@@ -78,6 +78,11 @@ func (svc *ServiceContext) importGuestImages(c *gin.Context) {
 		if ext != ".tif" {
 			return nil
 		}
+		if strings.Index(entry.Name(), "._") == 0 {
+			// some guest directories have macOS temp files that start with ._
+			// the need to be skipped
+			return nil
+		}
 
 		tifFile := tifInfo{path: fullPath, filename: entry.Name(), size: entry.Size()}
 		log.Printf("INFO: import %s", tifFile.path)
