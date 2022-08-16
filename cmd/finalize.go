@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime/debug"
+	"sort"
 	"strconv"
 	"time"
 
@@ -313,11 +314,9 @@ func (svc *ServiceContext) qaFilesystem(js *jobStatus, tgtUnit *unit, srcDir str
 	// 4. No file is less than 1MB (1MB being a size arbitrarily determined to represent a "too small" file)
 	// 5. No non-tif / non-txt files present
 	hasFailures := false
-	tifCount := 0
-	seq := 0
-	lastMfPageNum := 0
 	minSize := int64(1024 * 1024)
 	mfRegex := regexp.MustCompile(fmt.Sprintf(`^%09d_\w{4,}\.tif$`, tgtUnit.ID))
+	tifFiles := make([]string, 0)
 	err := filepath.Walk(srcDir, func(fPath string, f os.FileInfo, err error) error {
 		if err != nil {
 			return err
@@ -325,22 +324,16 @@ func (svc *ServiceContext) qaFilesystem(js *jobStatus, tgtUnit *unit, srcDir str
 		if f.IsDir() == false && f.Name() != ".DS_Store" {
 			ext := filepath.Ext(f.Name())
 			if ext == ".tif" {
-				tifCount++
 				if mfRegex.MatchString(f.Name()) == false {
 					hasFailures = true
 					svc.logError(js, fmt.Sprintf("Incorrectly named .tif file found: %s", path.Join(fPath, f.Name())))
 				} else {
-					lastMfPageNum = getMasterFilePageNum(f.Name())
-					if seq+1 != lastMfPageNum {
-						hasFailures = true
-						svc.logError(js, fmt.Sprintf("Out of sequence .tif file found: %s", path.Join(fPath, f.Name())))
-					}
+					tifFiles = append(tifFiles, f.Name())
 				}
 				if f.Size() < minSize {
 					hasFailures = true
 					svc.logError(js, fmt.Sprintf("%s filesize is less than %d and is very likely an incorrect file.", path.Join(fPath, f.Name()), minSize))
 				}
-				seq++
 			} else if ext != ".txt" {
 				hasFailures = true
 				svc.logError(js, fmt.Sprintf("Unexpected file found: %s", path.Join(fPath, f.Name())))
@@ -352,10 +345,22 @@ func (svc *ServiceContext) qaFilesystem(js *jobStatus, tgtUnit *unit, srcDir str
 	if err != nil {
 		return err
 	}
-	if tifCount == 0 {
+	if len(tifFiles) == 0 {
 		svc.logError(js, fmt.Sprintf("No .tif files found in %s", srcDir))
 		hasFailures = true
 	}
+
+	sort.Strings(tifFiles)
+	seq := 0
+	for _, fn := range tifFiles {
+		mfPageNum := getMasterFilePageNum(fn)
+		if seq+1 != mfPageNum {
+			hasFailures = true
+			svc.logError(js, fmt.Sprintf("Out of sequence .tif file found: %s", fn))
+		}
+		seq++
+	}
+
 	if hasFailures {
 		return fmt.Errorf("Unit  has failed the Filesystem QA")
 	}
