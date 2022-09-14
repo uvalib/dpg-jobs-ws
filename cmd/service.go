@@ -60,6 +60,7 @@ type ServiceContext struct {
 	HTTPClient    *http.Client
 	Templates     htmlTemplates
 	OcrRequests   []int64
+	JSTORCookies  []*http.Cookie
 }
 
 // RequestError contains http status code and message for a failed HTTP request
