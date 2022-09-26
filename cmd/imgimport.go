@@ -23,6 +23,8 @@ type tifMetadata struct {
 	Title       string
 	Description string
 	ComponentID int64
+	Box         string
+	Folder      string
 }
 
 func (svc *ServiceContext) importGuestImages(c *gin.Context) {
@@ -299,6 +301,12 @@ func (svc *ServiceContext) importImages(js *jobStatus, tgtUnit *unit, srcDir str
 		svc.logInfo(js, fmt.Sprintf("Import %s", fi.path))
 		mfCount++
 
+		// grab metadata from exif headers
+		tifMD, err := extractTifMetadata(fi.path)
+		if err != nil {
+			return err
+		}
+
 		// See if this masterfile has already been created...
 		newMF, err := svc.loadMasterFile(fi.filename)
 		if err != nil {
@@ -307,10 +315,6 @@ func (svc *ServiceContext) importImages(js *jobStatus, tgtUnit *unit, srcDir str
 		if newMF.ID == 0 {
 			svc.logInfo(js, fmt.Sprintf("Create new master file %s", fi.filename))
 			newMD5 := md5Checksum(fi.path)
-			tifMD, err := extractTifMetadata(fi.path)
-			if err != nil {
-				return err
-			}
 			newMF = &masterFile{UnitID: tgtUnit.ID, MetadataID: tgtUnit.MetadataID, Filename: fi.filename,
 				Filesize: fi.size, MD5: newMD5, Title: tifMD.Title, Description: tifMD.Description}
 			if tgtUnit.Metadata.IsManuscript && tifMD.ComponentID != 0 {
@@ -389,32 +393,19 @@ func (svc *ServiceContext) importImages(js *jobStatus, tgtUnit *unit, srcDir str
 			}
 		}
 
-		// fi.path is the full path to the image Strip out the srcDir and filename.
-		// The remaining bit will be the subdirectories or nothing.
-		// use this info to know if there is box/folder info encoded in the filename
-		// subdir structure: [box|oversize|tray].{box_name}/{folder_name} EXAMPLE: Created location metadata for [140/3]
-		subDirs := filepath.Dir(fi.path) // strip filename
-		if subDirs == srcDir {
-			// there are no subdirs, so there is no box/folder info. continue.
-			continue
-		}
-		subDirs = subDirs[len(srcDir)+1:]
-		unitProj, _ := svc.getUnitProject(tgtUnit.ID)
-		if newMF.location() == nil && unitProj != nil {
-			svc.logInfo(js, fmt.Sprintf("Sub directories exist for this masterfile: %s", subDirs))
-			if unitProj.ContainerTypeID == nil {
-				svc.logInfo(js, "Location data available, but container type not set. Defaulting to box")
-				firstContainerID := int64(1) // default to first; box
-				unitProj.ContainerTypeID = &firstContainerID
-				svc.GDB.Model(unitProj).Select("ContainerTypeID").Updates(*unitProj)
-			}
-			loc, err := svc.findOrCreateLocation(js, *tgtUnit.MetadataID, *unitProj.ContainerTypeID, srcDir, subDirs)
-			if err != nil {
-				svc.logError(js, fmt.Sprintf("Unable to create location ofr %s: %s", newMF.Filename, err.Error()))
-			} else {
-				err = svc.GDB.Exec("INSERT into master_file_locations (master_file_id, location_id) values (?,?)", newMF.ID, loc.ID).Error
+		// if box/folder set, add location info to the master file
+		if tifMD.Box != "" && tifMD.Folder != "" {
+			unitProj, _ := svc.getUnitProject(tgtUnit.ID)
+			if newMF.location() == nil && unitProj != nil {
+				svc.logInfo(js, fmt.Sprintf("Location defined for this masterfile: %s/%s", tifMD.Box, tifMD.Folder))
+				loc, err := svc.findOrCreateLocation(js, *tgtUnit.MetadataID, *unitProj.ContainerTypeID, srcDir, tifMD.Box, tifMD.Folder)
 				if err != nil {
-					svc.logError(js, fmt.Sprintf("Unable to add location %d [%s] to %s: %s", loc.ID, subDirs, newMF.Filename, err.Error()))
+					svc.logError(js, fmt.Sprintf("Unable to create location for %s: %s", newMF.Filename, err.Error()))
+				} else {
+					err = svc.GDB.Exec("INSERT into master_file_locations (master_file_id, location_id) values (?,?)", newMF.ID, loc.ID).Error
+					if err != nil {
+						svc.logError(js, fmt.Sprintf("Unable to add location %d [%s/%s] to %s: %s", loc.ID, tifMD.Box, tifMD.Folder, newMF.Filename, err.Error()))
+					}
 				}
 			}
 		}
@@ -443,7 +434,7 @@ func (svc *ServiceContext) loadMasterFile(filename string) (*masterFile, error) 
 }
 
 func extractTifMetadata(tifPath string) (*tifMetadata, error) {
-	cmdArray := []string{"-json", "-iptc:OwnerID", "-iptc:headline", "-iptc:caption-abstract", tifPath}
+	cmdArray := []string{"-json", "-iptc:OwnerID", "-iptc:headline", "-iptc:caption-abstract", "-iptc:ContentLocationName", "-iptc:Keywords", tifPath}
 	stdout, err := exec.Command("exiftool", cmdArray...).Output()
 	if err != nil {
 		return nil, err
@@ -453,6 +444,8 @@ func extractTifMetadata(tifPath string) (*tifMetadata, error) {
 		Title       interface{} `json:"Headline"`
 		Description interface{} `json:"Caption-Abstract"`
 		OwnerID     interface{} `json:"OwnerID"`
+		Box         interface{} `json:"Keywords"`
+		Folder      interface{} `json:"ContentLocationName"`
 	}
 
 	var parsedExif []exifData
@@ -473,21 +466,26 @@ func extractTifMetadata(tifPath string) (*tifMetadata, error) {
 	if parsedExif[0].Description != nil {
 		out.Description = fmt.Sprintf("%v", parsedExif[0].Description)
 	}
+	if parsedExif[0].Box != nil {
+		out.Box = fmt.Sprintf("%v", parsedExif[0].Box)
+	}
+	if parsedExif[0].Folder != nil {
+		out.Folder = fmt.Sprintf("%v", parsedExif[0].Folder)
+	}
 	return &out, nil
 }
-func (svc *ServiceContext) findOrCreateLocation(js *jobStatus, mdID int64, ctID int64, baseDir, subDir string) (*location, error) {
-	svc.logInfo(js, fmt.Sprintf("Find or create location based on %s", subDir))
-	bits := strings.Split(subDir, "/")
+func (svc *ServiceContext) findOrCreateLocation(js *jobStatus, mdID int64, ctID int64, baseDir, box, folder string) (*location, error) {
+	svc.logInfo(js, fmt.Sprintf("Find or create location based on %s/%s", box, folder))
 	var tgtLoc location
 	err := svc.GDB.Where("metadata_id=?", mdID).Where("container_type_id=?", ctID).
-		Where("container_id=?", bits[0]).Where("folder_id=?", bits[1]).
+		Where("container_id=?", box).Where("folder_id=?", folder).
 		First(&tgtLoc).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) == false {
 			return nil, err
 		}
 		tgtLoc = location{MetadataID: mdID, ContainerTypeID: ctID,
-			ContainerID: bits[0], FolderID: bits[1]}
+			ContainerID: box, FolderID: folder}
 		notesFile := path.Join(baseDir, "notes.txt")
 		if pathExists(notesFile) {
 			bytes, err := ioutil.ReadFile(notesFile)
@@ -501,9 +499,9 @@ func (svc *ServiceContext) findOrCreateLocation(js *jobStatus, mdID int64, ctID 
 		if err != nil {
 			return nil, err
 		}
-		svc.logInfo(js, fmt.Sprintf("Created location metadata for [%s]", subDir))
+		svc.logInfo(js, fmt.Sprintf("Created location metadata for [%s/%s]", box, folder))
 	} else {
-		svc.logInfo(js, fmt.Sprintf("Found existing location metadata for [%s]", subDir))
+		svc.logInfo(js, fmt.Sprintf("Found existing location metadata for [%s/%s]", box, folder))
 	}
 	return &tgtLoc, nil
 }
