@@ -357,6 +357,32 @@ func (svc *ServiceContext) importImages(js *jobStatus, tgtUnit *unit, srcDir str
 			continue
 		}
 
+		// if box/folder set, add location info to the master file. Part of this handling will remove exif metadata tags,
+		// so be sure to do it BEFORE arcive and publish so the data will not be present in either place
+		if tifMD.Box != "" && tifMD.Folder != "" {
+			unitProj, _ := svc.getUnitProject(tgtUnit.ID)
+			if newMF.location() == nil && unitProj != nil {
+				svc.logInfo(js, fmt.Sprintf("Location defined for this masterfile: %s/%s", tifMD.Box, tifMD.Folder))
+				loc, err := svc.findOrCreateLocation(js, *tgtUnit.MetadataID, *unitProj.ContainerTypeID, srcDir, tifMD.Box, tifMD.Folder)
+				if err != nil {
+					svc.logError(js, fmt.Sprintf("Unable to create location for %s: %s", newMF.Filename, err.Error()))
+				} else {
+					err = svc.GDB.Exec("INSERT into master_file_locations (master_file_id, location_id) values (?,?)", newMF.ID, loc.ID).Error
+					if err != nil {
+						svc.logError(js, fmt.Sprintf("Unable to add location %d [%s/%s] to %s: %s", loc.ID, tifMD.Box, tifMD.Folder, newMF.Filename, err.Error()))
+					} else {
+						svc.logInfo(js, fmt.Sprintf("Master file location created for %s. Cleaning up temporary exif tags", fi.filename))
+						cmdArray := []string{"-iptc:ContentLocationName=", "-iptc:Keywords=", fi.path}
+						cmd := exec.Command("exiftool", cmdArray...)
+						_, err := cmd.Output()
+						if err != nil {
+							svc.logError(js, fmt.Sprintf("Unable to cleanup temporary exif location data: %s", err.Error()))
+						}
+					}
+				}
+			}
+		}
+
 		err = svc.publishToIIIF(js, newMF, fi.path, false)
 		if err != nil {
 			return fmt.Errorf("IIIF publish failed: %s", err.Error())
@@ -390,23 +416,6 @@ func (svc *ServiceContext) importImages(js *jobStatus, tgtUnit *unit, srcDir str
 			} else {
 				newMF.TranscriptionText = string(bytes)
 				svc.GDB.Model(&newMF).Select("TranscriptionText").Updates(newMF)
-			}
-		}
-
-		// if box/folder set, add location info to the master file
-		if tifMD.Box != "" && tifMD.Folder != "" {
-			unitProj, _ := svc.getUnitProject(tgtUnit.ID)
-			if newMF.location() == nil && unitProj != nil {
-				svc.logInfo(js, fmt.Sprintf("Location defined for this masterfile: %s/%s", tifMD.Box, tifMD.Folder))
-				loc, err := svc.findOrCreateLocation(js, *tgtUnit.MetadataID, *unitProj.ContainerTypeID, srcDir, tifMD.Box, tifMD.Folder)
-				if err != nil {
-					svc.logError(js, fmt.Sprintf("Unable to create location for %s: %s", newMF.Filename, err.Error()))
-				} else {
-					err = svc.GDB.Exec("INSERT into master_file_locations (master_file_id, location_id) values (?,?)", newMF.ID, loc.ID).Error
-					if err != nil {
-						svc.logError(js, fmt.Sprintf("Unable to add location %d [%s/%s] to %s: %s", loc.ID, tifMD.Box, tifMD.Folder, newMF.Filename, err.Error()))
-					}
-				}
 			}
 		}
 	}
