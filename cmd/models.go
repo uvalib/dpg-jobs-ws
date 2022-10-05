@@ -13,6 +13,17 @@ type academicStatus struct {
 	Name string
 }
 
+type auditEvent struct {
+	ID            int64
+	StaffMemberID int64
+	StaffMember   staffMember `gorm:"foreignKey:StaffMemberID"`
+	AuditableID   int64
+	AuditableType string
+	Event         uint
+	Details       string
+	CreatedAt     time.Time
+}
+
 type ocrHint struct {
 	ID           int64
 	Name         string

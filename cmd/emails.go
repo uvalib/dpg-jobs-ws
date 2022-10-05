@@ -92,6 +92,7 @@ func (svc *ServiceContext) sendFeesEmail(c *gin.Context) {
 	altEmail := c.Query("alt")
 	orderIDStr := c.Param("id")
 	orderID, _ := strconv.ParseInt(orderIDStr, 10, 64)
+	staffIDStr := c.Query("staff")
 	js, err := svc.createJobStatus("SendFeeEstimateToCustomer", "Order", orderID)
 	if err != nil {
 		log.Printf("ERROR: unable to create job js: %s", err.Error())
@@ -146,6 +147,20 @@ func (svc *ServiceContext) sendFeesEmail(c *gin.Context) {
 	}
 	svc.logInfo(js, "Fee estimate email sent to customer.")
 	now := time.Now()
+
+	if staffIDStr != "" {
+		staffID, _ := strconv.ParseInt(staffIDStr, 10, 64)
+		if staffID > 0 {
+			// NOTE: do this before the order status update to log the transition
+			svc.logInfo(js, "Create audit event for fee sent")
+			msg := fmt.Sprintf("Status %s to AWAIT_FEE", strings.ToUpper(o.OrderStatus))
+			ae := auditEvent{StaffMemberID: staffID, Event: 0, Details: msg, AuditableID: o.ID, AuditableType: "Order", CreatedAt: time.Now()}
+			err := svc.GDB.Create(&ae).Error
+			if err != nil {
+				svc.logError(js, fmt.Sprintf("Unable to create audit event for sending fees email: %s", err.Error()))
+			}
+		}
+	}
 
 	// If an invoice does not yet exist for this order, create one
 	if len(o.Invoices) == 0 {
