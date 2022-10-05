@@ -89,6 +89,7 @@ func (svc *ServiceContext) sendOrderEmail(c *gin.Context) {
 }
 
 func (svc *ServiceContext) sendFeesEmail(c *gin.Context) {
+	resend := (c.Query("resend") != "")
 	altEmail := c.Query("alt")
 	orderIDStr := c.Param("id")
 	orderID, _ := strconv.ParseInt(orderIDStr, 10, 64)
@@ -148,7 +149,7 @@ func (svc *ServiceContext) sendFeesEmail(c *gin.Context) {
 	svc.logInfo(js, "Fee estimate email sent to customer.")
 	now := time.Now()
 
-	if staffIDStr != "" {
+	if staffIDStr != "" && resend == false {
 		staffID, _ := strconv.ParseInt(staffIDStr, 10, 64)
 		if staffID > 0 {
 			// NOTE: do this before the order status update to log the transition
@@ -163,7 +164,7 @@ func (svc *ServiceContext) sendFeesEmail(c *gin.Context) {
 	}
 
 	// If an invoice does not yet exist for this order, create one
-	if len(o.Invoices) == 0 {
+	if len(o.Invoices) == 0 && resend == false {
 		inv := invoice{OrderID: o.ID, DateInvoice: time.Now()}
 		err = svc.GDB.Create(&inv).Error
 		if err != nil {
@@ -174,12 +175,14 @@ func (svc *ServiceContext) sendFeesEmail(c *gin.Context) {
 		svc.logInfo(js, "An invoice already exists for this order; not creating another.")
 	}
 
-	if o.OrderStatus != "await_fee" {
-		svc.GDB.Model(o).Select("date_fee_estimate_sent_to_customer", "order_status").
-			Updates(order{DateFeeEstimateSentToCustomer: &now, OrderStatus: "await_fee"})
-	}
+	if resend == false {
+		if o.OrderStatus != "await_fee" {
+			svc.GDB.Model(o).Select("date_fee_estimate_sent_to_customer", "order_status").
+				Updates(order{DateFeeEstimateSentToCustomer: &now, OrderStatus: "await_fee"})
+		}
 
-	svc.logInfo(js, "Order status and date fee estimate sent to customer have been updated.")
+		svc.logInfo(js, "Order status and date fee estimate sent to customer have been updated.")
+	}
 	svc.jobDone(js)
 	c.String(http.StatusOK, "done")
 }
