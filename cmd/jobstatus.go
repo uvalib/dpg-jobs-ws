@@ -1,8 +1,13 @@
 package main
 
 import (
+	"errors"
 	"log"
+	"net/http"
 	"time"
+
+	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 )
 
 type event struct {
@@ -14,18 +19,18 @@ type event struct {
 }
 
 type jobStatus struct {
-	ID             int64
-	OriginatorID   int64
-	OriginatorType string
-	Name           string
-	Status         string
-	Failures       uint
-	Error          string
-	Events         []event `gorm:"foreignKey:JobStatusID"`
-	StartedAt      *time.Time
-	EndedAt        *time.Time
-	CreatedAt      time.Time
-	UpdatedAt      time.Time
+	ID             int64      `json:"id"`
+	OriginatorID   int64      `json:"-"`
+	OriginatorType string     `json:"-"`
+	Name           string     `json:"name"`
+	Status         string     `json:"status"`
+	Failures       uint       `json:"failures"`
+	Error          string     `json:"error"`
+	Events         []event    `gorm:"foreignKey:JobStatusID" json:"-"`
+	StartedAt      *time.Time `json:"startedAt"`
+	EndedAt        *time.Time `json:"endedAt"`
+	CreatedAt      time.Time  `json:"-"`
+	UpdatedAt      time.Time  `json:"-"`
 }
 
 func (svc *ServiceContext) createJobStatus(job string, origType string, origID int64) (*jobStatus, error) {
@@ -91,4 +96,19 @@ func (svc *ServiceContext) logFatal(status *jobStatus, text string) {
 		now := time.Now()
 		svc.GDB.Model(status).Select("ended_at", "status", "error").Updates(jobStatus{EndedAt: &now, Status: "failure", Error: text})
 	}
+}
+
+func (svc *ServiceContext) getJobStatus(c *gin.Context) {
+	jID := c.Param("id")
+	var js jobStatus
+	err := svc.GDB.Find(&js, jID).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			c.String(http.StatusNotFound, "not found")
+		} else {
+			c.String(http.StatusInternalServerError, err.Error())
+		}
+		return
+	}
+	c.JSON(http.StatusOK, js)
 }
