@@ -418,7 +418,7 @@ func (svc *ServiceContext) convertToArchivesSpace(c *gin.Context) {
 		tgtMetadata.CallNumber = ""
 		tgtMetadata.Barcode = ""
 		tgtMetadata.DescMetadata = ""
-		tgtMetadata.ExternalSystemID = es.ID
+		tgtMetadata.ExternalSystemID = &es.ID
 		err := svc.GDB.Model(&tgtMetadata).
 			Select("Type", "ExternalSystemID", "ExternalURI", "CreatorName", "CatalogKey", "CallNumber", "Barcode", "DescMetadata").
 			Updates(tgtMetadata).Error

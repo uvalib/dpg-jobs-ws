@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -74,6 +75,58 @@ func (svc *ServiceContext) replaceMasterFiles(c *gin.Context) {
 	}()
 
 	c.String(http.StatusOK, fmt.Sprintf("%d", js.ID))
+}
+
+func (svc *ServiceContext) assignMasterFileMetadata(c *gin.Context) {
+	unitID, _ := strconv.ParseInt(c.Param("id"), 10, 64)
+	js, err := svc.createJobStatus("AssignMasterFileMetadata", "Unit", unitID)
+	if err != nil {
+		log.Printf("ERROR: unable to create RenumberMasterFiles job status: %s", err.Error())
+		c.String(http.StatusInternalServerError, err.Error())
+		return
+	}
+	var req struct {
+		IDs        []int64 `json:"ids"`
+		MetadataID int64   `json:"metadataID"`
+	}
+	svc.logInfo(js, "Staring process to assign master file metadata...")
+	err = c.ShouldBindJSON(&req)
+	if err != nil {
+		svc.logFatal(js, fmt.Sprintf("Unable to parse request: %s", err.Error()))
+		c.String(http.StatusBadRequest, err.Error())
+		return
+	}
+
+	svc.logInfo(js, fmt.Sprintf("Validate metadata %d", req.MetadataID))
+	var md metadata
+	err = svc.GDB.Preload("ExternalSystem").Find(&md, req.MetadataID).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			svc.logFatal(js, fmt.Sprintf("Meadata %d not found", req.MetadataID))
+			c.String(http.StatusBadRequest, err.Error())
+		} else {
+			svc.logFatal(js, fmt.Sprintf("Unable to get metadata %d: %s", req.MetadataID, err.Error()))
+			c.String(http.StatusInternalServerError, err.Error())
+		}
+		return
+	}
+
+	if md.Type == "SirsiMetadata" || (md.Type == "ExternalMetadata" && md.ExternalSystem.Name != "ArchivesSpace") {
+		svc.logFatal(js, fmt.Sprintf("Metadata %d is type %s. Only XML and ArchivesSpace are supported", req.MetadataID, md.Type))
+		c.String(http.StatusBadRequest, fmt.Sprintf("Metadata %d is %s. Only  XML and ArchivesSpace are supported", md.ID, md.Type))
+		return
+	}
+
+	svc.logInfo(js, fmt.Sprintf("Update masterfiles %v to metadata %d", req.IDs, req.MetadataID))
+	err = svc.GDB.Table("master_files").Where("id IN ?", req.IDs).Updates(map[string]interface{}{"metadata_id": md.ID}).Error
+	if err != nil {
+		svc.logFatal(js, fmt.Sprintf("Unable to update metadata: %s", err.Error()))
+		c.String(http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	svc.jobDone(js)
+	c.String(http.StatusOK, "done")
 }
 
 func (svc *ServiceContext) renumberMasterFiles(c *gin.Context) {

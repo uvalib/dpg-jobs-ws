@@ -121,10 +121,11 @@ type metadata struct {
 	OcrLanguageHint      string
 	PreservationTierID   int64
 	CollectionID         string
-	DateDlIngest         *time.Time `gorm:"column:date_dl_ingest"`
-	DateDlUpdate         *time.Time `gorm:"column:date_dl_update"`
-	ExternalSystemID     int64      `gorm:"column:external_system_id"`
-	ExternalURI          string     `gorm:"column:external_uri"`
+	DateDlIngest         *time.Time      `gorm:"column:date_dl_ingest"`
+	DateDlUpdate         *time.Time      `gorm:"column:date_dl_update"`
+	ExternalSystemID     *int64          `gorm:"column:external_system_id"`
+	ExternalSystem       *externalSystem `gorm:"foreignKey:ExternalSystemID"`
+	ExternalURI          string          `gorm:"column:external_uri"`
 	CreatedAt            time.Time
 	UpdatedAt            time.Time
 }
