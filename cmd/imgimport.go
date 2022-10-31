@@ -291,6 +291,12 @@ func (svc *ServiceContext) importImages(js *jobStatus, tgtUnit *unit, srcDir str
 		}
 	}
 
+	// grab any project info for this unit
+	unitProj, err := svc.getUnitProject(tgtUnit.ID)
+	if err != nil {
+		svc.logError(js, fmt.Sprintf("Unable to load project details: %s", err.Error()))
+	}
+
 	// iterate through all of the .tif files in the unit directory
 	mfCount := 0
 	tifFiles, err := svc.getTifFiles(js, srcDir, tgtUnit.ID)
@@ -359,9 +365,8 @@ func (svc *ServiceContext) importImages(js *jobStatus, tgtUnit *unit, srcDir str
 
 		// if box/folder set, add location info to the master file. Part of this handling will remove exif metadata tags,
 		// so be sure to do it BEFORE arcive and publish so the data will not be present in either place
-		if tifMD.Box != "" && tifMD.Folder != "" {
-			unitProj, _ := svc.getUnitProject(tgtUnit.ID)
-			if newMF.location() == nil && unitProj != nil {
+		if tifMD.Box != "" && tifMD.Folder != "" && unitProj.Workflow.name == "Manuscript" {
+			if newMF.location() == nil && unitProj != nil && unitProj.ContainerTypeID != nil {
 				svc.logInfo(js, fmt.Sprintf("Location defined for this masterfile: %s/%s", tifMD.Box, tifMD.Folder))
 				loc, err := svc.findOrCreateLocation(js, *tgtUnit.MetadataID, *unitProj.ContainerTypeID, srcDir, tifMD.Box, tifMD.Folder)
 				if err != nil {

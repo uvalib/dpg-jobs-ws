@@ -36,8 +36,15 @@ type assignment struct {
 	Status          uint
 }
 
+type workflow struct {
+	ID   int64
+	name string
+}
+
 type project struct {
 	ID              int64
+	WorkflowID      int64
+	Workflow        workflow `gorm:"foreignKey:WorkflowID"`
 	OwnerID         *int64
 	CurrentStepID   *int64
 	ContainerTypeID *int64

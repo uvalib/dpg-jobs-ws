@@ -337,7 +337,7 @@ func (svc *ServiceContext) unitImagesAvailable(js *jobStatus, tgtUnit *unit, uni
 func (svc *ServiceContext) getUnitProject(unitID int64) (*project, error) {
 	// use limit(1) and find to avoid errors when project does not exist
 	var currProj project
-	err := svc.GDB.Preload("Notes").Where("unit_id=?", unitID).Limit(1).Find(&currProj).Error
+	err := svc.GDB.Preload("Workflow").Preload("Notes").Where("unit_id=?", unitID).Limit(1).Find(&currProj).Error
 	if err != nil {
 		return nil, err
 	}
