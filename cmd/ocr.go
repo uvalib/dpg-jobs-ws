@@ -124,7 +124,7 @@ func (svc *ServiceContext) requestMasterFileOCR(js *jobStatus, mfID int64) error
 		return err
 	}
 	var tgtMD metadata
-	err = svc.GDB.Preload("OcrHint").First(&tgtMD, tgtMF.MetadataID).Error
+	err = svc.GDB.Preload("OcrHint").First(&tgtMD, *tgtMF.MetadataID).Error
 	if err != nil {
 		return err
 	}

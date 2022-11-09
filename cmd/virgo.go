@@ -82,7 +82,7 @@ func (svc *ServiceContext) publishToVirgo(c *gin.Context) {
 func (svc *ServiceContext) publishUnitToVirgo(js *jobStatus, tgtUnit *unit) error {
 	svc.logInfo(js, "Publish unit to Virgo")
 	if tgtUnit.Metadata.AvailabilityPolicyID == nil {
-		return fmt.Errorf("Metadata %d for Unit is missing the required availability policy", tgtUnit.MetadataID)
+		return fmt.Errorf("Metadata %d for Unit is missing the required availability policy", *tgtUnit.MetadataID)
 	}
 
 	iiifURL := fmt.Sprintf("%s/pid/%s?refresh=true", svc.IIIF.URL, tgtUnit.Metadata.PID)
@@ -120,9 +120,9 @@ func (svc *ServiceContext) publishUnitToVirgo(js *jobStatus, tgtUnit *unit) erro
 		}
 
 		// if master file has its own metadata, set it too
-		if mf.MetadataID != tgtUnit.MetadataID {
+		if *mf.MetadataID != *tgtUnit.MetadataID {
 			var mfMD metadata
-			err = svc.GDB.First(&mfMD, mf.MetadataID).Error
+			err = svc.GDB.First(&mfMD, *mf.MetadataID).Error
 			if err != nil {
 				svc.logError(js, fmt.Sprintf("Unable to find masterfile %s metadata record: %s", mf.PID, err.Error()))
 				continue
@@ -139,7 +139,7 @@ func (svc *ServiceContext) publishUnitToVirgo(js *jobStatus, tgtUnit *unit) erro
 
 	//  Call the reindex API for sirsi items
 	if tgtUnit.Metadata.Type == "SirsiMetadata" && tgtUnit.Metadata.CatalogKey != "" {
-		svc.logInfo(js, fmt.Sprintf("Call the reindex service for %d - %s", tgtUnit.MetadataID, tgtUnit.Metadata.CatalogKey))
+		svc.logInfo(js, fmt.Sprintf("Call the reindex service for %d - %s", *tgtUnit.MetadataID, tgtUnit.Metadata.CatalogKey))
 		url := fmt.Sprintf("%s/api/reindex/%s", svc.ReindexURL, tgtUnit.Metadata.CatalogKey)
 		_, resp := svc.putRequest(url)
 		if resp != nil {

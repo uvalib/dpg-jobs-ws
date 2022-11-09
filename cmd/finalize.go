@@ -107,7 +107,7 @@ func (svc *ServiceContext) finalizeUnit(c *gin.Context) {
 		}
 
 		// Flag unit for Virgo publication?
-		if tgtUnit.IncludeInDL {
+		if tgtUnit.IncludeInDL && tgtUnit.Metadata.Type != "ExternalMetadata" {
 			err = svc.publishUnitToVirgo(js, &tgtUnit)
 			if err != nil {
 				svc.setUnitFatal(js, &tgtUnit, err.Error())
