@@ -10,7 +10,7 @@ import (
 )
 
 // Version of the service
-const version = "1.5.2"
+const version = "1.5.3"
 
 func main() {
 	log.Printf("===> DPG backend processing service starting up <===")
