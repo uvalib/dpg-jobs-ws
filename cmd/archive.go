@@ -69,8 +69,9 @@ func (svc *ServiceContext) downloadFromArchive(c *gin.Context) {
 	svc.logInfo(js, fmt.Sprintf("Unit archive dir [%s]", tgtDir))
 
 	type dlReq struct {
-		Filename  string `json:"filename"`
-		ComputeID string `json:"computeID"`
+		Filename  string   `json:"filename"`
+		Files     []string `json:"files"`
+		ComputeID string   `json:"computeID"`
 	}
 	svc.logInfo(js, "Staring process to download master files from the archive...")
 	var req dlReq
@@ -88,7 +89,7 @@ func (svc *ServiceContext) downloadFromArchive(c *gin.Context) {
 		c.String(http.StatusBadRequest, "invalid compute id")
 		return
 	}
-	svc.logInfo(js, fmt.Sprintf("%s requests to download %s from unit %d", req.ComputeID, req.Filename, unitID))
+
 	destPath := path.Join(svc.ProcessingDir, "from_archive", req.ComputeID, fmt.Sprintf("%09d", unitID))
 	err = ensureDirExists(destPath, 0775)
 	if err != nil {
@@ -97,18 +98,41 @@ func (svc *ServiceContext) downloadFromArchive(c *gin.Context) {
 		return
 	}
 	if strings.ToLower(req.Filename) == "all" {
+		svc.logInfo(js, fmt.Sprintf("%s requests to download all master files from unit %d", req.ComputeID, unitID))
 		go svc.copyAllFromArchive(js, unitID, tgtDir, destPath)
 		c.String(http.StatusOK, fmt.Sprintf("%d", js.ID))
 		return
-	}
-
-	err = svc.copyArchivedFile(js, tgtDir, req.Filename, destPath)
-	if err != nil {
-		svc.logFatal(js, fmt.Sprintf("Unable to copy %s: %s", req.Filename, err.Error()))
-		c.String(http.StatusInternalServerError, err.Error())
+	} else if len(req.Files) > 0 {
+		svc.logInfo(js, fmt.Sprintf("%s requests to download %d master files from unit %d", req.ComputeID, len(req.Files), unitID))
+		go func() {
+			for _, filename := range req.Files {
+				svc.logInfo(js, fmt.Sprintf("Downloading %s from unit %d", filename, unitID))
+				err = svc.copyArchivedFile(js, tgtDir, filename, destPath)
+				if err != nil {
+					svc.logFatal(js, fmt.Sprintf("Unable to copy %s: %s", filename, err.Error()))
+					c.String(http.StatusInternalServerError, err.Error())
+					return
+				}
+			}
+			svc.logInfo(js, fmt.Sprintf("%d Masterfiles from unit %d copied to %s", len(req.Files), unitID, destPath))
+			svc.jobDone(js)
+		}()
+		c.String(http.StatusOK, fmt.Sprintf("%d", js.ID))
+		return
+	} else if req.Filename != "" {
+		svc.logInfo(js, fmt.Sprintf("%s requests to download %s from unit %d", req.ComputeID, req.Filename, unitID))
+		err = svc.copyArchivedFile(js, tgtDir, req.Filename, destPath)
+		if err != nil {
+			svc.logFatal(js, fmt.Sprintf("Unable to copy %s: %s", req.Filename, err.Error()))
+			c.String(http.StatusInternalServerError, err.Error())
+			return
+		}
+		svc.logInfo(js, fmt.Sprintf("Masterfile %s copied to %s", req.Filename, destPath))
+	} else {
+		svc.logFatal(js, "Missing required files or filename in request")
+		c.String(http.StatusBadRequest, "missing files and filename in request")
 		return
 	}
-	svc.logInfo(js, fmt.Sprintf("Masterfile %s copied to %s", req.Filename, destPath))
 
 	svc.jobDone(js)
 	c.String(http.StatusOK, "done")
