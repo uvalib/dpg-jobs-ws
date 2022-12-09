@@ -77,11 +77,42 @@ func (svc *ServiceContext) replaceMasterFiles(c *gin.Context) {
 	c.String(http.StatusOK, fmt.Sprintf("%d", js.ID))
 }
 
+func (svc *ServiceContext) assignMasterFileComponent(c *gin.Context) {
+	unitID, _ := strconv.ParseInt(c.Param("id"), 10, 64)
+	js, err := svc.createJobStatus("AssignMasterFileComponent", "Unit", unitID)
+	if err != nil {
+		log.Printf("ERROR: unable to create AssignMasterFileComponent job status: %s", err.Error())
+		c.String(http.StatusInternalServerError, err.Error())
+		return
+	}
+	var req struct {
+		IDs         []int64 `json:"ids"`
+		ComponentID int64   `json:"componentID"`
+	}
+	err = c.ShouldBindJSON(&req)
+	if err != nil {
+		svc.logFatal(js, fmt.Sprintf("Unable to parse request: %s", err.Error()))
+		c.String(http.StatusBadRequest, err.Error())
+		return
+	}
+
+	svc.logInfo(js, fmt.Sprintf("Update masterfiles %v to component %d", req.IDs, req.ComponentID))
+	err = svc.GDB.Table("master_files").Where("id IN ?", req.IDs).Updates(map[string]interface{}{"component_id": req.ComponentID}).Error
+	if err != nil {
+		svc.logFatal(js, fmt.Sprintf("Unable to update component: %s", err.Error()))
+		c.String(http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	svc.jobDone(js)
+	c.String(http.StatusOK, "done")
+}
+
 func (svc *ServiceContext) assignMasterFileMetadata(c *gin.Context) {
 	unitID, _ := strconv.ParseInt(c.Param("id"), 10, 64)
 	js, err := svc.createJobStatus("AssignMasterFileMetadata", "Unit", unitID)
 	if err != nil {
-		log.Printf("ERROR: unable to create RenumberMasterFiles job status: %s", err.Error())
+		log.Printf("ERROR: unable to create AssignMasterFileMetadata job status: %s", err.Error())
 		c.String(http.StatusInternalServerError, err.Error())
 		return
 	}
