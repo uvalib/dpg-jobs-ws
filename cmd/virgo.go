@@ -96,11 +96,23 @@ func (svc *ServiceContext) publishUnitToVirgo(js *jobStatus, tgtUnit *unit) erro
 	// Flag metadata for ingest or update
 	now := time.Now()
 	if tgtUnit.Metadata.DateDlIngest == nil {
+		svc.logInfo(js, fmt.Sprintf("Set DateDlIngest for unit metadata record %d", tgtUnit.MetadataID))
 		tgtUnit.Metadata.DateDlIngest = &now
-		svc.GDB.Model(tgtUnit).Select("DateDlIngest").Updates(*tgtUnit)
+		err := svc.GDB.Model(tgtUnit.Metadata).Select("DateDlIngest").Updates(*tgtUnit.Metadata).Error
+		if err != nil {
+			svc.logError(js, fmt.Sprintf("Unable to update DateDlIngest: %s", err.Error()))
+		} else {
+			svc.logInfo(js, fmt.Sprintf("Successfully updated DateDlIngest for metadata %d", tgtUnit.MetadataID))
+		}
 	} else {
+		svc.logInfo(js, fmt.Sprintf("Set DateDlUpdate for unit metadata record %d", tgtUnit.MetadataID))
 		tgtUnit.Metadata.DateDlUpdate = &now
-		svc.GDB.Model(tgtUnit).Select("DateDlUpdate").Updates(*tgtUnit)
+		err := svc.GDB.Model(tgtUnit.Metadata).Select("DateDlUpdate").Updates(*tgtUnit.Metadata).Error
+		if err != nil {
+			svc.logError(js, fmt.Sprintf("Unable to update DateDlUpdate: %s", err.Error()))
+		} else {
+			svc.logInfo(js, fmt.Sprintf("Successfully updated DateDlUpdate for metadata %d", tgtUnit.MetadataID))
+		}
 	}
 
 	// now flag each master file for intest or update...
