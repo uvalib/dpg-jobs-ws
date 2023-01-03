@@ -76,6 +76,7 @@ func (svc *ServiceContext) publishToVirgo(c *gin.Context) {
 		svc.logFatal(js, err.Error())
 		c.String(http.StatusInternalServerError, err.Error())
 	}
+	svc.jobDone(js)
 	c.String(http.StatusOK, "published")
 }
 
