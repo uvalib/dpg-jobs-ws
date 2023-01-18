@@ -53,6 +53,7 @@ func (svc *ServiceContext) archivesSpaceMiddleware(c *gin.Context) {
 	exp.Add(30 * time.Minute)
 	if svc.ArchivesSpace.AuthToken == "" || svc.ArchivesSpace.AuthToken != "" && now.After(svc.ArchivesSpace.ExpiresAt) {
 		authURL := fmt.Sprintf("%s/users/%s/login", svc.ArchivesSpace.APIURL, svc.ArchivesSpace.User)
+		log.Printf("INFO: archivesspace token missing or expired, requesting a new one with: %s", authURL)
 		payload := url.Values{}
 		payload.Add("password", svc.ArchivesSpace.Pass)
 		resp, authErr := svc.postFormRequest(authURL, &payload)
@@ -336,6 +337,7 @@ func (svc *ServiceContext) publishToArchivesSpace(c *gin.Context) {
 		err = svc.createDigitalObject(js, asURL.RepositoryID, tgtASObj, &tgtMetadata)
 		if err != nil {
 			svc.logFatal(js, fmt.Sprintf("Unable to create digital object %s", err.Error()))
+			c.String(http.StatusBadRequest, fmt.Sprintf("Unable to create digital object %s", err.Error()))
 			return
 		}
 	}
