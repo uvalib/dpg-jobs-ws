@@ -381,6 +381,7 @@ func (svc *ServiceContext) getDigitalObject(js *jobStatus, tgtObj asObjectDetail
 
 			doPID := fmt.Sprintf("%v", doJSON["digital_object_id"])
 			if doPID == metadataPID {
+				svc.logInfo(js, fmt.Sprintf("Found digital object for %s: %v", metadataPID, doJSON))
 				out := asDigitalObject{
 					PID:     doPID,
 					Title:   fmt.Sprintf("%v", doJSON["title"]),
