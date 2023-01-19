@@ -139,7 +139,7 @@ func InitializeService(version string, cfg *ServiceConfig) *ServiceContext {
 	}
 	ctx.HTTPClient = &http.Client{
 		Transport: defaultTransport,
-		Timeout:   5 * time.Second,
+		Timeout:   30 * time.Second,
 	}
 	log.Printf("INFO: HTTP Client created")
 

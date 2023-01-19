@@ -414,7 +414,15 @@ func (svc *ServiceContext) getDigitalObject(js *jobStatus, tgtObj asObjectDetail
 }
 
 func (svc *ServiceContext) createDigitalObject(js *jobStatus, repoID string, tgtObj asObjectDetails, tgtMetadata *metadata) error {
-	iiifURL := fmt.Sprintf("%s/pid/%s/exist", svc.IIIF.URL, tgtMetadata.PID)
+	svc.logInfo(js, fmt.Sprintf("Generate IIIF manifest for metadata %s", tgtMetadata.PID))
+	iiifURL := fmt.Sprintf("%s/pid/%s?refresh=true", svc.IIIF.URL, tgtMetadata.PID)
+	_, errResp := svc.getRequest(iiifURL)
+	if errResp != nil {
+		return fmt.Errorf("Unable to generate IIIF manifest: %d: %s", errResp.StatusCode, errResp.Message)
+	}
+
+	svc.logInfo(js, "IIIF manifest successfully generated, get cached manifest URL")
+	iiifURL = fmt.Sprintf("%s/pid/%s/exist", svc.IIIF.URL, tgtMetadata.PID)
 	bytes, iiifErr := svc.getRequest(iiifURL)
 	if iiifErr != nil {
 		return fmt.Errorf("Unable to get IIIF manifest for %s: %d%s", tgtMetadata.PID, iiifErr.StatusCode, iiifErr.Message)
