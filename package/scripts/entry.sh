@@ -26,6 +26,7 @@ cd bin; ./dpg-jobs-ws              \
   -tsapi      ${TSAPI}             \
   -tsadmin    ${TSADMIN}           \
   -reindex    ${REINDEX}           \
+  -xmlreindex ${XML_REINDEX}       \
   -ocr        ${DPG_OCR}           \
   -service    ${DPG_SERVICE_URL}
 

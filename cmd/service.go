@@ -56,6 +56,7 @@ type ServiceContext struct {
 	TrackSys      TrackSysConfig
 	ArchivesSpace archivesSpaceContext
 	ReindexURL    string
+	XMLReindexURL string
 	OcrURL        string
 	HTTPClient    *http.Client
 	Templates     htmlTemplates
@@ -79,6 +80,7 @@ func InitializeService(version string, cfg *ServiceConfig) *ServiceContext {
 		ProcessingDir: cfg.ProcessingDir,
 		TrackSys:      cfg.TrackSys,
 		ReindexURL:    cfg.ReindexURL,
+		XMLReindexURL: cfg.XMLReindexURL,
 		OcrURL:        cfg.OcrURL,
 		ServiceURL:    cfg.ServiceURL,
 		OcrRequests:   make([]int64, 0),

@@ -54,6 +54,7 @@ type ServiceConfig struct {
 	ArchivesSpace ArchivesSpaceConfig
 	TrackSys      TrackSysConfig
 	ReindexURL    string
+	XMLReindexURL string
 	OcrURL        string
 	ServiceURL    string
 }
@@ -72,6 +73,7 @@ func LoadConfiguration() *ServiceConfig {
 	flag.StringVar(&cfg.ProcessingDir, "work", "", "Processing directory")
 
 	// other external services
+	flag.StringVar(&cfg.XMLReindexURL, "xmlreindex", "https://virgo4-image-tracksys-reprocess-ws.internal.lib.virginia.edu/api/reindex", "XML reindex webhook")
 	flag.StringVar(&cfg.ReindexURL, "reindex", "https://virgo4-sirsi-cache-reprocess-ws.internal.lib.virginia.edu", "Reindex URL")
 	flag.StringVar(&cfg.OcrURL, "ocr", "http://docker1.lib.virginia.edu:8389/ocr", "OCR service URL")
 
@@ -150,6 +152,7 @@ func LoadConfiguration() *ServiceConfig {
 	log.Printf("[CONFIG] iiifman       = [%s]", cfg.IIIF.URL)
 	log.Printf("[CONFIG] work          = [%s]", cfg.ProcessingDir)
 	log.Printf("[CONFIG] reindex       = [%s]", cfg.ReindexURL)
+	log.Printf("[CONFIG] xmlreindex    = [%s]", cfg.XMLReindexURL)
 	log.Printf("[CONFIG] ocr           = [%s]", cfg.OcrURL)
 	log.Printf("[CONFIG] tsadmin       = [%s]", cfg.TrackSys.Admin)
 	log.Printf("[CONFIG] tsapi         = [%s]", cfg.TrackSys.API)
