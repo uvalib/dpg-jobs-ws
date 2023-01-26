@@ -165,7 +165,10 @@ func (svc *ServiceContext) publishXMLToVirgo(js *jobStatus, xmlMetadata *metadat
 	if tgtUnit.DateDLDeliverablesReady == nil {
 		svc.logInfo(js, "Set date unit deliverables ready")
 		tgtUnit.DateDLDeliverablesReady = &now
-		svc.GDB.Model(tgtUnit).Select("DateDLDeliverablesReady").Updates(*tgtUnit)
+		err = svc.GDB.Model(tgtUnit).Select("DateDLDeliverablesReady").Updates(*tgtUnit).Error
+		if err != nil {
+			svc.logError(js, fmt.Sprintf("Unable to set DateDLDeliverablesReady: %s", err.Error()))
+		}
 	}
 
 	svc.logInfo(js, fmt.Sprintf("XML %s reindex request successful", xmlMetadata.PID))
@@ -263,7 +266,10 @@ func (svc *ServiceContext) publishSirsiToVirgo(js *jobStatus, sirsiMetadata *met
 	if tgtUnit.DateDLDeliverablesReady == nil {
 		svc.logInfo(js, "Set date unit deliverables ready")
 		tgtUnit.DateDLDeliverablesReady = &now
-		svc.GDB.Model(tgtUnit).Select("DateDLDeliverablesReady").Updates(*tgtUnit)
+		err = svc.GDB.Model(tgtUnit).Select("DateDLDeliverablesReady").Updates(*tgtUnit).Error
+		if err != nil {
+			svc.logError(js, fmt.Sprintf("Unable to set DateDLDeliverablesReady: %s", err.Error()))
+		}
 	}
 
 	svc.logInfo(js, fmt.Sprintf("Unit and %d master files have been published to the DL", len(masterfiles)))

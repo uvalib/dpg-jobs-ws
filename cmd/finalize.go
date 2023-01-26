@@ -155,8 +155,9 @@ func (svc *ServiceContext) finalizeUnit(c *gin.Context) {
 
 		// At this point, finalization has completed and project (if it exists) can be validated.
 		// any project validation failures will fail the finalization job. for units that have no projects,
-		// finalization is done now and will be marked as successful
-		err = svc.unitFinishedFinalization(js, &tgtUnit)
+		// finalization is done now and will be marked as successful. Note that only the ID is passed in. This
+		// forces the unit to be reloaded to pick up any changes that may have occurred during teh finalize
+		err = svc.unitFinishedFinalization(js, tgtUnit.ID)
 		if err != nil {
 			svc.setUnitFatal(js, &tgtUnit, err.Error())
 			return
@@ -184,20 +185,29 @@ func (svc *ServiceContext) setUnitFatal(js *jobStatus, tgtUnit *unit, errMsg str
 	}
 }
 
-func (svc *ServiceContext) unitFinishedFinalization(js *jobStatus, tgtUnit *unit) error {
+func (svc *ServiceContext) unitFinishedFinalization(js *jobStatus, tgtUnitID int64) error {
+	svc.logInfo(js, "Unit finished finalization; reloading details")
+	var tgtUnit unit
+	err := svc.GDB.Preload("Metadata").Preload("Metadata.OcrHint").
+		Preload("Order").Preload("IntendedUse").First(&tgtUnit, tgtUnitID).Error
+	if err != nil {
+		return fmt.Errorf("error looking up finalized unit: %s", err.Error())
+	}
+
 	currProj, err := svc.getUnitProject(tgtUnit.ID)
 	if err != nil {
 		return fmt.Errorf("error looking up project: %s", err.Error())
 	}
 
 	if currProj == nil {
-		svc.logInfo(js, "Unit finished finalization")
-		svc.setUnitStatus(tgtUnit, "done")
+		svc.logInfo(js, "Set unit status to done")
+		svc.setUnitStatus(&tgtUnit, "done")
 		return nil
 	}
 
 	// a project is associated, walk through some final project validations. any errors will fail finalization.
-	return svc.projectFinishedFinalization(js, currProj, tgtUnit)
+	svc.logInfo(js, "Unit is associated with a project; call projectFinishedFinalization")
+	return svc.projectFinishedFinalization(js, currProj, &tgtUnit)
 }
 
 func (svc *ServiceContext) setUnitStatus(tgtUnit *unit, status string) {
