@@ -106,12 +106,17 @@ func (svc *ServiceContext) finalizeUnit(c *gin.Context) {
 			}
 		}
 
-		// Flag unit for Virgo publication?
-		if tgtUnit.IncludeInDL && tgtUnit.Metadata.Type != "ExternalMetadata" {
-			err = svc.publishUnitToVirgo(js, &tgtUnit)
-			if err != nil {
-				svc.setUnitFatal(js, &tgtUnit, err.Error())
-				return
+		// Is this item flagged for publication into Virgo?
+		if tgtUnit.IncludeInDL {
+			// NOTE: neither publish method will trigger a logFatal, but will log and return
+			// an error if one was encountered. Ignore it here as a problem publishing should
+			// not cause finalization to fail; the error log is enough.
+			if tgtUnit.Metadata.Type == "SirsiMetadata" {
+				svc.publishSirsiToVirgo(js, tgtUnit.Metadata)
+			} else if tgtUnit.Metadata.Type == "XmlMetadata" {
+				svc.publishXMLToVirgo(js, tgtUnit.Metadata)
+			} else {
+				svc.logError(js, fmt.Sprintf("Unit is flagged for inclusion in DL, but metadata %d type %s is not supported", tgtUnit.Metadata.ID, tgtUnit.Metadata.Type))
 			}
 		}
 
