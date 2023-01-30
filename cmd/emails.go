@@ -101,7 +101,7 @@ func (svc *ServiceContext) sendFeesEmail(c *gin.Context) {
 		return
 	}
 
-	svc.logInfo(js, "Start send fees email...")
+	svc.logInfo(js, fmt.Sprintf("Start send fees email from staff id %s...", staffIDStr))
 	svc.logInfo(js, fmt.Sprintf("Loading customer and invoice data for order %d", orderID))
 	var o order
 	err = svc.GDB.Preload("Customer").Preload("Invoices").First(&o, orderID).Error
@@ -148,20 +148,6 @@ func (svc *ServiceContext) sendFeesEmail(c *gin.Context) {
 	}
 	svc.logInfo(js, "Fee estimate email sent to customer.")
 	now := time.Now()
-
-	if staffIDStr != "" && resend == false {
-		staffID, _ := strconv.ParseInt(staffIDStr, 10, 64)
-		if staffID > 0 {
-			// NOTE: do this before the order status update to log the transition
-			svc.logInfo(js, "Create audit event for fee sent")
-			msg := fmt.Sprintf("Status %s to AWAIT_FEE", strings.ToUpper(o.OrderStatus))
-			ae := auditEvent{StaffMemberID: staffID, Event: 0, Details: msg, AuditableID: o.ID, AuditableType: "Order", CreatedAt: time.Now()}
-			err := svc.GDB.Create(&ae).Error
-			if err != nil {
-				svc.logError(js, fmt.Sprintf("Unable to create audit event for sending fees email: %s", err.Error()))
-			}
-		}
-	}
 
 	// If an invoice does not yet exist for this order, create one
 	if len(o.Invoices) == 0 && resend == false {
