@@ -55,19 +55,18 @@ func (svc *ServiceContext) downloadFromArchive(c *gin.Context) {
 		return
 	}
 
+	// get the source unit and masterfiles list. Fail if it can't be found
 	var tgtUnit unit
-	tgtDir := fmt.Sprintf("%09d", unitID)
-	err = svc.GDB.Find(&tgtUnit, unitID).Error
+	err = svc.GDB.Preload("MasterFiles", func(db *gorm.DB) *gorm.DB {
+		return db.Order("master_files.filename ASC")
+	}).First(&tgtUnit, unitID).Error
 	if err != nil {
 		svc.logFatal(js, fmt.Sprintf("Unable to load unit ID %d: %s", unitID, err.Error()))
 		c.String(http.StatusBadRequest, err.Error())
 		return
 	}
-	if strings.Contains(tgtUnit.StaffNotes, "Archive: ") {
-		tgtDir = strings.Split(tgtUnit.StaffNotes, "Archive: ")[1]
-	}
-	svc.logInfo(js, fmt.Sprintf("Unit archive dir [%s]", tgtDir))
 
+	// parse the request
 	type dlReq struct {
 		Filename  string   `json:"filename"`
 		Files     []string `json:"files"`
@@ -82,6 +81,7 @@ func (svc *ServiceContext) downloadFromArchive(c *gin.Context) {
 		return
 	}
 
+	// Get the requesting user; this is used to determine the destination directory
 	var cnt int64
 	svc.GDB.Table("staff_members").Where("computing_id=?", req.ComputeID).Count(&cnt)
 	if cnt != 1 {
@@ -90,77 +90,141 @@ func (svc *ServiceContext) downloadFromArchive(c *gin.Context) {
 		return
 	}
 
+	// setup destination directory to receive downloaded files
 	destPath := path.Join(svc.ProcessingDir, "from_archive", req.ComputeID, fmt.Sprintf("%09d", unitID))
+	svc.logInfo(js, fmt.Sprintf("Ensure download destination directory %s exists", destPath))
 	err = ensureDirExists(destPath, 0775)
 	if err != nil {
 		svc.logFatal(js, fmt.Sprintf("Unable to create download directory %s: %s", destPath, err.Error()))
 		c.String(http.StatusBadRequest, err.Error())
 		return
 	}
+
 	if strings.ToLower(req.Filename) == "all" {
 		svc.logInfo(js, fmt.Sprintf("%s requests to download all master files from unit %d", req.ComputeID, unitID))
-		go svc.copyAllFromArchive(js, unitID, tgtDir, destPath)
+		go svc.copyAllFromArchive(js, &tgtUnit, destPath)
 		c.String(http.StatusOK, fmt.Sprintf("%d", js.ID))
 		return
-	} else if len(req.Files) > 0 {
+	}
+
+	if req.Filename != "" {
+		svc.logInfo(js, fmt.Sprintf("%s requests to download %s from unit %d", req.ComputeID, req.Filename, unitID))
+		svc.copyFileFromArchive(js, &tgtUnit, req.Filename, destPath)
+		svc.jobDone(js)
+		c.String(http.StatusOK, "done")
+		return
+	}
+
+	if len(req.Files) > 0 {
 		svc.logInfo(js, fmt.Sprintf("%s requests to download %d master files from unit %d", req.ComputeID, len(req.Files), unitID))
 		go func() {
 			for _, filename := range req.Files {
 				svc.logInfo(js, fmt.Sprintf("Downloading %s from unit %d", filename, unitID))
-				err = svc.copyArchivedFile(js, tgtDir, filename, destPath)
-				if err != nil {
-					svc.logFatal(js, fmt.Sprintf("Unable to copy %s: %s", filename, err.Error()))
-					c.String(http.StatusInternalServerError, err.Error())
-					return
-				}
+				svc.copyFileFromArchive(js, &tgtUnit, filename, destPath)
 			}
 			svc.logInfo(js, fmt.Sprintf("%d Masterfiles from unit %d copied to %s", len(req.Files), unitID, destPath))
 			svc.jobDone(js)
 		}()
 		c.String(http.StatusOK, fmt.Sprintf("%d", js.ID))
 		return
-	} else if req.Filename != "" {
-		svc.logInfo(js, fmt.Sprintf("%s requests to download %s from unit %d", req.ComputeID, req.Filename, unitID))
-		err = svc.copyArchivedFile(js, tgtDir, req.Filename, destPath)
-		if err != nil {
-			svc.logFatal(js, fmt.Sprintf("Unable to copy %s: %s", req.Filename, err.Error()))
-			c.String(http.StatusInternalServerError, err.Error())
-			return
-		}
-		svc.logInfo(js, fmt.Sprintf("Masterfile %s copied to %s", req.Filename, destPath))
-	} else {
-		svc.logFatal(js, "Missing required files or filename in request")
-		c.String(http.StatusBadRequest, "missing files and filename in request")
-		return
 	}
 
-	svc.jobDone(js)
-	c.String(http.StatusOK, "done")
+	svc.logFatal(js, "Missing required files or filename in request")
+	c.String(http.StatusBadRequest, "missing files and filename in request")
+}
+
+func (svc *ServiceContext) copyFileFromArchive(js *jobStatus, tgtUnit *unit, fileName, destDir string) {
+	srcDir := fmt.Sprintf("%09d", tgtUnit.ID)
+	if strings.Contains(tgtUnit.StaffNotes, "Archive: ") {
+		srcDir = strings.Split(tgtUnit.StaffNotes, "Archive: ")[1]
+	}
+	if tgtUnit.Reorder {
+		svc.logInfo(js, fmt.Sprintf("Unit %d is a REORDER. Download original master files from archive.", tgtUnit.ID))
+		srcDir = ""
+	} else {
+		svc.logInfo(js, fmt.Sprintf("Unit archive dir [%s]", srcDir))
+	}
+
+	found := false
+	for _, mf := range tgtUnit.MasterFiles {
+		if mf.Filename == fileName {
+			if mf.DeaccessionedAt != nil {
+				svc.logFatal(js, fmt.Sprintf("Master file %s has been deaccessioned and cannot be downloaded", mf.Filename))
+				return
+			}
+
+			srcFilename := mf.Filename
+			if tgtUnit.Reorder && mf.OriginalMfID != nil {
+				var origMF masterFile
+				err := svc.GDB.First(&origMF, *mf.OriginalMfID).Error
+				if err != nil {
+					svc.logFatal(js, fmt.Sprintf("Unable to find original master file %d for %s: %s", *mf.OriginalMfID, mf.Filename, err.Error()))
+					return
+				}
+				srcFilename = origMF.Filename
+				srcDir = fmt.Sprintf("%09d", origMF.UnitID)
+			}
+
+			svc.logInfo(js, fmt.Sprintf("Copying %s from archive directory %s", srcFilename, srcDir))
+			err := svc.copyArchivedFile(js, srcDir, srcFilename, destDir)
+			if err != nil {
+				svc.logFatal(js, fmt.Sprintf("Unable to copy %s: %s", mf.Filename, err.Error()))
+				return
+			}
+
+			found = true
+			svc.logInfo(js, fmt.Sprintf("Masterfile %s copied to %s", fileName, destDir))
+			return
+		}
+	}
+
+	if found == false {
+		svc.logFatal(js, fmt.Sprintf("Unable to find master file %s in unit %d", fileName, tgtUnit.ID))
+	}
 }
 
 // called as goroutine to copy all from the archive. it may take a long time
-func (svc *ServiceContext) copyAllFromArchive(js *jobStatus, unitID int64, unitDir, destDir string) {
-	var tgtUnit unit
-	err := svc.GDB.Preload("MasterFiles", func(db *gorm.DB) *gorm.DB {
-		return db.Order("master_files.filename ASC")
-	}).First(&tgtUnit, unitID).Error
-	if err != nil {
-		svc.logFatal(js, fmt.Sprintf("Unable to load unit %d: %s", unitID, err.Error()))
-		return
+func (svc *ServiceContext) copyAllFromArchive(js *jobStatus, tgtUnit *unit, destDir string) {
+	// define preliminary archive directory for the images. This will change if the unit is
+	// a reorder or if it is archived in a non-standard location. Non-standard locations are
+	// noted in the staff_notes field after 'Archive: ' and reorders are on a file by file basis.
+	srcDir := fmt.Sprintf("%09d", tgtUnit.ID)
+	if strings.Contains(tgtUnit.StaffNotes, "Archive: ") {
+		srcDir = strings.Split(tgtUnit.StaffNotes, "Archive: ")[1]
 	}
+	if tgtUnit.Reorder {
+		svc.logInfo(js, fmt.Sprintf("Unit %d is a REORDER. Download original master files from archive.", tgtUnit.ID))
+		srcDir = ""
+	} else {
+		svc.logInfo(js, fmt.Sprintf("Unit archive dir [%s]", srcDir))
+	}
+
 	for _, mf := range tgtUnit.MasterFiles {
 		if mf.DeaccessionedAt != nil {
 			svc.logInfo(js, fmt.Sprintf("Skipping deaccessioned file %s ", mf.Filename))
 			continue
 		}
-		svc.logInfo(js, fmt.Sprintf("Copying %s", mf.Filename))
-		err := svc.copyArchivedFile(js, unitDir, mf.Filename, destDir)
+
+		srcFilename := mf.Filename
+		if tgtUnit.Reorder && mf.OriginalMfID != nil {
+			var origMF masterFile
+			err := svc.GDB.First(&origMF, *mf.OriginalMfID).Error
+			if err != nil {
+				svc.logFatal(js, fmt.Sprintf("Unable to find original master file %d for %s: %s", *mf.OriginalMfID, mf.Filename, err.Error()))
+				return
+			}
+			srcFilename = origMF.Filename
+			srcDir = fmt.Sprintf("%09d", origMF.UnitID)
+		}
+
+		svc.logInfo(js, fmt.Sprintf("Copying %s from archive directory %s", srcFilename, srcDir))
+		err := svc.copyArchivedFile(js, srcDir, srcFilename, destDir)
 		if err != nil {
 			svc.logFatal(js, fmt.Sprintf("Unable to copy %s: %s", mf.Filename, err.Error()))
 			return
 		}
 	}
-	svc.logInfo(js, fmt.Sprintf("Masterfiles from unit %d copied to %s", unitID, destDir))
+	svc.logInfo(js, fmt.Sprintf("Masterfiles from unit %d copied to %s", tgtUnit.ID, destDir))
 	svc.jobDone(js)
 }
 
