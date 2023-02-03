@@ -14,7 +14,7 @@ RUN make linux
 #
 # build the target container
 #
-FROM public.ecr.aws/debian/debian:buster-slim
+FROM public.ecr.aws/debian/debian:bullseye-slim
 
 # update the packages
 RUN apt-get -y update && apt-get -y upgrade && apt-get -y install bash tzdata ca-certificates curl exiftool imagemagick wget xfonts-base xfonts-75dpi
@@ -23,7 +23,7 @@ RUN apt-get -y update && apt-get -y upgrade && apt-get -y install bash tzdata ca
 COPY package/data/policy.xml /etc/ImageMagick-6/policy.xml
 
 # get and install the wkhtmltopdf package
-RUN cd /tmp && wget https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6-1/wkhtmltox_0.12.6-1.buster_amd64.deb && dpkg -i wkhtmltox_0.12.6-1.buster_amd64.deb && rm wkhtmltox_0.12.6-1.buster_amd64.deb
+RUN cd /tmp && wget https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6.1-2/wkhtmltox_0.12.6.1-2.bullseye_amd64.deb && dpkg -i wkhtmltox_0.12.6.1-2.bullseye_amd64.deb && rm wkhtmltox_0.12.6.1-2.bullseye_amd64.deb
 
 # Create the run user and group
 RUN groupadd -g 10708 libr-snlocal 
