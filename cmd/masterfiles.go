@@ -268,7 +268,6 @@ func (svc *ServiceContext) deleteMasterFiles(c *gin.Context) {
 			return
 		}
 
-		delCount := uint(len(req.Filenames))
 		unitDir := fmt.Sprintf("%09d", unitID)
 		tgtFN := req.Filenames[0]
 		req.Filenames = req.Filenames[1:]
@@ -302,10 +301,6 @@ func (svc *ServiceContext) deleteMasterFiles(c *gin.Context) {
 			}
 		}
 
-		newCnt := tgtUnit.MasterFilesCount - delCount
-		svc.logInfo(js, fmt.Sprintf("Updating unit master files count from %d to %d", tgtUnit.MasterFilesCount, newCnt))
-		tgtUnit.MasterFilesCount = newCnt
-		svc.GDB.Model(&tgtUnit).Select("MasterFilesCount").Updates(tgtUnit)
 		svc.GDB.Preload("MasterFiles", func(db *gorm.DB) *gorm.DB {
 			return db.Order("master_files.filename ASC")
 		}).First(&tgtUnit, unitID) // reload masterfiles list
@@ -487,9 +482,6 @@ func (svc *ServiceContext) addMasterFiles(c *gin.Context) {
 			svc.GDB.Model(&newMF).Select("DateArchived").Updates(newMF)
 		}
 
-		svc.logInfo(js, fmt.Sprintf("Updating unit master files count by %d", len(files)))
-		tgtUnit.MasterFilesCount += uint(len(files))
-		svc.GDB.Model(&tgtUnit).Select("MasterFilesCount").Updates(tgtUnit)
 		svc.logInfo(js, "Cleaning up working files")
 		os.RemoveAll(srcDir)
 

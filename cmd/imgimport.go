@@ -193,11 +193,10 @@ func (svc *ServiceContext) importGuestImages(c *gin.Context) {
 
 	log.Printf("INFO: %d masterfiles processed", cnt)
 	tgtUnit.UnitStatus = "done"
-	tgtUnit.MasterFilesCount = uint(cnt)
 	if badSequenceNum {
 		tgtUnit.StaffNotes += fmt.Sprintf("Archive: %s", req.Target)
 	}
-	svc.GDB.Model(&tgtUnit).Select("UnitStatus", "MasterFilesCount", "StaffNotes").Updates(tgtUnit)
+	svc.GDB.Model(&tgtUnit).Select("UnitStatus", "StaffNotes").Updates(tgtUnit)
 
 	c.String(http.StatusOK, fmt.Sprintf("%d masterfiles processed", cnt))
 }
@@ -427,10 +426,8 @@ func (svc *ServiceContext) importImages(js *jobStatus, tgtUnit *unit, srcDir str
 
 	svc.logInfo(js, fmt.Sprintf("%d master files ingested", mfCount))
 	now := time.Now()
-	tgtUnit.UnitExtentActual = uint(mfCount)
-	tgtUnit.MasterFilesCount = uint(mfCount)
 	tgtUnit.DateArchived = &now
-	svc.GDB.Model(tgtUnit).Select("UnitExtentActual", "MasterFilesCount", "DateArchived").Updates(*tgtUnit)
+	svc.GDB.Model(tgtUnit).Select("DateArchived").Updates(*tgtUnit)
 	svc.checkOrderArchiveComplete(js, tgtUnit.OrderID)
 
 	svc.logInfo(js, "Images for Unit successfully imported.")

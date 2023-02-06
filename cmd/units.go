@@ -94,8 +94,7 @@ func (svc *ServiceContext) cloneMasterFiles(c *gin.Context) {
 		}
 		svc.logInfo(js, fmt.Sprintf("%d masterfiles cloned into unit. Flagging unit as cloned", (pageNum-1)))
 		destUnit.Reorder = true
-		destUnit.MasterFilesCount = uint(pageNum - 1)
-		err = svc.GDB.Model(&destUnit).Select("Reorder", "MasterFilesCount").Updates(destUnit).Error
+		err = svc.GDB.Model(&destUnit).Select("Reorder").Updates(destUnit).Error
 		svc.jobDone(js)
 	}()
 
