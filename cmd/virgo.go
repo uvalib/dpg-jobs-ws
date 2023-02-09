@@ -154,7 +154,7 @@ func (svc *ServiceContext) publishXMLToVirgo(js *jobStatus, xmlMetadata *metadat
 	}
 
 	// reindex the metadata
-	url := fmt.Sprintf("%s/%d", svc.XMLReindexURL, xmlMetadata.ID)
+	url := fmt.Sprintf("%s/%s", svc.XMLReindexURL, xmlMetadata.PID)
 	_, resp := svc.putRequest(url)
 	if resp != nil {
 		svc.logError(js, fmt.Sprintf("XML %s reindex request failed: %d: %s", xmlMetadata.PID, resp.StatusCode, resp.Message))
