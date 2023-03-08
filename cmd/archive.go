@@ -234,6 +234,7 @@ func (svc *ServiceContext) copyArchivedFile(js *jobStatus, unitDir, filename, de
 		if strings.Contains(filename, "_") {
 			overrideDir := strings.Split(filename, "_")[0]
 			archiveFile = path.Join(svc.ArchiveDir, overrideDir, filename)
+			svc.logInfo(js, fmt.Sprintf("Masterfile %s is archived in non-standard location %s", filename, archiveFile))
 		}
 	}
 	archiveMD5 := md5Checksum(archiveFile)

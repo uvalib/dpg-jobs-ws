@@ -7,6 +7,7 @@ import (
 	"os"
 	"path"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -214,7 +215,21 @@ func (svc *ServiceContext) cloneMasterFile(js *jobStatus, srcUnit *unit, srcMF *
 	destUnitDir := path.Join(svc.ProcessingDir, "finalization", fmt.Sprintf("%09d", destUnit.ID))
 	ensureDirExists(destUnitDir, 0775)
 
+	// master files are generally stored in a directory matching the unit ID, but this is not always the case.
+	// JSTOR files are sometimes stored based on the master file name or a tag in the unit info
 	srcArchiveFile := path.Join(svc.ArchiveDir, fmt.Sprintf("%09d", srcUnit.ID), srcMF.Filename)
+	if strings.Contains(srcMF.Filename, "ARCH") || strings.Contains(srcMF.Filename, "AVRN") || strings.Contains(srcMF.Filename, "VRC") {
+		if strings.Contains(srcMF.Filename, "_") {
+			overrideDir := strings.Split(srcMF.Filename, "_")[0]
+			srcArchiveFile = path.Join(svc.ArchiveDir, overrideDir, srcMF.Filename)
+			svc.logInfo(js, fmt.Sprintf("Masterfile %s is archived in non-standard location %s", srcMF.Filename, srcArchiveFile))
+		}
+	} else if strings.Contains(srcUnit.StaffNotes, "Archive: ") {
+		srcDir := strings.Split(srcUnit.StaffNotes, "Archive: ")[1]
+		srcArchiveFile = path.Join(svc.ArchiveDir, srcDir, srcMF.Filename)
+		svc.logInfo(js, fmt.Sprintf("Masterfile %s is archived in non-standard location %s (from staff notes)", srcMF.Filename, srcArchiveFile))
+	}
+
 	if pathExists(srcArchiveFile) == false {
 		return fmt.Errorf("unable to find archived tif %s for master file with ID %d", srcArchiveFile, srcMF.ID)
 	}
