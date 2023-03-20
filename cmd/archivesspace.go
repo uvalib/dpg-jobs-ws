@@ -451,7 +451,7 @@ func (svc *ServiceContext) createDigitalObject(js *jobStatus, repoID string, tgt
 	}
 	uri := fmt.Sprintf("%s/pid/%s", svc.IIIF.URL, tgtMetadata.PID)
 	payload := doPayload{DigitalObjectID: tgtMetadata.PID, Title: tgtMetadata.Title, FileVersions: make([]doFileVersion, 0)}
-	payload.FileVersions = append(payload.FileVersions, doFileVersion{UseStatement: "image-service-manifest", FileURI: uri})
+	payload.FileVersions = append(payload.FileVersions, doFileVersion{UseStatement: "image-service-manifest", FileURI: uri, Publish: true})
 	resp, asErr := svc.sendASPostRequest(fmt.Sprintf("/repositories/%s/digital_objects", repoID), payload)
 	if asErr != nil {
 		return fmt.Errorf("ArchivesSpace create DigitalObject request failed: %d:%s", asErr.StatusCode, asErr.Message)
