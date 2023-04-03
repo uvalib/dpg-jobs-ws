@@ -288,6 +288,7 @@ func (svc *ServiceContext) validateArchivesSpaceURL(c *gin.Context) {
 }
 
 func (svc *ServiceContext) publishToArchivesSpace(c *gin.Context) {
+	publishImmediate, _ := strconv.ParseBool(c.Query("immediate"))
 	type pubReqData struct {
 		UserID     string `json:"userID"`
 		MetadataID string `json:"metadataID"`
@@ -334,7 +335,7 @@ func (svc *ServiceContext) publishToArchivesSpace(c *gin.Context) {
 		svc.logInfo(js, fmt.Sprintf("%s:%s already has digital object. Nothing more to do.", asURL.ParentType, asURL.ParentID))
 	} else {
 		svc.logInfo(js, fmt.Sprintf("Creating aSpace digital object for  %s", tgtMetadata.PID))
-		err = svc.createDigitalObject(js, asURL.RepositoryID, tgtASObj, &tgtMetadata)
+		err = svc.createDigitalObject(js, asURL.RepositoryID, tgtASObj, &tgtMetadata, publishImmediate)
 		if err != nil {
 			svc.logFatal(js, fmt.Sprintf("Unable to create digital object %s", err.Error()))
 			c.String(http.StatusBadRequest, fmt.Sprintf("Unable to create digital object %s", err.Error()))
@@ -413,7 +414,7 @@ func (svc *ServiceContext) getDigitalObject(js *jobStatus, tgtObj asObjectDetail
 	return nil
 }
 
-func (svc *ServiceContext) createDigitalObject(js *jobStatus, repoID string, tgtObj asObjectDetails, tgtMetadata *metadata) error {
+func (svc *ServiceContext) createDigitalObject(js *jobStatus, repoID string, tgtObj asObjectDetails, tgtMetadata *metadata, immediatePublish bool) error {
 	svc.logInfo(js, fmt.Sprintf("Generate IIIF manifest for metadata %s", tgtMetadata.PID))
 	iiifURL := fmt.Sprintf("%s/pid/%s?refresh=true", svc.IIIF.URL, tgtMetadata.PID)
 	_, errResp := svc.getRequest(iiifURL)
@@ -450,7 +451,7 @@ func (svc *ServiceContext) createDigitalObject(js *jobStatus, repoID string, tgt
 		FileVersions    []doFileVersion `json:"file_versions"`
 	}
 	uri := fmt.Sprintf("%s/pid/%s", svc.IIIF.URL, tgtMetadata.PID)
-	payload := doPayload{DigitalObjectID: tgtMetadata.PID, Title: tgtMetadata.Title, FileVersions: make([]doFileVersion, 0)}
+	payload := doPayload{DigitalObjectID: tgtMetadata.PID, Title: tgtMetadata.Title, Publish: immediatePublish, FileVersions: make([]doFileVersion, 0)}
 	payload.FileVersions = append(payload.FileVersions, doFileVersion{UseStatement: "image-service-manifest", FileURI: uri, Publish: true})
 	resp, asErr := svc.sendASPostRequest(fmt.Sprintf("/repositories/%s/digital_objects", repoID), payload)
 	if asErr != nil {
