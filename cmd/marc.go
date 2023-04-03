@@ -15,10 +15,15 @@ type dataField struct {
 	Subfields []subField `xml:"subfield"`
 }
 
-type marcMetadata = struct {
+type marcRecord struct {
 	XMLName    xml.Name    `xml:"record"`
 	Leader     string      `xml:"leader"`
 	DataFields []dataField `xml:"datafield"`
+}
+
+type marcMetadata struct {
+	XMLName xml.Name `xml:"collection"`
+	Record  marcRecord
 }
 
 func (svc *ServiceContext) getMarcPublicationYear(md *metadata) int {
@@ -30,7 +35,7 @@ func (svc *ServiceContext) getMarcPublicationYear(md *metadata) int {
 	}
 
 	year := ""
-	for _, df := range parsed.DataFields {
+	for _, df := range parsed.Record.DataFields {
 		if df.Tag == "260" {
 			for _, sf := range df.Subfields {
 				if sf.Code == "c" {
@@ -55,7 +60,7 @@ func (svc *ServiceContext) getMarcLocation(md *metadata) string {
 		return ""
 	}
 	location := ""
-	for _, df := range parsed.DataFields {
+	for _, df := range parsed.Record.DataFields {
 		if df.Tag == "999" {
 			// MARC 999 is repeated, once per barcdode. Barcode stored in 'i'
 			// pick the data that matches the target barcode and grab location from 'l'
@@ -112,7 +117,7 @@ func (svc *ServiceContext) getCitation(md *metadata) string {
 
 	citation := ""
 	location := ""
-	for _, df := range parsed.DataFields {
+	for _, df := range parsed.Record.DataFields {
 		// log.Printf("DF %s", df.Tag)
 		if df.Tag == "524" {
 			for _, sf := range df.Subfields {
