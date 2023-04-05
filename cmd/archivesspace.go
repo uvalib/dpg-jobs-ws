@@ -341,6 +341,13 @@ func (svc *ServiceContext) publishToArchivesSpace(c *gin.Context) {
 			c.String(http.StatusBadRequest, fmt.Sprintf("Unable to create digital object %s", err.Error()))
 			return
 		}
+		svc.logInfo(js, fmt.Sprintf("Set DateDlIngest for metadata %s", tgtMetadata.PID))
+		now := time.Now()
+		tgtMetadata.DateDlIngest = &now
+		err = svc.GDB.Model(&tgtMetadata).Select("DateDlIngest").Updates(tgtMetadata).Error
+		if err != nil {
+			svc.logError(js, fmt.Sprintf("Unable to update published date %s", err.Error()))
+		}
 	}
 
 	svc.logInfo(js, "ArchivesSpace publish complete")
