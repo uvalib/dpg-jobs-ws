@@ -12,20 +12,20 @@ import (
 )
 
 func (svc *ServiceContext) publishToIIIF(js *jobStatus, mf *masterFile, srcPath string, overwrite bool) error {
-	svc.logInfo(js, fmt.Sprintf("Publish %s to IIIF", mf.PID))
+	svc.logInfo(js, fmt.Sprintf("Publish master file %s from %s to IIIF", mf.PID, srcPath))
 
 	svc.logInfo(js, "Validate file type")
 	workPath := srcPath
 	if strings.ToLower(mf.ImageTechMeta.ImageFormat) != "tiff" {
 		workPath = path.Join("/tmp", fmt.Sprintf("%s.tif", mf.PID))
-		svc.logInfo(js, fmt.Sprintf("%s is not a TIFF; converting here: %s", mf.PID, workPath))
+		svc.logInfo(js, fmt.Sprintf("%s is format [%s], converting to a TIF here: %s", mf.PID, mf.ImageTechMeta.ImageFormat, workPath))
 
 		cmdArray := []string{srcPath, workPath}
 		cmd := exec.Command("convert", cmdArray...)
 		svc.logInfo(js, fmt.Sprintf("Conversion command: %+v", cmd))
 		_, err := cmd.Output()
 		if err != nil {
-			svc.logError(js, fmt.Sprintf("Unable to convert %s to a TIF: %s", mf.PID, err.Error()))
+			svc.logError(js, fmt.Sprintf("Unable to convert %s %s to a TIF: %s", mf.PID, srcPath, err.Error()))
 			return err
 		}
 

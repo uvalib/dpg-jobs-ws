@@ -497,6 +497,98 @@ func (svc *ServiceContext) addMasterFiles(c *gin.Context) {
 	c.String(http.StatusOK, fmt.Sprintf("%d", js.ID))
 }
 
+func (svc *ServiceContext) updateMasterFileTechMetadata(c *gin.Context) {
+	mfID, _ := strconv.ParseInt(c.Param("id"), 10, 64)
+	js, err := svc.createJobStatus("UpdateTechMetadata", "MasterFile", mfID)
+	if err != nil {
+		log.Printf("ERROR: unable to create UpdateTechMetadata job status: %s", err.Error())
+		c.String(http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	var tgtMF masterFile
+	err = svc.GDB.Preload("ImageTechMeta").First(&tgtMF, mfID).Error
+	if err != nil {
+		svc.logFatal(js, fmt.Sprintf("Unable to load master file %d: %s", mfID, err.Error()))
+		c.String(http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	if tgtMF.ImageTechMeta.ID != 0 {
+		svc.logInfo(js, fmt.Sprintf("Remove existing tech metadata for master file %s", tgtMF.PID))
+		err = svc.GDB.Delete(&tgtMF.ImageTechMeta).Error
+		if err != nil {
+			svc.logFatal(js, fmt.Sprintf("Unable to remove existing master file %s tech metadata: %s", tgtMF.PID, err.Error()))
+			c.String(http.StatusInternalServerError, err.Error())
+			return
+		}
+	}
+
+	unitDir := fmt.Sprintf("%09d", tgtMF.UnitID)
+	archiveFile := path.Join(svc.ArchiveDir, unitDir, tgtMF.Filename)
+	svc.logInfo(js, fmt.Sprintf("Create tech metadata ffrom archived master file %s", archiveFile))
+	if pathExists(archiveFile) == false {
+		svc.logFatal(js, fmt.Sprintf("Master file %d archive %s does not exist", mfID, archiveFile))
+		c.String(http.StatusBadRequest, "archive not found")
+		return
+	}
+
+	err = svc.createImageTechMetadata(&tgtMF, archiveFile)
+	if err != nil {
+		log.Printf("ERROR: unable to create image tech metadata: %s", err.Error())
+	}
+
+	svc.jobDone(js)
+	c.String(http.StatusOK, "updated")
+}
+
+func (svc *ServiceContext) updateMasterFileIIIF(c *gin.Context) {
+	mfID, _ := strconv.ParseInt(c.Param("id"), 10, 64)
+	js, err := svc.createJobStatus("UpdateIIIF", "MasterFile", mfID)
+	if err != nil {
+		log.Printf("ERROR: unable to create UpdateIIIF job status: %s", err.Error())
+		c.String(http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	var tgtMF masterFile
+	err = svc.GDB.Preload("ImageTechMeta").First(&tgtMF, mfID).Error
+	if err != nil {
+		svc.logFatal(js, fmt.Sprintf("Unable to load master file %d: %s", mfID, err.Error()))
+		c.String(http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	if tgtMF.DeaccessionedAt != nil {
+		svc.logFatal(js, fmt.Sprintf("Master file %d:%s has been deaccessioned and cannot be updated", mfID, tgtMF.Filename))
+		c.String(http.StatusBadRequest, "deaccessioned master files cannot be updated")
+		return
+	}
+	if tgtMF.OriginalMfID != nil {
+		svc.logFatal(js, fmt.Sprintf("Master file %d:%s is a clone and cannot be updated", mfID, tgtMF.Filename))
+		c.String(http.StatusBadRequest, "cloned master files cannot be updated")
+		return
+	}
+
+	unitDir := fmt.Sprintf("%09d", tgtMF.UnitID)
+	archiveFile := path.Join(svc.ArchiveDir, unitDir, tgtMF.Filename)
+	if pathExists(archiveFile) == false {
+		svc.logFatal(js, fmt.Sprintf("Master file %d archive %s does not exist", mfID, archiveFile))
+		c.String(http.StatusBadRequest, "archive not found")
+		return
+	}
+
+	err = svc.publishToIIIF(js, &tgtMF, archiveFile, true)
+	if err != nil {
+		svc.logFatal(js, fmt.Sprintf("Update IIIF for master file %d from archive %s failed: %s", mfID, archiveFile, err.Error()))
+		c.String(http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	svc.jobDone(js)
+	c.String(http.StatusOK, "updated")
+}
+
 func (svc *ServiceContext) deaccessionMasterFile(c *gin.Context) {
 	mfID, _ := strconv.ParseInt(c.Param("id"), 10, 64)
 	js, err := svc.createJobStatus("DeaccessionMasterFile", "MasterFile", mfID)
