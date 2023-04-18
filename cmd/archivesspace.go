@@ -301,14 +301,14 @@ func (svc *ServiceContext) publishToArchivesSpace(c *gin.Context) {
 		return
 	}
 
-	userID, _ := strconv.ParseInt(req.UserID, 10, 64)
-	js, err := svc.createJobStatus("PublishToAS", "StaffMember", userID)
+	metadataID, _ := strconv.ParseInt(req.MetadataID, 10, 64)
+	js, err := svc.createJobStatus("PublishToAS", "Metadata", metadataID)
 	if err != nil {
 		log.Printf("ERROR: unable to create PublishToAS job status: %s", err.Error())
 		c.String(http.StatusInternalServerError, err.Error())
 		return
 	}
-	svc.logInfo(js, fmt.Sprintf("Publish TrackSys metadata %s to ArchivesSpace", req.MetadataID))
+	svc.logInfo(js, fmt.Sprintf("Publish TrackSys metadata %s to ArchivesSpace by staff member %s", req.MetadataID, req.UserID))
 	var tgtMetadata metadata
 	err = svc.GDB.Find(&tgtMetadata, req.MetadataID).Error
 	if err != nil {
