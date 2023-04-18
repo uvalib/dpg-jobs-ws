@@ -50,7 +50,7 @@ func (svc *ServiceContext) archivesSpaceMiddleware(c *gin.Context) {
 	log.Printf("INFO: ensure archivesspace auth token exists for %s", c.Request.URL)
 	now := time.Now()
 	exp := time.Now()
-	exp.Add(30 * time.Minute)
+	exp = exp.Add(30 * time.Minute)
 	if svc.ArchivesSpace.AuthToken == "" || svc.ArchivesSpace.AuthToken != "" && now.After(svc.ArchivesSpace.ExpiresAt) {
 		authURL := fmt.Sprintf("%s/users/%s/login", svc.ArchivesSpace.APIURL, svc.ArchivesSpace.User)
 		log.Printf("INFO: archivesspace token missing or expired, requesting a new one with: %s", authURL)
