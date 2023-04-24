@@ -10,6 +10,18 @@
             <label class="label">Audit Started:&nbsp;</label>
             <span>{{.StartedAt}}</span>
          </div>
+         {{if gt .Offset 0}}
+         <div>
+            <label class="label">Offset:&nbsp;</label>
+            <span>{{.Offset}}</span>
+         </div>
+         {{end}}
+         {{if gt .Limit 0}}
+         <div>
+            <label class="label">Limit:&nbsp;</label>
+            <span>{{.Limit}}</span>
+         </div>
+         {{end}}
          {{if .FatalError}}
             <div>
                <label class="label">Fatal Error:&nbsp;</label>
@@ -31,6 +43,10 @@
          <div>
             <label class="label">Checksum Mismatch:&nbsp;</label>
             <span>{{.ChecksumErrorCount}}</span>
+         </div>
+         <div>
+            <label class="label">Missing IIIF:&nbsp;</label>
+            <span>{{.MissingIIIFCount}}</span>
          </div>
          <div>
             <label class="label">Database Error:&nbsp;</label>

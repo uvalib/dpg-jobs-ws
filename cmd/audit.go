@@ -20,17 +20,21 @@ type masterFileAudit struct {
 	ArchiveExists bool        `json:"archiveExists"`
 	ChecksumMatch bool        `json:"checksumMatch"`
 	AuditChecksum string      `json:"auditChecksum"`
+	IIIFExists    bool        `gorm:"column:iiif_exists" json:"iiifExists"`
 	AuditedAt     time.Time   `json:"auditedAt"`
 }
 
 type auditRequest struct {
-	Type  string `json:"type"`
-	Data  string `json:"data"`
-	Email string `json:"email"`
+	Type   string `json:"type"`
+	Data   string `json:"data"`
+	Email  string `json:"email"`
+	Offset int    `json:"offset"`
+	Limit  int    `json:"limit"`
 }
 
 type auditItem struct {
 	ID         int64
+	PID        string `gorm:"column:pid"`
 	UnitID     int64
 	Filename   string
 	MD5        string
@@ -39,11 +43,14 @@ type auditItem struct {
 
 type auditYearResults struct {
 	StartedAt            string
+	Offset               int
+	Limit                int
 	Year                 string
 	MasterFileCount      uint
 	MasterFileErrorCount uint
 	ChecksumErrorCount   uint
 	MissingArchiveCount  uint
+	MissingIIIFCount     uint
 	SuccessCount         uint
 	FatalError           string
 	FinishedAt           string
@@ -71,6 +78,11 @@ func (svc *ServiceContext) auditMasterFiles(c *gin.Context) {
 			c.String(http.StatusBadRequest, "email is required for a year audit")
 			return
 		}
+		if req.Offset > 0 && req.Limit == 0 {
+			log.Printf("ERROR: audit year offset requires a limit")
+			c.String(http.StatusBadRequest, "non-zero offset requires non-zero limit")
+			return
+		}
 		go func() {
 			defer func() {
 				if r := recover(); r != nil {
@@ -78,7 +90,7 @@ func (svc *ServiceContext) auditMasterFiles(c *gin.Context) {
 					debug.PrintStack()
 				}
 			}()
-			svc.auditYear(req.Data, req.Email)
+			svc.auditYear(req)
 		}()
 		c.String(http.StatusOK, fmt.Sprintf("audit year %s started for %s", req.Data, req.Email))
 	} else {
@@ -96,24 +108,30 @@ func (svc *ServiceContext) auditMasterFiles(c *gin.Context) {
 func (svc *ServiceContext) auditMasterFile(mfID int64) (*masterFileAudit, error) {
 	log.Printf("INFO: audit master file %d", mfID)
 	var mf auditItem
-	mfQ := "select master_files.id as id, filename, md5, unit_id, u.staff_notes as staff_notes from master_files"
+	mfQ := "select master_files.id as id, pid, filename, md5, unit_id, u.staff_notes as staff_notes from master_files"
 	mfQ += " inner join units u on u.id = unit_id where master_files.id = ?"
-	err := svc.GDB.Raw(mfQ, mfID).Scan(&mf).Error
+	err := svc.GDB.Debug().Raw(mfQ, mfID).Scan(&mf).Error
 	if err != nil {
 		return nil, err
 	}
 	return svc.performAudit(&mf)
 }
 
-func (svc *ServiceContext) auditYear(year, emailRecipient string) {
-	log.Printf("INFO: audit all master files from year %s", year)
-	mfQ := "select master_files.id as id, filename, md5, unit_id, u.staff_notes as staff_notes from master_files"
+func (svc *ServiceContext) auditYear(req auditRequest) {
+	year := req.Data
+	log.Printf("INFO: %s requets master files audit from year %s offest %d limit %d", req.Email, year, req.Offset, req.Limit)
+	mfQ := "select master_files.id as id, pid, filename, md5, unit_id, u.staff_notes as staff_notes from master_files"
 	mfQ += " inner join units u on u.id = unit_id"
 	mfQ += " where year(master_files.created_at) = ? and master_files.date_archived is not null and original_mf_id is null"
+	if req.Offset > 0 || req.Limit > 0 {
+		mfQ += fmt.Sprintf(" limit %d,%d", req.Offset, req.Limit)
+	}
 
-	auditSummary := auditYearResults{StartedAt: time.Now().Format("2006-01-02 03:04:05 PM"), Year: year}
+	auditSummary := auditYearResults{StartedAt: time.Now().Format("2006-01-02 03:04:05 PM"),
+		Year: year, Offset: req.Offset, Limit: req.Limit}
 
-	rows, err := svc.GDB.Raw(mfQ, year).Rows()
+	yearQ := svc.GDB.Raw(mfQ, year)
+	rows, err := yearQ.Rows()
 	defer rows.Close()
 	if err != nil {
 		log.Printf("ERROR: unable to get master files for year %s: %s", year, err.Error())
@@ -141,8 +159,11 @@ func (svc *ServiceContext) auditYear(year, emailRecipient string) {
 					// if the archive is missing, there cannot be a checksum; don't count this as an errors
 					auditSummary.ChecksumErrorCount++
 				}
+				if res.IIIFExists == false {
+					auditSummary.MissingIIIFCount++
+				}
 
-				if res.ArchiveExists && res.ChecksumMatch {
+				if res.ArchiveExists && res.ChecksumMatch && res.IIIFExists {
 					auditSummary.SuccessCount++
 				}
 			}
@@ -150,7 +171,7 @@ func (svc *ServiceContext) auditYear(year, emailRecipient string) {
 	}
 
 	auditSummary.FinishedAt = time.Now().Format("2006-01-02 03:04:05 PM")
-	svc.sendAuditResultsEmail(emailRecipient, auditSummary)
+	svc.sendAuditResultsEmail(req.Email, auditSummary)
 
 	log.Printf("INFO: audit for year %s is done", year)
 }
@@ -167,6 +188,7 @@ func (svc *ServiceContext) performAudit(mf *auditItem) (*masterFileAudit, error)
 	auditRec.MasterFileID = mf.ID
 	auditRec.ArchiveExists = false
 	auditRec.ChecksumMatch = false
+
 	auditRec.AuditChecksum = ""
 
 	srcDir := fmt.Sprintf("%09d", mf.UnitID)
@@ -197,6 +219,13 @@ func (svc *ServiceContext) performAudit(mf *auditItem) (*masterFileAudit, error)
 		} else {
 			auditRec.ChecksumMatch = true
 		}
+	}
+
+	jp2kInfo := svc.iiifPath(mf.PID)
+	auditRec.IIIFExists = true
+	if pathExists(jp2kInfo.absolutePath) == false {
+		auditRec.IIIFExists = false
+		log.Printf("WARNING: master file %d audit finds no iiif file", mf.ID)
 	}
 
 	// if the ID is zero, no record was found and this is the first audit. Create a rec

@@ -35,7 +35,7 @@ func (svc *ServiceContext) publishToIIIF(js *jobStatus, mf *masterFile, srcPath 
 		}()
 	}
 
-	jp2kInfo := svc.iiifPath(mf)
+	jp2kInfo := svc.iiifPath(mf.PID)
 	if overwrite == false && pathExists(jp2kInfo.absolutePath) {
 		svc.logInfo(js, fmt.Sprintf("MasterFile %s already has JP2k file at %s; skipping creation", mf.PID, jp2kInfo.absolutePath))
 		return nil
@@ -91,7 +91,7 @@ func (svc *ServiceContext) publishToIIIF(js *jobStatus, mf *masterFile, srcPath 
 }
 
 func (svc *ServiceContext) unpublishIIIF(js *jobStatus, mf *masterFile) {
-	iiifInfo := svc.iiifPath(mf)
+	iiifInfo := svc.iiifPath(mf.PID)
 	svc.logInfo(js, fmt.Sprintf("Removing file published to IIIF: %s", iiifInfo.absolutePath))
 	if pathExists(iiifInfo.absolutePath) {
 		os.Remove(iiifInfo.absolutePath)
@@ -110,8 +110,8 @@ type iiifPathInfo struct {
 	absolutePath string
 }
 
-func (svc *ServiceContext) iiifPath(mf *masterFile) iiifPathInfo {
-	pidParts := strings.Split(mf.PID, ":")
+func (svc *ServiceContext) iiifPath(mfPID string) iiifPathInfo {
+	pidParts := strings.Split(mfPID, ":")
 	base := pidParts[1]
 	jp2kFilename := fmt.Sprintf("%s.jp2", base)
 	parts := make([]string, 0)
