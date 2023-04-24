@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html>
+   <body>
+      <h2>
+         The audit of master files from {{.Year}} has completed.
+      </h2>
+      <div>
+         <h3>Audit Summary</h3>
+         <div>
+            <label class="label">Audit Started:&nbsp;</label>
+            <span>{{.StartedAt}}</span>
+         </div>
+         {{if .FatalError}}
+            <div>
+               <label class="label">Fatal Error:&nbsp;</label>
+               <span>{{.FatalError}}</span>
+            </div>
+         {{end}}
+         <div>
+            <label class="label">Total Master Files:&nbsp;</label>
+            <span>{{.MasterFileCount}}</span>
+         </div>
+         <div>
+            <label class="label">Success:&nbsp;</label>
+            <span>{{.SuccessCount}}</span>
+         </div>
+         <div>
+            <label class="label">Missing Archive:&nbsp;</label>
+            <span>{{.MissingArchiveCount}}</span>
+         </div>
+         <div>
+            <label class="label">Checksum Mismatch:&nbsp;</label>
+            <span>{{.ChecksumErrorCount}}</span>
+         </div>
+         <div>
+            <label class="label">Database Error:&nbsp;</label>
+            <span>{{.MasterFileErrorCount}}</span>
+         </div>
+         <div>
+            <label class="label">Audit Finished:&nbsp;</label>
+            <span>{{.FinishedAt}}</span>
+         </div>
+      </div>
+   </body>
+</html>

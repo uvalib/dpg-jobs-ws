@@ -27,6 +27,30 @@ type emailRequest struct {
 	Body    string
 }
 
+func (svc *ServiceContext) sendAuditResultsEmail(recipient string, auditSummary auditYearResults) {
+	log.Printf("INFO: sent audit results email to %s", recipient)
+	req := emailRequest{Subject: fmt.Sprintf("UVA Digital Production Group - %s Audit Results", auditSummary.Year),
+		To:      []string{recipient},
+		From:    svc.SMTP.Sender,
+		ReplyTo: svc.SMTP.Sender,
+	}
+
+	var renderedEmail bytes.Buffer
+	err := svc.Templates.AuditResults.Execute(&renderedEmail, auditSummary)
+	if err != nil {
+		log.Printf("ERROR: unable to render fees email for %s audit results: %s", auditSummary.Year, err.Error())
+	}
+
+	req.Body = renderedEmail.String()
+	err = svc.sendEmail(&req)
+	if err != nil {
+		log.Printf("ERROR: unable to send email for %s audit results: %s", auditSummary.Year, err.Error())
+		return
+	}
+	log.Printf("INFO: email for %s audit successfully sent", auditSummary.Year)
+
+}
+
 func (svc *ServiceContext) sendOrderEmail(c *gin.Context) {
 	altEmail := c.Query("alt")
 	orderIDStr := c.Param("id")

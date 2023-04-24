@@ -32,6 +32,7 @@ import (
 type htmlTemplates struct {
 	Fees            *template.Template
 	OrderAvailable  *template.Template
+	AuditResults    *template.Template
 	PDFOrderSummary *template.Template
 }
 
@@ -112,6 +113,10 @@ func InitializeService(version string, cfg *ServiceConfig) *ServiceContext {
 	ctx.ArchivesSpace.APIURL = es.APIURL
 
 	log.Printf("INFO: load html templates")
+	ctx.Templates.AuditResults, err = template.New("audit.html").ParseFiles("./templates/audit.html")
+	if err != nil {
+		log.Fatal(err)
+	}
 	ctx.Templates.Fees, err = template.New("fees.html").ParseFiles("./templates/fees.html")
 	if err != nil {
 		log.Fatal(err)
