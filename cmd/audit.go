@@ -66,7 +66,7 @@ func (svc *ServiceContext) auditMasterFiles(c *gin.Context) {
 		return
 	}
 
-	if req.Type != "id" && req.Type != "year" {
+	if req.Type != "id" && req.Type != "year" && req.Type != "unit" {
 		log.Printf("ERROR: invalid audit request type %s", req.Type)
 		c.String(http.StatusBadRequest, fmt.Sprintf("invalid audit type %s", req.Type))
 		return
@@ -93,6 +93,10 @@ func (svc *ServiceContext) auditMasterFiles(c *gin.Context) {
 			svc.auditYear(req)
 		}()
 		c.String(http.StatusOK, fmt.Sprintf("audit year %s started for %s", req.Data, req.Email))
+	} else if req.Type == "unit" {
+		unitID, _ := strconv.ParseInt(req.Data, 10, 64)
+		go svc.auditUnitMasterFiles(unitID)
+		c.String(http.StatusOK, fmt.Sprintf("audit unit %d started", unitID))
 	} else {
 		mfID, _ := strconv.ParseInt(req.Data, 10, 64)
 		audit, err := svc.auditMasterFile(mfID)
@@ -115,6 +119,45 @@ func (svc *ServiceContext) auditMasterFile(mfID int64) (*masterFileAudit, error)
 		return nil, err
 	}
 	return svc.performAudit(&mf)
+}
+
+func (svc *ServiceContext) auditUnitMasterFiles(unitID int64) {
+	js, err := svc.createJobStatus("AuditUnitMasterFiles", "Unit", unitID)
+	if err != nil {
+		log.Printf("ERROR: unable to create job js: %s", err.Error())
+		return
+	}
+	svc.logInfo(js, fmt.Sprintf("Begin audit master files from unit %d", unitID))
+	var tgtUnit unit
+	err = svc.GDB.First(&tgtUnit, unitID).Error
+	if err != nil {
+		svc.logFatal(js, fmt.Sprintf("Unable to load unit %d: %s", unitID, err.Error()))
+		return
+	}
+
+	if tgtUnit.Reorder {
+		svc.logFatal(js, "Cannot audit reorders")
+		return
+	}
+
+	var unitMasterFiles []auditItem
+	mfQ := "select master_files.id as id, pid, filename, md5, unit_id, u.staff_notes as staff_notes from master_files"
+	mfQ += " inner join units u on u.id = unit_id where unit_id = ?"
+	err = svc.GDB.Raw(mfQ, unitID).Scan(&unitMasterFiles).Error
+	if err != nil {
+		svc.logFatal(js, fmt.Sprintf("Unable to load unit master files: %s", err.Error()))
+		return
+	}
+
+	for _, mf := range unitMasterFiles {
+		svc.logInfo(js, fmt.Sprintf("Audit master file %d", mf.ID))
+		_, err := svc.performAudit(&mf)
+		if err != nil {
+			svc.logError(js, fmt.Sprintf("Audit failed: %s", err.Error()))
+		}
+	}
+
+	svc.jobDone(js)
 }
 
 func (svc *ServiceContext) auditYear(req auditRequest) {
