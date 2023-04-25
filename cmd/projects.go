@@ -42,14 +42,15 @@ type workflow struct {
 }
 
 type project struct {
-	ID              int64
-	WorkflowID      int64
-	Workflow        workflow `gorm:"foreignKey:WorkflowID"`
-	OwnerID         *int64
-	CurrentStepID   *int64
-	ContainerTypeID *int64
-	FinishedAt      *time.Time
-	Notes           []*note `gorm:"foreignKey:ProjectID"`
+	ID                int64
+	WorkflowID        int64
+	Workflow          workflow `gorm:"foreignKey:WorkflowID"`
+	OwnerID           *int64
+	CurrentStepID     *int64
+	ContainerTypeID   *int64
+	FinishedAt        *time.Time
+	TotalDurationMins *int64
+	Notes             []*note `gorm:"foreignKey:ProjectID"`
 }
 
 func (svc *ServiceContext) projectFailedFinalization(js *jobStatus, currProj *project) {
@@ -152,7 +153,20 @@ func (svc *ServiceContext) projectFinishedFinalization(js *jobStatus, currProj *
 	currProj.FinishedAt = &now
 	currProj.OwnerID = nil
 	currProj.CurrentStepID = nil
-	err = svc.GDB.Model(currProj).Select("FinishedAt", "OwnerID", "CurrentStepID").Updates(*currProj).Error
+
+	fields := []string{"FinishedAt", "OwnerID", "CurrentStepID"}
+	sql := "select SUM(duration_minutes) as total from assignments where project_id=?"
+	var total int64
+	err = svc.GDB.Raw(sql, currProj.ID).Scan(&total).Error
+	if err != nil {
+		svc.logError(js, fmt.Sprintf("Unable to calculate total project duration: %s", err.Error()))
+	} else {
+		currProj.TotalDurationMins = &total
+		fields = append(fields, "TotalDurationMins")
+		svc.logInfo(js, fmt.Sprintf("Total project duration (minutes): %d", total))
+	}
+
+	err = svc.GDB.Model(currProj).Select(fields).Updates(*currProj).Error
 	if err != nil {
 		return err
 	}
