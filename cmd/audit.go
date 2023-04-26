@@ -184,6 +184,9 @@ func (svc *ServiceContext) auditYear(req auditRequest) {
 
 	for rows.Next() {
 		auditSummary.MasterFileCount++
+		if auditSummary.MasterFileCount%100 == 0 {
+			log.Printf("INFO: processed %d files from year %s", auditSummary.MasterFileCount, year)
+		}
 
 		var mf auditItem
 		err := svc.GDB.ScanRows(rows, &mf)
