@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"log"
+	"math"
 	"net/http"
 	"path"
 	"runtime/debug"
@@ -11,17 +12,19 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 )
 
 type masterFileAudit struct {
-	ID            int64       `json:"id"`
-	MasterFileID  int64       `json:"masterFileID"`
-	MasterFile    *masterFile `gorm:"foreignKey:MasterFileID" json:"masterFile,omitempty"`
-	ArchiveExists bool        `json:"archiveExists"`
-	ChecksumMatch bool        `json:"checksumMatch"`
-	AuditChecksum string      `json:"auditChecksum"`
-	IIIFExists    bool        `gorm:"column:iiif_exists" json:"iiifExists"`
-	AuditedAt     time.Time   `json:"auditedAt"`
+	ID             int64       `json:"id"`
+	MasterFileID   int64       `json:"masterFileID"`
+	MasterFile     *masterFile `gorm:"foreignKey:MasterFileID" json:"masterFile,omitempty"`
+	ArchiveExists  bool        `json:"archiveExists"`
+	ChecksumExists bool        `json:"checksumExists"`
+	ChecksumMatch  bool        `json:"checksumMatch"`
+	AuditChecksum  string      `json:"auditChecksum"`
+	IIIFExists     bool        `gorm:"column:iiif_exists" json:"iiifExists"`
+	AuditedAt      time.Time   `json:"auditedAt"`
 }
 
 type auditRequest struct {
@@ -49,6 +52,7 @@ type auditYearResults struct {
 	MasterFileCount      uint
 	MasterFileErrorCount uint
 	ChecksumErrorCount   uint
+	MissingChecksumCount uint
 	MissingArchiveCount  uint
 	MissingIIIFCount     uint
 	SuccessCount         uint
@@ -79,8 +83,10 @@ func (svc *ServiceContext) auditMasterFiles(c *gin.Context) {
 			return
 		}
 		if req.Offset > 0 && req.Limit == 0 {
-			log.Printf("ERROR: audit year offset requires a limit")
-			c.String(http.StatusBadRequest, "non-zero offset requires non-zero limit")
+			// if no limit specified, default it to max int because mysql
+			// requires a limit when offset is present. This will make ALL rows starting
+			// with limit be retrieved
+			req.Limit = math.MaxInt
 			return
 		}
 		go func() {
@@ -163,42 +169,35 @@ func (svc *ServiceContext) auditUnitMasterFiles(unitID int64) {
 func (svc *ServiceContext) auditYear(req auditRequest) {
 	year := req.Data
 	log.Printf("INFO: %s requets master files audit from year %s offest %d limit %d", req.Email, year, req.Offset, req.Limit)
-	mfQ := "select master_files.id as id, pid, filename, md5, unit_id, u.staff_notes as staff_notes from master_files"
-	mfQ += " inner join units u on u.id = unit_id"
-	mfQ += " where year(master_files.created_at) = ? and master_files.date_archived is not null and original_mf_id is null"
-	if req.Offset > 0 || req.Limit > 0 {
-		mfQ += fmt.Sprintf(" limit %d,%d", req.Offset, req.Limit)
-	}
 
 	auditSummary := auditYearResults{StartedAt: time.Now().Format("2006-01-02 03:04:05 PM"),
 		Year: year, Offset: req.Offset, Limit: req.Limit}
 
-	yearQ := svc.GDB.Raw(mfQ, year)
-	rows, err := yearQ.Rows()
-	defer rows.Close()
-	if err != nil {
-		log.Printf("ERROR: unable to get master files for year %s: %s", year, err.Error())
-		auditSummary.FatalError = err.Error()
-		return
+	mfQ := svc.GDB.Model(&masterFile{}).Joins("inner join units u on u.id = unit_id").
+		Where("year(master_files.created_at) = ? and master_files.date_archived is not null and original_mf_id is null", year)
+	if req.Offset > 0 {
+		mfQ = mfQ.Offset(req.Offset)
+	}
+	if req.Limit > 0 {
+		mfQ = mfQ.Limit(req.Limit)
 	}
 
-	for rows.Next() {
-		auditSummary.MasterFileCount++
-		if auditSummary.MasterFileCount%100 == 0 {
-			log.Printf("INFO: processed %d files from year %s", auditSummary.MasterFileCount, year)
-		}
+	var hits []auditItem
+	batchSize := 1000
+	err := mfQ.FindInBatches(&hits, batchSize, func(tx *gorm.DB, batch int) error {
+		log.Printf("INFO: processing batch %d of master files from year %s; total processed: %d", batch, year, auditSummary.MasterFileCount)
+		for _, mf := range hits {
+			auditSummary.MasterFileCount++
+			log.Printf("%+v", mf)
 
-		var mf auditItem
-		err := svc.GDB.ScanRows(rows, &mf)
-		if err != nil {
-			log.Printf("ERROR: unable to load master file data for audit: %s", err.Error())
-			auditSummary.MasterFileErrorCount++
-		} else {
 			res, err := svc.performAudit(&mf)
 			if err != nil {
 				log.Printf("ERROR: unable to audit master file %d: %s", mf.ID, err.Error())
 				auditSummary.MasterFileErrorCount++
 			} else {
+				if res.ChecksumExists == false {
+					auditSummary.MissingChecksumCount++
+				}
 				if res.ArchiveExists == false {
 					auditSummary.MissingArchiveCount++
 				} else if res.ChecksumMatch == false {
@@ -214,6 +213,15 @@ func (svc *ServiceContext) auditYear(req auditRequest) {
 				}
 			}
 		}
+
+		// return error will stop future batches
+		return nil
+	}).Error
+
+	if err != nil {
+		log.Printf("ERROR: unable to get master files for year %s: %s", year, err.Error())
+		auditSummary.FatalError = err.Error()
+		return
 	}
 
 	auditSummary.FinishedAt = time.Now().Format("2006-01-02 03:04:05 PM")
@@ -233,8 +241,8 @@ func (svc *ServiceContext) performAudit(mf *auditItem) (*masterFileAudit, error)
 	auditRec.AuditedAt = time.Now()
 	auditRec.MasterFileID = mf.ID
 	auditRec.ArchiveExists = false
+	auditRec.ChecksumExists = mf.MD5 != ""
 	auditRec.ChecksumMatch = false
-
 	auditRec.AuditChecksum = ""
 
 	srcDir := fmt.Sprintf("%09d", mf.UnitID)
