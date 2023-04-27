@@ -3,7 +3,6 @@ package main
 import (
 	"fmt"
 	"log"
-	"math"
 	"net/http"
 	"path"
 	"runtime/debug"
@@ -83,10 +82,8 @@ func (svc *ServiceContext) auditMasterFiles(c *gin.Context) {
 			return
 		}
 		if req.Offset > 0 && req.Limit == 0 {
-			// if no limit specified, default it to max int because mysql
-			// requires a limit when offset is present. This will make ALL rows starting
-			// with limit be retrieved
-			req.Limit = math.MaxInt
+			log.Printf("ERROR: audit year offset requires a limit")
+			c.String(http.StatusBadRequest, "non-zero offset requires non-zero limit")
 			return
 		}
 		go func() {
@@ -120,7 +117,7 @@ func (svc *ServiceContext) auditMasterFile(mfID int64) (*masterFileAudit, error)
 	var mf auditItem
 	mfQ := "select master_files.id as id, pid, filename, md5, unit_id, u.staff_notes as staff_notes from master_files"
 	mfQ += " inner join units u on u.id = unit_id where master_files.id = ?"
-	err := svc.GDB.Debug().Raw(mfQ, mfID).Scan(&mf).Error
+	err := svc.GDB.Raw(mfQ, mfID).Scan(&mf).Error
 	if err != nil {
 		return nil, err
 	}
@@ -188,7 +185,6 @@ func (svc *ServiceContext) auditYear(req auditRequest) {
 		log.Printf("INFO: processing batch %d of master files from year %s; total processed: %d", batch, year, auditSummary.MasterFileCount)
 		for _, mf := range hits {
 			auditSummary.MasterFileCount++
-			log.Printf("%+v", mf)
 
 			res, err := svc.performAudit(&mf)
 			if err != nil {
