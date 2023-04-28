@@ -154,6 +154,7 @@ func (svc *ServiceContext) projectFinishedFinalization(js *jobStatus, currProj *
 	currProj.OwnerID = nil
 	currProj.CurrentStepID = nil
 
+	svc.logInfo(js, "Calculate total project duration...")
 	fields := []string{"FinishedAt", "OwnerID", "CurrentStepID"}
 	sql := "select SUM(duration_minutes) as total from assignments where project_id=?"
 	var total int64

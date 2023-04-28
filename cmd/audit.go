@@ -265,7 +265,7 @@ func (svc *ServiceContext) performAudit(mf *auditItem) (*masterFileAudit, error)
 		auditRec.AuditChecksum = md5Checksum(archiveFile)
 		if auditRec.AuditChecksum != mf.MD5 {
 			auditRec.ChecksumMatch = false
-			log.Printf("WARNING: master file %d audit finds a checksum mismatch record %s vs archive %s", mf.ID, mf.MD5, auditRec.AuditChecksum)
+			// log.Printf("WARNING: master file %d audit finds a checksum mismatch record %s vs archive %s", mf.ID, mf.MD5, auditRec.AuditChecksum)
 		} else {
 			auditRec.ChecksumMatch = true
 		}
@@ -275,7 +275,7 @@ func (svc *ServiceContext) performAudit(mf *auditItem) (*masterFileAudit, error)
 	auditRec.IIIFExists = true
 	if pathExists(jp2kInfo.absolutePath) == false {
 		auditRec.IIIFExists = false
-		log.Printf("WARNING: master file %d audit finds no iiif file", mf.ID)
+		// log.Printf("WARNING: master file %d audit finds no iiif file", mf.ID)
 	}
 
 	// if the ID is zero, no record was found and this is the first audit. Create a rec
