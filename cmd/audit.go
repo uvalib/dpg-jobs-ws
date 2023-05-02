@@ -191,14 +191,16 @@ func (svc *ServiceContext) auditYear(req auditRequest) {
 				log.Printf("ERROR: unable to audit master file %d: %s", mf.ID, err.Error())
 				auditSummary.MasterFileErrorCount++
 			} else {
-				if res.ChecksumExists == false {
-					auditSummary.MissingChecksumCount++
-				}
 				if res.ArchiveExists == false {
+					// if there is no archive, there cannot be a checksum nor checcksum comparison
 					auditSummary.MissingArchiveCount++
-				} else if res.ChecksumMatch == false {
-					// if the archive is missing, there cannot be a checksum; don't count this as an errors
-					auditSummary.ChecksumErrorCount++
+				} else {
+					// archive exists; only track mismatch errors if the master file checksum also exists
+					if res.ChecksumExists == false {
+						auditSummary.MissingChecksumCount++
+					} else if res.ChecksumMatch == false {
+						auditSummary.ChecksumErrorCount++
+					}
 				}
 				if res.IIIFExists == false {
 					auditSummary.MissingIIIFCount++
