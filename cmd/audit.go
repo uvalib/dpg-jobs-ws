@@ -256,7 +256,7 @@ func (svc *ServiceContext) performAudit(mf *auditItem) (*masterFileAudit, error)
 	}
 
 	if pathExists(archiveFile) == false {
-		log.Printf("WARNING: audit finds that masterfile %d is missing archive %s", mf.ID, archiveFile)
+		// log.Printf("WARNING: audit finds that masterfile %d is missing archive %s", mf.ID, archiveFile)
 		auditRec.ArchiveExists = false
 		auditRec.ChecksumMatch = false
 		auditRec.AuditChecksum = ""
