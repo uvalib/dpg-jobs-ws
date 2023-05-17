@@ -37,19 +37,19 @@ func (svc *ServiceContext) createHathiTrustPackage(c *gin.Context) {
 
 	svc.logInfo(js, "Find target unit")
 	var units []unit
-	err = svc.GDB.Where("metadata_id=? and intended_use_id=? and date_dl_deliverables_ready is not null", mdID, 110).Find(&units).Error
+	err = svc.GDB.Where("metadata_id=? and (intended_use_id=? or intended_use_id=?) and date_dl_deliverables_ready is not null", mdID, 110, 101).Find(&units).Error
 	if err != nil {
 		svc.logFatal(js, fmt.Sprintf("Unable to get a digitial collection building unit for metadata %d: %s", mdID, err.Error()))
 		return
 	}
 
 	if len(units) > 1 {
-		svc.logFatal(js, fmt.Sprintf("Too many units found (%d) for metadata %d: %s", len(units), mdID, err.Error()))
+		svc.logFatal(js, fmt.Sprintf("Too many units found (%d) for metadata %d", len(units), mdID))
 		return
 	}
 
 	if len(units) == 0 {
-		svc.logFatal(js, fmt.Sprintf("No units found for metadata %d: %s", mdID, err.Error()))
+		svc.logFatal(js, fmt.Sprintf("No units found for metadata %d", mdID))
 		return
 	}
 
@@ -68,9 +68,9 @@ func (svc *ServiceContext) createHathiTrustPackage(c *gin.Context) {
 		return
 	}
 
-	doOCR := false
 	if md.OcrHint.OcrCandidate {
 		svc.logInfo(js, "This unit is an OCR candidate; check master files to see if OCR needs to be done")
+		doOCR := false
 		for _, mf := range masterFiles {
 			if mf.TranscriptionText == "" {
 				svc.logInfo(js, fmt.Sprintf("Masterfile %s:%s has no OCR text; OCR must be run on the unit", mf.PID, mf.Filename))
@@ -78,11 +78,17 @@ func (svc *ServiceContext) createHathiTrustPackage(c *gin.Context) {
 				break
 			}
 		}
-	}
-
-	if doOCR {
-		svc.logInfo(js, "Starting OCR for unit")
-		// TODO
+		if doOCR {
+			// note; this call will not return until all master files in the unit have OCR results
+			svc.logInfo(js, "Starting OCR for unit")
+			err = svc.requestUnitOCR(js, &tgtUnit)
+			if err != nil {
+				svc.logFatal(js, fmt.Sprintf("Unable to request OCR: %s", err.Error()))
+				return
+			}
+		} else {
+			svc.logInfo(js, "OCR already exists")
+		}
 	}
 
 	go func() {
@@ -104,20 +110,20 @@ func (svc *ServiceContext) createHathiTrustPackage(c *gin.Context) {
 				svc.logFatal(js, fmt.Sprintf("Unable to cleanup prior package %s: %s", packageDir, err.Error()))
 				return
 			}
-		} else {
-			err = ensureDirExists(packageDir, 0777)
-			if err != nil {
-				svc.logFatal(js, fmt.Sprintf("Unable to create package directory %s: %s", packageDir, err.Error()))
-				return
-			}
 		}
+		err = ensureDirExists(packageDir, 0777)
+		if err != nil {
+			svc.logFatal(js, fmt.Sprintf("Unable to create package directory %s: %s", packageDir, err.Error()))
+			return
+		}
+
 		svc.logInfo(js, fmt.Sprintf("Package will be generated here %s", packageFilename))
 
 		for idx, mf := range masterFiles {
 			destFN := fmt.Sprintf("%08d.jp2", (idx + 1))
 			jp2kInfo := svc.iiifPath(mf.PID)
 			if pathExists(jp2kInfo.absolutePath) == false {
-				svc.logFatal(js, fmt.Sprintf("MasterFile %s:%s is missing JP2 defivative %s", mf.PID, mf.Filename, jp2kInfo.absolutePath))
+				svc.logFatal(js, fmt.Sprintf("MasterFile %s:%s is missing JP2 derivative %s", mf.PID, mf.Filename, jp2kInfo.absolutePath))
 				return
 			}
 
@@ -126,6 +132,15 @@ func (svc *ServiceContext) createHathiTrustPackage(c *gin.Context) {
 			if err != nil {
 				svc.logFatal(js, fmt.Sprintf("Unable to copy %s to %s %s", jp2kInfo.absolutePath, destPath, err.Error()))
 				return
+			}
+
+			if md.OcrHint.OcrCandidate {
+				destTxtPath := path.Join(packageDir, fmt.Sprintf("%08d.txt", (idx+1)))
+				err = os.WriteFile(destTxtPath, []byte(mf.TranscriptionText), 0666)
+				if err != nil {
+					svc.logFatal(js, fmt.Sprintf("Unable to write OCR text to %s %s", destTxtPath, err.Error()))
+					return
+				}
 			}
 		}
 
