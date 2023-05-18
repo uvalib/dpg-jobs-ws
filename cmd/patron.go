@@ -4,7 +4,6 @@ import (
 	"archive/zip"
 	"bufio"
 	"fmt"
-	"io"
 	"log"
 	"os"
 	"os/exec"
@@ -264,19 +263,4 @@ func (svc *ServiceContext) zipPatronDeliverables(js *jobStatus, tgtUnit *unit) e
 	}
 
 	return nil
-}
-
-// add a file to the target zip and return the new zip filesize
-func addFileToZip(zipFilePath string, zw *zip.Writer, filePath string, fileName string) (int64, error) {
-	fileToZip, err := os.Open(path.Join(filePath, fileName))
-	if err != nil {
-		return 0, err
-	}
-	defer fileToZip.Close()
-	zipFileWriter, err := zw.Create(fileName)
-	if _, err := io.Copy(zipFileWriter, fileToZip); err != nil {
-		return 0, err
-	}
-	fi, _ := os.Stat(zipFilePath)
-	return fi.Size(), nil
 }

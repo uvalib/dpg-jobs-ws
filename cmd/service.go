@@ -1,6 +1,7 @@
 package main
 
 import (
+	"archive/zip"
 	"bytes"
 	"crypto/md5"
 	"crypto/sha256"
@@ -331,6 +332,21 @@ func ensureDirExists(dir string, mode fs.FileMode) error {
 		}
 	}
 	return nil
+}
+
+// add a file to the target zip and return the new zip filesize
+func addFileToZip(zipFilePath string, zw *zip.Writer, filePath string, fileName string) (int64, error) {
+	fileToZip, err := os.Open(path.Join(filePath, fileName))
+	if err != nil {
+		return 0, err
+	}
+	defer fileToZip.Close()
+	zipFileWriter, err := zw.Create(fileName)
+	if _, err := io.Copy(zipFileWriter, fileToZip); err != nil {
+		return 0, err
+	}
+	fi, _ := os.Stat(zipFilePath)
+	return fi.Size(), nil
 }
 
 // copy file from src to dest, set permissions and return the MD5 checksum of the copy

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"archive/zip"
 	"fmt"
 	"io"
 	"log"
@@ -100,14 +101,15 @@ func (svc *ServiceContext) createHathiTrustPackage(c *gin.Context) {
 			}
 		}()
 
+		hathiDir := path.Join(svc.ProcessingDir, "hathitrust")
+		packageDir := path.Join(hathiDir, md.Barcode)
 		packageName := fmt.Sprintf("%s.zip", md.Barcode)
-		packageDir := path.Join(svc.ProcessingDir, "hathitrust", md.Barcode)
-		packageFilename := path.Join(packageDir, packageName)
+		packageFilename := path.Join(hathiDir, packageName)
 		if pathExists(packageDir) {
-			svc.logInfo(js, fmt.Sprintf("Clean up pre-existing package directory %s", packageDir))
+			svc.logInfo(js, fmt.Sprintf("Clean up pre-existing package assembly directory %s", packageDir))
 			err := os.RemoveAll(packageDir)
 			if err != nil {
-				svc.logFatal(js, fmt.Sprintf("Unable to cleanup prior package %s: %s", packageDir, err.Error()))
+				svc.logFatal(js, fmt.Sprintf("Unable to cleanup prior package assembly directory %s: %s", packageDir, err.Error()))
 				return
 			}
 		}
@@ -118,8 +120,17 @@ func (svc *ServiceContext) createHathiTrustPackage(c *gin.Context) {
 		}
 
 		svc.logInfo(js, fmt.Sprintf("Package will be generated here %s", packageFilename))
+		zipFile, err := os.Create(packageFilename)
+		if err != nil {
+			svc.logFatal(js, fmt.Sprintf("Unable to create package zip %s: %s", packageFilename, err.Error()))
+			return
+		}
+		zipWriter := zip.NewWriter(zipFile)
+		defer zipFile.Close()
+		defer zipWriter.Close()
 
 		for idx, mf := range masterFiles {
+			// copy jp2 to package directory, then add it to the zip
 			destFN := fmt.Sprintf("%08d.jp2", (idx + 1))
 			jp2kInfo := svc.iiifPath(mf.PID)
 			if pathExists(jp2kInfo.absolutePath) == false {
@@ -134,11 +145,24 @@ func (svc *ServiceContext) createHathiTrustPackage(c *gin.Context) {
 				return
 			}
 
+			_, err := addFileToZip(packageFilename, zipWriter, packageDir, destFN)
+			if err != nil {
+				svc.logFatal(js, fmt.Sprintf("Unable to add %s to zip file: %s", destPath, err.Error()))
+				return
+			}
+
+			// if applicable, copy ocr text to the package dir. make the name match the image name
 			if md.OcrHint.OcrCandidate {
-				destTxtPath := path.Join(packageDir, fmt.Sprintf("%08d.txt", (idx+1)))
+				txtFileName := fmt.Sprintf("%08d.txt", (idx + 1))
+				destTxtPath := path.Join(packageDir, txtFileName)
 				err = os.WriteFile(destTxtPath, []byte(mf.TranscriptionText), 0666)
 				if err != nil {
 					svc.logFatal(js, fmt.Sprintf("Unable to write OCR text to %s %s", destTxtPath, err.Error()))
+					return
+				}
+				_, err := addFileToZip(packageFilename, zipWriter, packageDir, txtFileName)
+				if err != nil {
+					svc.logFatal(js, fmt.Sprintf("Unable to add %s to zip file: %s", destTxtPath, err.Error()))
 					return
 				}
 			}
