@@ -10,6 +10,7 @@ import (
 	"path"
 	"runtime/debug"
 	"strconv"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/go-xmlfmt/xmlfmt"
@@ -134,19 +135,30 @@ func (svc *ServiceContext) createHathiTrustPackage(c *gin.Context) {
 		defer zipWriter.Close()
 
 		// Write the MARC XML to the package directory
-		xmlMetadataFileName := path.Join(packageDir, fmt.Sprintf("%s.xml", md.Barcode))
-		svc.logInfo(js, fmt.Sprintf("Get MARC metadata record and write it to %s", xmlMetadataFileName))
-		marcBytes, mdErr := svc.getRequest(fmt.Sprintf("%s/api/metadata/%s?type=marc", svc.TrackSys.API, md.PID))
-		if mdErr != nil {
-			svc.logFatal(js, fmt.Sprintf("Get MARC metadata for %s failed: %d - %s", md.PID, mdErr.StatusCode, mdErr.Message))
-			return
-		}
-		prettyXML := xmlfmt.FormatXML(string(marcBytes), "", "   ")
-		err = os.WriteFile(xmlMetadataFileName, []byte(prettyXML), 0666)
+		err = svc.writeMARCMetadata(js, packageDir, md)
 		if err != nil {
-			svc.logFatal(js, fmt.Sprintf("Unable to write MARC metadata text to %s %s", xmlMetadataFileName, err.Error()))
+			svc.logFatal(js, fmt.Sprintf("Unable to write MARC metadata to %s: %s", packageFilename, err.Error()))
 			return
 		}
+
+		// Create the checksum file; it will appended as files are processed
+		checksumPath := path.Join(assembleDir, "checksum.md5")
+		checksumFile, err := os.Create(checksumPath)
+		if err != nil {
+			svc.logFatal(js, fmt.Sprintf("Unable to create checksum file %s: %s", checksumPath, err.Error()))
+			return
+		}
+		checksumFile.Chmod(0666)
+		defer checksumFile.Close()
+
+		// Write the meta.yml file
+		lastCaptureDate := masterFiles[len(masterFiles)-1].CreatedAt
+		ymlMD5, err := svc.writeMetaYML(js, assembleDir, &lastCaptureDate, tgtUnit.DateDLDeliverablesReady)
+		if err != nil {
+			svc.logFatal(js, fmt.Sprintf("Unable to write meta.yml: %s", err.Error()))
+			return
+		}
+		checksumFile.WriteString(fmt.Sprintf("%s  meta.yml\n", ymlMD5))
 
 		for idx, mf := range masterFiles {
 			// copy jp2 to assembly directory, then add it to the zip
@@ -169,6 +181,7 @@ func (svc *ServiceContext) createHathiTrustPackage(c *gin.Context) {
 				svc.logFatal(js, fmt.Sprintf("Unable to add %s to zip file: %s", destPath, err.Error()))
 				return
 			}
+			checksumFile.WriteString(fmt.Sprintf("%s  %s\n", md5Checksum(destPath), destFN))
 
 			// if applicable, copy ocr text to the package dir. make the name match the image name
 			if md.OcrHint.OcrCandidate {
@@ -184,13 +197,55 @@ func (svc *ServiceContext) createHathiTrustPackage(c *gin.Context) {
 					svc.logFatal(js, fmt.Sprintf("Unable to add %s to zip file: %s", destTxtPath, err.Error()))
 					return
 				}
+				checksumFile.WriteString(fmt.Sprintf("%s  %s\n", md5Checksum(destTxtPath), txtFileName))
 			}
 		}
+
+		addFileToZip(packageFilename, zipWriter, assembleDir, "meta.yml")
+		addFileToZip(packageFilename, zipWriter, assembleDir, "checksum.md5")
 
 		svc.jobDone(js)
 	}()
 
 	c.String(http.StatusOK, fmt.Sprintf("%d", js.ID))
+}
+
+func (svc *ServiceContext) writeMARCMetadata(js *jobStatus, packageDir string, md metadata) error {
+	xmlMetadataFileName := path.Join(packageDir, fmt.Sprintf("%s.xml", md.Barcode))
+	svc.logInfo(js, fmt.Sprintf("Get MARC metadata record and write it to %s", xmlMetadataFileName))
+	marcBytes, mdErr := svc.getRequest(fmt.Sprintf("%s/api/metadata/%s?type=marc", svc.TrackSys.API, md.PID))
+	if mdErr != nil {
+		return fmt.Errorf("%d:%s", mdErr.StatusCode, mdErr.Message)
+	}
+	prettyXML := xmlfmt.FormatXML(string(marcBytes), "", "   ")
+	err := os.WriteFile(xmlMetadataFileName, []byte(prettyXML), 0666)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (svc *ServiceContext) writeMetaYML(js *jobStatus, assembleDir string, digitizationDate *time.Time, compressedAt *time.Time) (string, error) {
+	ymlPath := path.Join(assembleDir, "meta.yml")
+	ymlFile, err := os.Create(ymlPath)
+	if err != nil {
+		return "", err
+	}
+	ymlFile.Chmod(0666)
+	defer ymlFile.Close()
+
+	ymlFile.WriteString(fmt.Sprintf("capture_date: %s\n", digitizationDate.Format(time.RFC3339)))
+	ymlFile.WriteString("scanner_user: \"University of Virginia: Digital Production Group\"\n")
+	ymlFile.WriteString("contone_resolution_dpi: 600\n\n")
+	ymlFile.WriteString(fmt.Sprintf("image_compression_date: %s\n", compressedAt.Format(time.RFC3339)))
+	ymlFile.WriteString("image_compression_agent: virginia\n")
+	ymlFile.WriteString("image_compression_tool: [\"kdu_compress v8.0.5\",\"ImageMagick 7.1.0\"]\n\n")
+
+	ymlFile.WriteString("scanning_order: left-to-right\n")
+	ymlFile.WriteString("reading_order: left-to-right\n")
+	md5 := md5Checksum(ymlPath)
+
+	return md5, nil
 }
 
 func copyJP2(src string, dest string) error {
