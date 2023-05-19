@@ -12,6 +12,7 @@ import (
 	"strconv"
 
 	"github.com/gin-gonic/gin"
+	"github.com/go-xmlfmt/xmlfmt"
 )
 
 func (svc *ServiceContext) createHathiTrustPackage(c *gin.Context) {
@@ -101,10 +102,12 @@ func (svc *ServiceContext) createHathiTrustPackage(c *gin.Context) {
 			}
 		}()
 
-		hathiDir := path.Join(svc.ProcessingDir, "hathitrust")
-		packageDir := path.Join(hathiDir, md.Barcode)
+		// Setup all working directories; /digiserv-production/hathitrust/[barcode]/content
+		// final package data will reside in /digiserv-production/hathitrust/[barcode]
+		packageDir := path.Join(svc.ProcessingDir, "hathitrust", md.Barcode)
+		assembleDir := path.Join(packageDir, "content")
 		packageName := fmt.Sprintf("%s.zip", md.Barcode)
-		packageFilename := path.Join(hathiDir, packageName)
+		packageFilename := path.Join(packageDir, packageName)
 		if pathExists(packageDir) {
 			svc.logInfo(js, fmt.Sprintf("Clean up pre-existing package assembly directory %s", packageDir))
 			err := os.RemoveAll(packageDir)
@@ -113,12 +116,13 @@ func (svc *ServiceContext) createHathiTrustPackage(c *gin.Context) {
 				return
 			}
 		}
-		err = ensureDirExists(packageDir, 0777)
+		err = ensureDirExists(assembleDir, 0777)
 		if err != nil {
-			svc.logFatal(js, fmt.Sprintf("Unable to create package directory %s: %s", packageDir, err.Error()))
+			svc.logFatal(js, fmt.Sprintf("Unable to create package / assembly directories %s: %s", assembleDir, err.Error()))
 			return
 		}
 
+		// Create the pacage ZIP file
 		svc.logInfo(js, fmt.Sprintf("Package will be generated here %s", packageFilename))
 		zipFile, err := os.Create(packageFilename)
 		if err != nil {
@@ -129,8 +133,23 @@ func (svc *ServiceContext) createHathiTrustPackage(c *gin.Context) {
 		defer zipFile.Close()
 		defer zipWriter.Close()
 
+		// Write the MARC XML to the package directory
+		xmlMetadataFileName := path.Join(packageDir, fmt.Sprintf("%s.xml", md.Barcode))
+		svc.logInfo(js, fmt.Sprintf("Get MARC metadata record and write it to %s", xmlMetadataFileName))
+		marcBytes, mdErr := svc.getRequest(fmt.Sprintf("%s/api/metadata/%s?type=marc", svc.TrackSys.API, md.PID))
+		if mdErr != nil {
+			svc.logFatal(js, fmt.Sprintf("Get MARC metadata for %s failed: %d - %s", md.PID, mdErr.StatusCode, mdErr.Message))
+			return
+		}
+		prettyXML := xmlfmt.FormatXML(string(marcBytes), "", "   ")
+		err = os.WriteFile(xmlMetadataFileName, []byte(prettyXML), 0666)
+		if err != nil {
+			svc.logFatal(js, fmt.Sprintf("Unable to write MARC metadata text to %s %s", xmlMetadataFileName, err.Error()))
+			return
+		}
+
 		for idx, mf := range masterFiles {
-			// copy jp2 to package directory, then add it to the zip
+			// copy jp2 to assembly directory, then add it to the zip
 			destFN := fmt.Sprintf("%08d.jp2", (idx + 1))
 			jp2kInfo := svc.iiifPath(mf.PID)
 			if pathExists(jp2kInfo.absolutePath) == false {
@@ -138,14 +157,14 @@ func (svc *ServiceContext) createHathiTrustPackage(c *gin.Context) {
 				return
 			}
 
-			destPath := path.Join(packageDir, destFN)
+			destPath := path.Join(assembleDir, destFN)
 			err = copyJP2(jp2kInfo.absolutePath, destPath)
 			if err != nil {
 				svc.logFatal(js, fmt.Sprintf("Unable to copy %s to %s %s", jp2kInfo.absolutePath, destPath, err.Error()))
 				return
 			}
 
-			_, err := addFileToZip(packageFilename, zipWriter, packageDir, destFN)
+			_, err := addFileToZip(packageFilename, zipWriter, assembleDir, destFN)
 			if err != nil {
 				svc.logFatal(js, fmt.Sprintf("Unable to add %s to zip file: %s", destPath, err.Error()))
 				return
@@ -154,13 +173,13 @@ func (svc *ServiceContext) createHathiTrustPackage(c *gin.Context) {
 			// if applicable, copy ocr text to the package dir. make the name match the image name
 			if md.OcrHint.OcrCandidate {
 				txtFileName := fmt.Sprintf("%08d.txt", (idx + 1))
-				destTxtPath := path.Join(packageDir, txtFileName)
+				destTxtPath := path.Join(assembleDir, txtFileName)
 				err = os.WriteFile(destTxtPath, []byte(mf.TranscriptionText), 0666)
 				if err != nil {
 					svc.logFatal(js, fmt.Sprintf("Unable to write OCR text to %s %s", destTxtPath, err.Error()))
 					return
 				}
-				_, err := addFileToZip(packageFilename, zipWriter, packageDir, txtFileName)
+				_, err := addFileToZip(packageFilename, zipWriter, assembleDir, txtFileName)
 				if err != nil {
 					svc.logFatal(js, fmt.Sprintf("Unable to add %s to zip file: %s", destTxtPath, err.Error()))
 					return
