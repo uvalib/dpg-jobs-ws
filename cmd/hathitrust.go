@@ -57,6 +57,7 @@ func (svc *ServiceContext) createHathiTrustPackage(c *gin.Context) {
 	}
 
 	tgtUnit := units[0]
+	tgtUnit.Metadata = &md
 	svc.logInfo(js, fmt.Sprintf("Create HathiTrust submission package for metadata %s unit %d", md.PID, tgtUnit.ID))
 
 	svc.logInfo(js, "Load master files for unit")
