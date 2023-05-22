@@ -71,29 +71,6 @@ func (svc *ServiceContext) createHathiTrustPackage(c *gin.Context) {
 		return
 	}
 
-	if md.OcrHint.OcrCandidate {
-		svc.logInfo(js, "This unit is an OCR candidate; check master files to see if OCR needs to be done")
-		doOCR := false
-		for _, mf := range masterFiles {
-			if mf.TranscriptionText == "" {
-				svc.logInfo(js, fmt.Sprintf("Masterfile %s:%s has no OCR text; OCR must be run on the unit", mf.PID, mf.Filename))
-				doOCR = true
-				break
-			}
-		}
-		if doOCR {
-			// note; this call will not return until all master files in the unit have OCR results
-			svc.logInfo(js, "Starting OCR for unit")
-			err = svc.requestUnitOCR(js, &tgtUnit)
-			if err != nil {
-				svc.logFatal(js, fmt.Sprintf("Unable to request OCR: %s", err.Error()))
-				return
-			}
-		} else {
-			svc.logInfo(js, "OCR already exists")
-		}
-	}
-
 	go func() {
 		defer func() {
 			if r := recover(); r != nil {
@@ -123,7 +100,31 @@ func (svc *ServiceContext) createHathiTrustPackage(c *gin.Context) {
 			return
 		}
 
-		// Create the pacage ZIP file
+		// If OCR is applicable, perform it first
+		if md.OcrHint.OcrCandidate {
+			svc.logInfo(js, "This unit is an OCR candidate; check master files to see if OCR needs to be done")
+			doOCR := false
+			for _, mf := range masterFiles {
+				if mf.TranscriptionText == "" {
+					svc.logInfo(js, fmt.Sprintf("Masterfile %s:%s has no OCR text; OCR must be run on the unit", mf.PID, mf.Filename))
+					doOCR = true
+					break
+				}
+			}
+			if doOCR {
+				// note; this call will not return until all master files in the unit have OCR results
+				svc.logInfo(js, "Starting OCR for unit")
+				err = svc.requestUnitOCR(js, &tgtUnit)
+				if err != nil {
+					svc.logFatal(js, fmt.Sprintf("Unable to request OCR: %s", err.Error()))
+					return
+				}
+			} else {
+				svc.logInfo(js, "OCR already exists")
+			}
+		}
+
+		// Create the package ZIP file
 		svc.logInfo(js, fmt.Sprintf("Package will be generated here %s", packageFilename))
 		zipFile, err := os.Create(packageFilename)
 		if err != nil {
