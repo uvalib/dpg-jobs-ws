@@ -104,24 +104,21 @@ func (svc *ServiceContext) createHathiTrustPackage(c *gin.Context) {
 		// If OCR is applicable, perform it first
 		if md.OcrHint.OcrCandidate {
 			svc.logInfo(js, "This unit is an OCR candidate; check master files to see if OCR needs to be done")
-			doOCR := false
+			doOCR := true
 			for _, mf := range masterFiles {
-				if mf.TranscriptionText == "" {
-					svc.logInfo(js, fmt.Sprintf("Masterfile %s:%s has no OCR text; OCR must be run on the unit", mf.PID, mf.Filename))
-					doOCR = true
+				if mf.TranscriptionText != "" {
+					svc.logInfo(js, fmt.Sprintf("Masterfile %s:%s has OCR text. Assume the whole unit has been OCR'd already", mf.PID, mf.Filename))
+					doOCR = false
 					break
 				}
 			}
 			if doOCR {
 				// note; this call will not return until all master files in the unit have OCR results
-				svc.logInfo(js, "Starting OCR for unit")
 				err = svc.requestUnitOCR(js, &tgtUnit)
 				if err != nil {
 					svc.logFatal(js, fmt.Sprintf("Unable to request OCR: %s", err.Error()))
 					return
 				}
-			} else {
-				svc.logInfo(js, "OCR already exists")
 			}
 		}
 
