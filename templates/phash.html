@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html>
+   <body>
+      <h2>
+         Master files pHash generation has completed.
+      </h2>
+      <div>
+         <h3>Generation Summary</h3>
+         <div>
+            <label class="label">Started:&nbsp;</label>
+            <span>{{.StartedAt}}</span>
+         </div>
+         <div>
+            <label class="label">Total Master Files:&nbsp;</label>
+            <span>{{.MasterFileCount}}</span>
+         </div>
+         <div>
+            <label class="label">Success:&nbsp;</label>
+            <span>{{.SuccessCount}}</span>
+         </div>
+         <div>
+            <label class="label">Missing Archive:&nbsp;</label>
+            <span>{{.MissingArchiveCount}}</span>
+         </div>
+         <div>
+            <label class="label">pHash Failed:&nbsp;</label>
+            <span>{{.FailedPHashCount}}</span>
+         </div>
+         <div>
+            <label class="label">Database Error:&nbsp;</label>
+            <span>{{.DBErrorCount}}</span>
+         </div>
+         <div>
+            <label class="label">Finished:&nbsp;</label>
+            <span>{{.FinishedAt}}</span>
+         </div>
+      </div>
+   </body>
+</html>

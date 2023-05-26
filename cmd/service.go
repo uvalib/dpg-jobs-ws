@@ -34,6 +34,7 @@ type htmlTemplates struct {
 	Fees            *template.Template
 	OrderAvailable  *template.Template
 	AuditResults    *template.Template
+	PHashResults    *template.Template
 	PDFOrderSummary *template.Template
 }
 
@@ -115,6 +116,10 @@ func InitializeService(version string, cfg *ServiceConfig) *ServiceContext {
 
 	log.Printf("INFO: load html templates")
 	ctx.Templates.AuditResults, err = template.New("audit.html").ParseFiles("./templates/audit.html")
+	if err != nil {
+		log.Fatal(err)
+	}
+	ctx.Templates.PHashResults, err = template.New("phash.html").ParseFiles("./templates/phash.html")
 	if err != nil {
 		log.Fatal(err)
 	}

@@ -10,7 +10,7 @@ import (
 )
 
 // Version of the service
-const version = "1.11.1"
+const version = "1.12.0"
 
 func main() {
 	log.Printf("===> DPG backend processing service starting up <===")
@@ -36,6 +36,7 @@ func main() {
 	router.GET("/healthcheck", svc.healthCheck)
 
 	router.POST("/audit", svc.auditMasterFiles)
+	router.POST("/phash", svc.generateMasterFilesPHash)
 
 	router.GET("/archivesspace/lookup", svc.archivesSpaceMiddleware, svc.lookupArchivesSpaceURL)
 	router.GET("/archivesspace/validate", svc.archivesSpaceMiddleware, svc.validateArchivesSpaceURL)

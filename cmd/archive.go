@@ -304,10 +304,20 @@ func (svc *ServiceContext) archiveFile(js *jobStatus, srcPath string, unitID int
 	}
 	svc.logInfo(js, fmt.Sprintf("%s archived to %s. MD5 checksum [%s]", tgtMF.Filename, archiveFile, newMD5))
 
+	svc.logInfo(js, "Calculate pHash")
+	updateFields := []string{"DateArchived"}
+	pHash, err := calculatePHash(archiveFile)
+	if err != nil {
+		svc.logError(js, fmt.Sprintf("Unable to calculate pHash: %s", err.Error()))
+	} else {
+		updateFields = append(updateFields, "PHash")
+		tgtMF.PHash = &pHash
+	}
+
 	svc.logInfo(js, fmt.Sprintf("Setting date archived for %s", tgtMF.Filename))
 	now := time.Now()
 	tgtMF.DateArchived = &now
-	err = svc.GDB.Model(tgtMF).Select("DateArchived").Updates(*tgtMF).Error
+	err = svc.GDB.Model(tgtMF).Select(updateFields).Updates(*tgtMF).Error
 	if err != nil {
 		svc.logError(js, fmt.Sprintf("Unable to set date archived for master file %d:%s", tgtMF.ID, err.Error()))
 	}

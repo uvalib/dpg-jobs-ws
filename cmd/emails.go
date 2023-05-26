@@ -27,6 +27,29 @@ type emailRequest struct {
 	Body    string
 }
 
+func (svc *ServiceContext) sendPHashResultsEmail(recipient string, phashSummary phashGenerateStats) {
+	log.Printf("INFO: sent pHash results email to %s", recipient)
+	req := emailRequest{Subject: "UVA Digital Production Group - pHash Generation Results",
+		To:      []string{recipient},
+		From:    svc.SMTP.Sender,
+		ReplyTo: svc.SMTP.Sender,
+	}
+
+	var renderedEmail bytes.Buffer
+	err := svc.Templates.PHashResults.Execute(&renderedEmail, phashSummary)
+	if err != nil {
+		log.Printf("ERROR: unable to render fees email for phash results: %s", err.Error())
+	}
+
+	req.Body = renderedEmail.String()
+	err = svc.sendEmail(&req)
+	if err != nil {
+		log.Printf("ERROR: unable to send email for phash audit results: %s", err.Error())
+		return
+	}
+	log.Printf("INFO: email for phash results successfully sent")
+}
+
 func (svc *ServiceContext) sendAuditResultsEmail(recipient string, auditSummary auditYearResults) {
 	log.Printf("INFO: sent audit results email to %s", recipient)
 	req := emailRequest{Subject: fmt.Sprintf("UVA Digital Production Group - %s Audit Results", auditSummary.Year),
@@ -48,7 +71,6 @@ func (svc *ServiceContext) sendAuditResultsEmail(recipient string, auditSummary 
 		return
 	}
 	log.Printf("INFO: email for %s audit successfully sent", auditSummary.Year)
-
 }
 
 func (svc *ServiceContext) sendOrderEmail(c *gin.Context) {
