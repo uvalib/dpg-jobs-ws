@@ -2,6 +2,10 @@ package main
 
 import (
 	"fmt"
+	"image"
+	"image/gif"
+	"image/jpeg"
+	"image/png"
 	"log"
 	"net/http"
 	"os"
@@ -19,6 +23,7 @@ import (
 type phashGenerateStats struct {
 	StartedAt           string
 	FinishedAt          string
+	Year                string
 	MasterFileCount     int64
 	MissingArchiveCount int64
 	FailedPHashCount    int64
@@ -28,6 +33,7 @@ type phashGenerateStats struct {
 
 type phashRequest struct {
 	Email string `json:"email"`
+	Year  string `json:"year"`
 	Limit int    `json:"limit"`
 }
 
@@ -46,8 +52,13 @@ func (svc *ServiceContext) generateMasterFilesPHash(c *gin.Context) {
 		c.String(http.StatusBadRequest, "missing emiil")
 		return
 	}
+	if req.Year == "" {
+		log.Printf("ERROR: year is required for phash request")
+		c.String(http.StatusBadRequest, "missing year")
+		return
+	}
 
-	log.Printf("INFO: %s requests pHash generation with limit %d", req.Email, req.Limit)
+	log.Printf("INFO: %s requests pHash generation for year %s with limit %d", req.Email, req.Year, req.Limit)
 
 	go func() {
 		defer func() {
@@ -59,8 +70,8 @@ func (svc *ServiceContext) generateMasterFilesPHash(c *gin.Context) {
 
 		var masterFiles []masterFile
 		batchSize := 1000
-		stats := phashGenerateStats{StartedAt: time.Now().Format("2006-01-02 03:04:05 PM")}
-		pHashQ := svc.GDB.Where("phash is null")
+		stats := phashGenerateStats{StartedAt: time.Now().Format("2006-01-02 03:04:05 PM"), Year: req.Year}
+		pHashQ := svc.GDB.Where("phash is null and year(created_at) = ? and date_archived is not null and original_mf_id is null", req.Year)
 		if req.Limit > 0 {
 			pHashQ = pHashQ.Limit(req.Limit)
 		}
@@ -124,7 +135,19 @@ func calculatePHash(filePath string) (uint64, error) {
 	}
 
 	defer imgFile.Close()
-	imgData, err := tiff.Decode(imgFile)
+	fileType := strings.ToUpper(path.Ext(filePath))
+	fileType = strings.Replace(fileType, ".", "", 1)
+	var imgData image.Image
+
+	if fileType == "TIF" {
+		imgData, err = tiff.Decode(imgFile)
+	} else if fileType == "JPG" {
+		imgData, err = jpeg.Decode(imgFile)
+	} else if fileType == "PNG" {
+		imgData, err = png.Decode(imgFile)
+	} else if fileType == "GIF" {
+		imgData, err = gif.Decode(imgFile)
+	}
 	if err != nil {
 		return 0, fmt.Errorf("unable to decode %s for phash generation: %s", filePath, err.Error())
 	}
