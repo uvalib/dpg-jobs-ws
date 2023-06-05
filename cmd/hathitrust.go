@@ -23,7 +23,8 @@ import (
 type hathiTrustRequest struct {
 	ComputeID   string  `json:"computeID"`
 	MetadataIDs []int64 `json:"records"`
-	TestMode    bool    `json:"test"`
+	OrderID     int64   `json:"order"`
+	Mode        string  `json:"mode"`
 	Name        string  `json:"name"`
 }
 
@@ -37,14 +38,20 @@ func (svc *ServiceContext) submitHathiTrustMetadata(c *gin.Context) {
 		return
 	}
 
+	if req.Mode != "dev" && req.Mode != "test" && req.Mode != "prod" {
+		log.Printf("INFO: hathitrust metadata request requires mode dev,test or prod")
+		c.String(http.StatusBadRequest, "mode must be dev, test or prod")
+		return
+	}
+
 	if req.ComputeID == "" {
-		log.Printf("ERROR: hathitrust metadata request requires comopute id")
+		log.Printf("ERROR: hathitrust metadata request requires compute id")
 		c.String(http.StatusBadRequest, "compute if is required")
 		return
 	}
-	if len(req.MetadataIDs) == 0 {
-		log.Printf("ERROR: hathitrust metadata request metadata ids")
-		c.String(http.StatusBadRequest, "metadata id list is required")
+	if len(req.MetadataIDs) == 0 && req.OrderID == 0 {
+		log.Printf("INFO: hathitrust metadata request requires order id or metadata ids")
+		c.String(http.StatusBadRequest, "order id or metadata id list is required")
 		return
 	}
 
@@ -69,11 +76,18 @@ func (svc *ServiceContext) submitHathiTrustMetadata(c *gin.Context) {
 		return
 	}
 
-	if req.TestMode {
-		svc.logInfo(js, fmt.Sprintf("%s requests testing hathitrust metadata submission for %v", req.ComputeID, req.MetadataIDs))
-	} else {
-		svc.logInfo(js, fmt.Sprintf("%s requests production hathitrust metadata submission for %v", req.ComputeID, req.MetadataIDs))
+	submissionInfo := fmt.Sprintf("for metadata records %v", req.MetadataIDs)
+	if req.OrderID > 0 {
+		err = svc.GDB.Raw("select metadata_id from units where order_id=?", req.OrderID).Scan(&req.MetadataIDs).Error
+		if err != nil {
+			log.Printf("ERROR: unable to get metadata ids for order %d: %s", req.OrderID, err.Error())
+			c.String(http.StatusInternalServerError, fmt.Sprintf("uable to get metadata ids for order: %s", err.Error()))
+			return
+		}
+		submissionInfo = fmt.Sprintf("for order %d with %d metadata records", req.OrderID, len(req.MetadataIDs))
 	}
+
+	svc.logInfo(js, fmt.Sprintf("%s requests %s hathitrust metadata submission %s", req.ComputeID, req.Mode, submissionInfo))
 
 	go func() {
 		defer func() {
@@ -104,7 +118,7 @@ func (svc *ServiceContext) submitHathiTrustMetadata(c *gin.Context) {
 		}
 
 		uploadDirectory := "submissions"
-		if req.TestMode {
+		if req.Mode == "test" {
 			uploadDirectory = "testrecs"
 		}
 		svc.logInfo(js, fmt.Sprintf("Set FTPS working directory to%s", uploadDirectory))
@@ -150,11 +164,15 @@ func (svc *ServiceContext) submitHathiTrustMetadata(c *gin.Context) {
 		metadataOut += "\n</collection>"
 
 		if recordCnt > 0 {
-			svc.logInfo(js, fmt.Sprintf("Upload %d MARC records with total size %d to FTPS %s as %s", recordCnt, len(metadataOut), svc.HathiTrust.FTPS, uploadFN))
-			err = ftpsConn.Upload(ftpsCtx, uploadFN, strings.NewReader(metadataOut))
-			if err != nil {
-				svc.logFatal(js, fmt.Sprintf("upload failed: %s", err.Error()))
-				return
+			if req.Mode == "dev" {
+				svc.logInfo(js, metadataOut)
+			} else {
+				svc.logInfo(js, fmt.Sprintf("Upload %d MARC records with total size %d to FTPS %s as %s", recordCnt, len(metadataOut), svc.HathiTrust.FTPS, uploadFN))
+				err = ftpsConn.Upload(ftpsCtx, uploadFN, strings.NewReader(metadataOut))
+				if err != nil {
+					svc.logFatal(js, fmt.Sprintf("upload failed: %s", err.Error()))
+					return
+				}
 			}
 
 			svc.sendHathiTrustUploadEmail(uploadFN, len(metadataOut), recordCnt)
