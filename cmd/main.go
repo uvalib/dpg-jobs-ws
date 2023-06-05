@@ -10,7 +10,7 @@ import (
 )
 
 // Version of the service
-const version = "1.12.1"
+const version = "1.13.0"
 
 func main() {
 	log.Printf("===> DPG backend processing service starting up <===")
@@ -37,6 +37,8 @@ func main() {
 
 	router.POST("/audit", svc.auditMasterFiles)
 	router.POST("/phash", svc.generateMasterFilesPHash)
+	router.POST("/hathitrust/package", svc.createHathiTrustPackage)
+	router.POST("/hathitrust/metadata", svc.submitHathiTrustMetadata)
 
 	router.GET("/archivesspace/lookup", svc.archivesSpaceMiddleware, svc.lookupArchivesSpaceURL)
 	router.GET("/archivesspace/validate", svc.archivesSpaceMiddleware, svc.validateArchivesSpaceURL)
@@ -51,7 +53,6 @@ func main() {
 	router.POST("/iiif/publish", svc.publishMasterFileToIIIF)
 
 	router.POST("/metadata/:id/baggit", svc.createBag)
-	router.POST("/metadata/:id/hathitrust", svc.createHathiTrustPackage)
 	router.POST("/metadata/:id/publish", svc.publishToVirgo)
 
 	router.GET("/ocr/languages", svc.getOCRLanguages)

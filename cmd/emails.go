@@ -27,8 +27,29 @@ type emailRequest struct {
 	Body    string
 }
 
+func (svc *ServiceContext) sendHathiTrustUploadEmail(fileName string, fileSize int, recordCount int) {
+	log.Printf("INFO: sending hathitrust upload email")
+	req := emailRequest{Subject: "Zephir metadata file submission",
+		To:      []string{"cdl-zphr-l@ucop.edu"},
+		From:    "lf6f@virginia.edu",
+		ReplyTo: "lf6f@virginia.edu",
+	}
+
+	req.Body = fmt.Sprintf("file name=%s\n", fileName)
+	req.Body += fmt.Sprintf("file size=%d\n", fileSize)
+	req.Body += fmt.Sprintf("record count=%d\n", recordCount)
+	req.Body += "notification email=lf6f@virginia.edu"
+
+	err := svc.sendEmail(&req)
+	if err != nil {
+		log.Printf("ERROR: unable to send hathitrust submission email: %s", err.Error())
+		return
+	}
+	log.Printf("INFO: email for hathitrust submission successfully sent")
+}
+
 func (svc *ServiceContext) sendPHashResultsEmail(recipient string, phashSummary phashGenerateStats) {
-	log.Printf("INFO: sent pHash results email to %s", recipient)
+	log.Printf("INFO: send pHash results email to %s", recipient)
 	req := emailRequest{Subject: "UVA Digital Production Group - pHash Generation Results",
 		To:      []string{recipient},
 		From:    svc.SMTP.Sender,

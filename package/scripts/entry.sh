@@ -23,6 +23,9 @@ cd bin; ./dpg-jobs-ws              \
   -smtpsender ${SMPT_SENDER}       \
   -asuser     ${AS_USER}           \
   -aspass     ${AS_PASS}           \
+  -htftps     ${HT_FTPS}           \
+  -htuser     ${HT_USER}           \
+  -htpass     ${HT_PASS}           \
   -tsapi      ${TSAPI}             \
   -tsadmin    ${TSADMIN}           \
   -reindex    ${REINDEX}           \

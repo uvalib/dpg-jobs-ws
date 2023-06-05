@@ -36,6 +36,13 @@ type ArchivesSpaceConfig struct {
 	Pass string
 }
 
+// HathiTrustConfig contains the configuration data for HathiTrust submissions
+type HathiTrustConfig struct {
+	FTPS string
+	User string
+	Pass string
+}
+
 // TrackSysConfig contains the configuration data for tracksys endpoints
 type TrackSysConfig struct {
 	API   string
@@ -51,6 +58,7 @@ type ServiceConfig struct {
 	IIIF          IIIFConfig
 	ProcessingDir string
 	DeliveryDir   string
+	HathiTrust    HathiTrustConfig
 	ArchivesSpace ArchivesSpaceConfig
 	TrackSys      TrackSysConfig
 	ReindexURL    string
@@ -80,6 +88,11 @@ func LoadConfiguration() *ServiceConfig {
 	// ArchivesSpace
 	flag.StringVar(&cfg.ArchivesSpace.User, "asuser", "", "ArchivesSpace user")
 	flag.StringVar(&cfg.ArchivesSpace.Pass, "aspass", "", "ArchivesSpace password")
+
+	// HathiTrust FTPS
+	flag.StringVar(&cfg.HathiTrust.FTPS, "htftps", "", "HathiTrust FTPS")
+	flag.StringVar(&cfg.HathiTrust.User, "htuser", "", "HathiTrust user")
+	flag.StringVar(&cfg.HathiTrust.Pass, "htpass", "", "HathiTrust pass")
 
 	// TrackSys
 	flag.StringVar(&cfg.TrackSys.API, "tsapi", "https://tracksys-api-ws.internal.lib.virginia.edu", "URL for TrackSys API")
@@ -125,7 +138,7 @@ func LoadConfiguration() *ServiceConfig {
 		log.Fatal("Parameter delivery is required")
 	}
 	if cfg.IIIF.Dir == "" {
-		log.Fatal("Parameter iif is required")
+		log.Fatal("Parameter iiif is required")
 	}
 	if cfg.ProcessingDir == "" {
 		log.Fatal("Parameter work is required")
@@ -138,6 +151,15 @@ func LoadConfiguration() *ServiceConfig {
 	}
 	if cfg.ArchivesSpace.Pass == "" {
 		log.Fatal("Parameter aspass is required")
+	}
+	if cfg.HathiTrust.FTPS == "" {
+		log.Fatal("Parameter htftps is required")
+	}
+	if cfg.HathiTrust.User == "" {
+		log.Fatal("Parameter htuser is required")
+	}
+	if cfg.HathiTrust.Pass == "" {
+		log.Fatal("Parameter htpass is required")
 	}
 
 	log.Printf("[CONFIG] port          = [%d]", cfg.Port)
@@ -157,6 +179,8 @@ func LoadConfiguration() *ServiceConfig {
 	log.Printf("[CONFIG] tsadmin       = [%s]", cfg.TrackSys.Admin)
 	log.Printf("[CONFIG] tsapi         = [%s]", cfg.TrackSys.API)
 	log.Printf("[CONFIG] asuser        = [%s]", cfg.ArchivesSpace.User)
+	log.Printf("[CONFIG] htftps        = [%s]", cfg.HathiTrust.FTPS)
+	log.Printf("[CONFIG] htuser        = [%s]", cfg.HathiTrust.User)
 
 	if cfg.SMTP.FakeSMTP {
 		log.Printf("[CONFIG] fakesmtp      = [true]")

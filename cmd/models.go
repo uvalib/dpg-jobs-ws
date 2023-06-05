@@ -72,6 +72,8 @@ type intendedUse struct {
 type staffMember struct {
 	ID          int64
 	ComputingID string
+	Email       string
+	Role        uint // [:admin, :supervisor, :student, :viewer]
 }
 
 type customer struct {

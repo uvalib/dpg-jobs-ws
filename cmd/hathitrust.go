@@ -2,6 +2,8 @@ package main
 
 import (
 	"archive/zip"
+	"context"
+	"crypto/tls"
 	"fmt"
 	"io"
 	"log"
@@ -10,11 +12,161 @@ import (
 	"path"
 	"runtime/debug"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/go-xmlfmt/xmlfmt"
+	"github.com/kardianos/ftps"
 )
+
+type hathiTrustRequest struct {
+	ComputeID   string  `json:"computeID"`
+	MetadataIDs []int64 `json:"records"`
+	TestMode    bool    `json:"test"`
+	Name        string  `json:"name"`
+}
+
+func (svc *ServiceContext) submitHathiTrustMetadata(c *gin.Context) {
+	log.Printf("INFO: received hathitrust metadata request")
+	var req hathiTrustRequest
+	err := c.ShouldBindJSON(&req)
+	if err != nil {
+		log.Printf("ERROR: unable to parse hathitrust metadata request: %s", err.Error())
+		c.String(http.StatusBadRequest, err.Error())
+		return
+	}
+
+	if req.ComputeID == "" {
+		log.Printf("ERROR: hathitrust metadata request requires comopute id")
+		c.String(http.StatusBadRequest, "compute if is required")
+		return
+	}
+	if len(req.MetadataIDs) == 0 {
+		log.Printf("ERROR: hathitrust metadata request metadata ids")
+		c.String(http.StatusBadRequest, "metadata id list is required")
+		return
+	}
+
+	var submitUser staffMember
+	err = svc.GDB.Where("computing_id=?", req.ComputeID).First(&submitUser).Error
+	if err != nil {
+		log.Printf("ERROR: user %s not found: %s", req.ComputeID, err.Error())
+		c.String(http.StatusBadRequest, err.Error())
+		return
+	}
+
+	if submitUser.Role != 0 {
+		log.Printf("ERROR: hathitrust metadata requests can only be submitted by admin users")
+		c.String(http.StatusBadRequest, "you do not have permission to make this request")
+		return
+	}
+
+	js, err := svc.createJobStatus("HathiTrust", "StaffMember", submitUser.ID)
+	if err != nil {
+		log.Printf("ERROR: unable to create HathiTrush metadata job status: %s", err.Error())
+		c.String(http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	if req.TestMode {
+		svc.logInfo(js, fmt.Sprintf("%s requests testing hathitrust metadata submission for %v", req.ComputeID, req.MetadataIDs))
+	} else {
+		svc.logInfo(js, fmt.Sprintf("%s requests production hathitrust metadata submission for %v", req.ComputeID, req.MetadataIDs))
+	}
+
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				log.Printf("ERROR: Panic recovered: %v", r)
+				debug.PrintStack()
+				svc.logFatal(js, fmt.Sprintf("Panic recovered while submitting hathitrust metadata: %v", r))
+			}
+		}()
+
+		svc.logInfo(js, fmt.Sprintf("connecting to ftps server %s as %s", svc.HathiTrust.FTPS, svc.HathiTrust.User))
+		ftpsCtx, cancel := context.WithTimeout(context.Background(), time.Second*10)
+		defer cancel()
+		ftpsConn, err := ftps.Dial(ftpsCtx, ftps.DialOptions{
+			Host:     svc.HathiTrust.FTPS,
+			Port:     21,
+			Username: svc.HathiTrust.User,
+			Passowrd: svc.HathiTrust.Pass,
+			TLSConfig: &tls.Config{
+				InsecureSkipVerify: true,
+			},
+			ExplicitTLS: true,
+		})
+		defer ftpsConn.Close()
+		if err != nil {
+			svc.logFatal(js, fmt.Sprintf("Unable to connect to FTPS: %s", err.Error()))
+			return
+		}
+
+		uploadDirectory := "submissions"
+		if req.TestMode {
+			uploadDirectory = "testrecs"
+		}
+		svc.logInfo(js, fmt.Sprintf("Set FTPS working directory to%s", uploadDirectory))
+		err = ftpsConn.Chdir(uploadDirectory)
+		if err != nil {
+			svc.logFatal(js, fmt.Sprintf("Unable to switch to upload directory %s: %s", uploadDirectory, err.Error()))
+			return
+		}
+		pwd, err := ftpsConn.Getwd()
+		if err != nil {
+			svc.logFatal(js, fmt.Sprintf("Unable to get working directory: %s", err.Error()))
+			return
+		}
+		if strings.Contains(pwd, uploadDirectory) == false {
+			svc.logFatal(js, fmt.Sprintf("Working directory mismatch; %s vs %s", pwd, uploadDirectory))
+			return
+		}
+
+		dateStr := time.Now().Format("20060102")
+		uploadFN := fmt.Sprintf("UVA-2_%s", dateStr)
+		if req.Name != "" {
+			uploadFN += fmt.Sprintf("_%s", req.Name)
+		}
+		uploadFN += ".xml"
+		metadataOut := "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<collection xmlns=\"http://www.loc.gov/MARC21/slim\">"
+		recordCnt := 0
+		for _, mdID := range req.MetadataIDs {
+			var tgtMD metadata
+			err = svc.GDB.Find(&tgtMD, mdID).Error
+			if err != nil {
+				svc.logError(js, fmt.Sprintf("Unable to load metadata %d: %s", mdID, err.Error()))
+				continue
+			}
+
+			xml, err := svc.getMARCMetadata(tgtMD)
+			if err != nil {
+				svc.logError(js, fmt.Sprintf("Unable to retrieve MARC XML for %d: %s", mdID, err.Error()))
+				continue
+			}
+			metadataOut += fmt.Sprintf("\n%s", xml)
+			recordCnt++
+		}
+		metadataOut += "\n</collection>"
+		svc.logInfo(js, fmt.Sprintf("Write %d MARC records to ftps as %s", recordCnt, uploadFN))
+		err = ftpsConn.Upload(ftpsCtx, uploadFN, strings.NewReader(metadataOut))
+		if err != nil {
+			svc.logFatal(js, fmt.Sprintf("upload failed: %s", err.Error()))
+			return
+		}
+
+		log.Printf("COUNT: %d", recordCnt)
+		svc.sendHathiTrustUploadEmail(uploadFN, len(metadataOut), recordCnt)
+		if err != nil {
+			svc.logFatal(js, fmt.Sprintf("Unable to send email to HathiTrust: %s", err.Error()))
+			return
+		}
+
+		svc.jobDone(js)
+	}()
+
+	c.String(http.StatusOK, "submit request started")
+}
 
 func (svc *ServiceContext) createHathiTrustPackage(c *gin.Context) {
 	mdID, _ := strconv.ParseInt(c.Param("id"), 10, 64)
@@ -133,13 +285,6 @@ func (svc *ServiceContext) createHathiTrustPackage(c *gin.Context) {
 		defer zipFile.Close()
 		defer zipWriter.Close()
 
-		// Write the MARC XML to the package directory
-		err = svc.writeMARCMetadata(js, packageDir, md)
-		if err != nil {
-			svc.logFatal(js, fmt.Sprintf("Unable to write MARC metadata to %s: %s", packageFilename, err.Error()))
-			return
-		}
-
 		// Create the checksum file; it will appended as files are processed
 		checksumPath := path.Join(assembleDir, "checksum.md5")
 		checksumFile, err := os.Create(checksumPath)
@@ -209,19 +354,19 @@ func (svc *ServiceContext) createHathiTrustPackage(c *gin.Context) {
 	c.String(http.StatusOK, fmt.Sprintf("%d", js.ID))
 }
 
-func (svc *ServiceContext) writeMARCMetadata(js *jobStatus, packageDir string, md metadata) error {
-	xmlMetadataFileName := path.Join(packageDir, fmt.Sprintf("%s.xml", md.Barcode))
-	svc.logInfo(js, fmt.Sprintf("Get MARC metadata record and write it to %s", xmlMetadataFileName))
+func (svc *ServiceContext) getMARCMetadata(md metadata) (string, error) {
 	marcBytes, mdErr := svc.getRequest(fmt.Sprintf("%s/api/metadata/%s?type=marc", svc.TrackSys.API, md.PID))
 	if mdErr != nil {
-		return fmt.Errorf("%d:%s", mdErr.StatusCode, mdErr.Message)
+		return "", fmt.Errorf("%d:%s", mdErr.StatusCode, mdErr.Message)
 	}
-	prettyXML := xmlfmt.FormatXML(string(marcBytes), "", "   ")
-	err := os.WriteFile(xmlMetadataFileName, []byte(prettyXML), 0666)
-	if err != nil {
-		return err
-	}
-	return nil
+	marcStr := string(marcBytes)
+	idx := strings.Index(marcStr, "<record>")
+	marcStr = marcStr[idx:len(marcStr)]
+	idx = strings.Index(marcStr, "</collection>")
+	marcStr = marcStr[:idx]
+	prettyXML := xmlfmt.FormatXML(marcStr, "", "   ")
+	prettyXML = strings.TrimSpace(prettyXML)
+	return prettyXML, nil
 }
 
 func (svc *ServiceContext) writeMetaYML(js *jobStatus, assembleDir string, digitizationDate *time.Time, compressedAt *time.Time) (string, error) {
