@@ -39,6 +39,7 @@ func (svc *ServiceContext) sendHathiTrustUploadEmail(fileName string, fileSize i
 	req.Body += fmt.Sprintf("file size=%d\n", fileSize)
 	req.Body += fmt.Sprintf("record count=%d\n", recordCount)
 	req.Body += "notification email=lf6f@virginia.edu"
+	log.Printf("INFO: hathitrust message body: [%s]", req.Body)
 
 	err := svc.sendEmail(&req)
 	if err != nil {

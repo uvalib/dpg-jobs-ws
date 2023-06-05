@@ -148,17 +148,22 @@ func (svc *ServiceContext) submitHathiTrustMetadata(c *gin.Context) {
 			recordCnt++
 		}
 		metadataOut += "\n</collection>"
-		svc.logInfo(js, fmt.Sprintf("Write %d MARC records to ftps as %s", recordCnt, uploadFN))
-		err = ftpsConn.Upload(ftpsCtx, uploadFN, strings.NewReader(metadataOut))
-		if err != nil {
-			svc.logFatal(js, fmt.Sprintf("upload failed: %s", err.Error()))
-			return
-		}
 
-		log.Printf("COUNT: %d", recordCnt)
-		svc.sendHathiTrustUploadEmail(uploadFN, len(metadataOut), recordCnt)
-		if err != nil {
-			svc.logFatal(js, fmt.Sprintf("Unable to send email to HathiTrust: %s", err.Error()))
+		if recordCnt > 0 {
+			svc.logInfo(js, fmt.Sprintf("Upload %d MARC records with total size %d to FTPS %s as %s", recordCnt, len(metadataOut), svc.HathiTrust.FTPS, uploadFN))
+			err = ftpsConn.Upload(ftpsCtx, uploadFN, strings.NewReader(metadataOut))
+			if err != nil {
+				svc.logFatal(js, fmt.Sprintf("upload failed: %s", err.Error()))
+				return
+			}
+
+			svc.sendHathiTrustUploadEmail(uploadFN, len(metadataOut), recordCnt)
+			if err != nil {
+				svc.logFatal(js, fmt.Sprintf("Unable to send email to HathiTrust: %s", err.Error()))
+				return
+			}
+		} else {
+			svc.logFatal(js, "No metadata records uploaded")
 			return
 		}
 
