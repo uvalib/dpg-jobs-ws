@@ -312,9 +312,17 @@ func (svc *ServiceContext) createHathiTrustPackage(c *gin.Context) {
 				err := os.RemoveAll(assembleDir)
 				if err != nil {
 					svc.logError(js, fmt.Sprintf("Unable to cleanup prior package assembly directory %s: %s", assembleDir, err.Error()))
-					continue
 				}
 			}
+			if pathExists(packageFilename) {
+				svc.logInfo(js, fmt.Sprintf("Clean up pre-existing package %s", packageFilename))
+				err = os.Remove(packageFilename)
+				if err != nil {
+					svc.logError(js, fmt.Sprintf("Unable to cleanup prior package %s: %s", packageFilename, err.Error()))
+				}
+			}
+
+			svc.logInfo(js, fmt.Sprintf("Ensure package assembly directory %s exists", assembleDir))
 			err = ensureDirExists(assembleDir, 0777)
 			if err != nil {
 				svc.logError(js, fmt.Sprintf("Unable to create package assembly directory %s: %s", assembleDir, err.Error()))
@@ -425,6 +433,9 @@ func (svc *ServiceContext) createHathiTrustPackage(c *gin.Context) {
 
 			addFileToZip(packageFilename, zipWriter, assembleDir, "meta.yml")
 			addFileToZip(packageFilename, zipWriter, assembleDir, "checksum.md5")
+			zipWriter.Close()
+			zipFile.Close()
+
 			svc.logInfo(js, fmt.Sprintf("%s generated. Cleaning up assembly directory %s", packageFilename, assembleDir))
 			err = os.RemoveAll(assembleDir)
 			if err != nil {
