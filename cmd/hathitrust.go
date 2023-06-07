@@ -347,6 +347,12 @@ func (svc *ServiceContext) createHathiTrustPackage(c *gin.Context) {
 						svc.logError(js, fmt.Sprintf("Unable to request OCR: %s", err.Error()))
 						continue
 					}
+					svc.logInfo(js, "Refreshing master file list after succesful OCR generation")
+					err = svc.GDB.Where("unit_id=?", tgtUnit.ID).Find(&masterFiles).Error
+					if err != nil {
+						svc.logError(js, fmt.Sprintf("Unabe to refresh master files for unit %d: %s", tgtUnit.ID, err.Error()))
+						continue
+					}
 				}
 			}
 
