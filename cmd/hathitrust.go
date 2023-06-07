@@ -77,7 +77,7 @@ func (svc *ServiceContext) submitHathiTrustMetadata(c *gin.Context) {
 
 	submissionInfo := fmt.Sprintf("for metadata records %v", req.MetadataIDs)
 	if req.OrderID > 0 {
-		err = svc.GDB.Raw("select metadata_id from units where order_id=?", req.OrderID).Scan(&req.MetadataIDs).Error
+		err = svc.GDB.Raw("select metadata_id from units where order_id=? and unit_status != ?", req.OrderID, "canceled").Scan(&req.MetadataIDs).Error
 		if err != nil {
 			log.Printf("ERROR: unable to get metadata ids for order %d: %s", req.OrderID, err.Error())
 			c.String(http.StatusInternalServerError, fmt.Sprintf("uable to get metadata ids for order: %s", err.Error()))
@@ -205,9 +205,9 @@ func (svc *ServiceContext) createHathiTrustPackage(c *gin.Context) {
 		c.String(http.StatusBadRequest, "compute id is required")
 		return
 	}
-	if len(req.MetadataIDs) == 0 {
-		log.Printf("INFO: hathitrust package request requires metadata ids")
-		c.String(http.StatusBadRequest, "metadata id list is required")
+	if len(req.MetadataIDs) == 0 && req.OrderID == 0 {
+		log.Printf("INFO: hathitrust package request requires order id or metadata ids")
+		c.String(http.StatusBadRequest, "order id or metadata id list is required")
 		return
 	}
 
@@ -231,6 +231,19 @@ func (svc *ServiceContext) createHathiTrustPackage(c *gin.Context) {
 		c.String(http.StatusInternalServerError, err.Error())
 		return
 	}
+
+	submissionInfo := fmt.Sprintf("for metadata records %v", req.MetadataIDs)
+	if req.OrderID > 0 {
+		err = svc.GDB.Raw("select metadata_id from units where order_id=? and unit_status != ?", req.OrderID, "canceled").Scan(&req.MetadataIDs).Error
+		if err != nil {
+			log.Printf("ERROR: unable to get metadata ids for order %d: %s", req.OrderID, err.Error())
+			c.String(http.StatusInternalServerError, fmt.Sprintf("uable to get metadata ids for order: %s", err.Error()))
+			return
+		}
+		submissionInfo = fmt.Sprintf("for order %d with %d metadata records", req.OrderID, len(req.MetadataIDs))
+	}
+
+	svc.logInfo(js, fmt.Sprintf("%s requests hathitrust package generation %s", req.ComputeID, submissionInfo))
 
 	go func() {
 		defer func() {
@@ -257,9 +270,9 @@ func (svc *ServiceContext) createHathiTrustPackage(c *gin.Context) {
 
 			svc.logInfo(js, "Find target unit")
 			var units []unit
-			err = svc.GDB.Where("metadata_id=? and (intended_use_id=? or intended_use_id=?) and date_dl_deliverables_ready is not null", mdID, 110, 101).Find(&units).Error
+			err = svc.GDB.Where("metadata_id=? and unit_status != ?", mdID, "canceled").Find(&units).Error
 			if err != nil {
-				svc.logError(js, fmt.Sprintf("Unable to get a digitial collection building unit for metadata %d: %s", mdID, err.Error()))
+				svc.logError(js, fmt.Sprintf("Unable to get a unit for metadata %d: %s", mdID, err.Error()))
 				continue
 			}
 
@@ -289,23 +302,22 @@ func (svc *ServiceContext) createHathiTrustPackage(c *gin.Context) {
 				continue
 			}
 
-			// Setup all working directories; /digiserv-production/hathitrust/[barcode]/content
-			// final package data will reside in /digiserv-production/hathitrust/[barcode]
-			packageDir := path.Join(svc.ProcessingDir, "hathitrust", md.Barcode)
-			assembleDir := path.Join(packageDir, "content")
+			// Setup package assembly directory; /digiserv-production/hathitrust/[barcode]
+			// final package data will reside at /digiserv-production/hathitrust/[barcode].zip
+			assembleDir := path.Join(svc.ProcessingDir, "hathitrust", md.Barcode)
 			packageName := fmt.Sprintf("%s.zip", md.Barcode)
-			packageFilename := path.Join(packageDir, packageName)
-			if pathExists(packageDir) {
-				svc.logInfo(js, fmt.Sprintf("Clean up pre-existing package assembly directory %s", packageDir))
-				err := os.RemoveAll(packageDir)
+			packageFilename := path.Join(svc.ProcessingDir, "hathitrust", packageName)
+			if pathExists(assembleDir) {
+				svc.logInfo(js, fmt.Sprintf("Clean up pre-existing package assembly directory %s", assembleDir))
+				err := os.RemoveAll(assembleDir)
 				if err != nil {
-					svc.logError(js, fmt.Sprintf("Unable to cleanup prior package assembly directory %s: %s", packageDir, err.Error()))
+					svc.logError(js, fmt.Sprintf("Unable to cleanup prior package assembly directory %s: %s", assembleDir, err.Error()))
 					continue
 				}
 			}
 			err = ensureDirExists(assembleDir, 0777)
 			if err != nil {
-				svc.logError(js, fmt.Sprintf("Unable to create package / assembly directories %s: %s", assembleDir, err.Error()))
+				svc.logError(js, fmt.Sprintf("Unable to create package assembly directory %s: %s", assembleDir, err.Error()))
 				continue
 			}
 
@@ -413,6 +425,11 @@ func (svc *ServiceContext) createHathiTrustPackage(c *gin.Context) {
 
 			addFileToZip(packageFilename, zipWriter, assembleDir, "meta.yml")
 			addFileToZip(packageFilename, zipWriter, assembleDir, "checksum.md5")
+			svc.logInfo(js, fmt.Sprintf("%s generated. Cleaning up assembly directory %s", packageFilename, assembleDir))
+			err = os.RemoveAll(assembleDir)
+			if err != nil {
+				svc.logError(js, fmt.Sprintf("Unable to clean up assembly directory: %s", err.Error()))
+			}
 		}
 
 		svc.jobDone(js)
