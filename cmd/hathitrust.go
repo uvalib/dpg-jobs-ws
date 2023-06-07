@@ -433,6 +433,8 @@ func (svc *ServiceContext) createHathiTrustPackage(c *gin.Context) {
 
 			addFileToZip(packageFilename, zipWriter, assembleDir, "meta.yml")
 			addFileToZip(packageFilename, zipWriter, assembleDir, "checksum.md5")
+
+			checksumFile.Close()
 			zipWriter.Close()
 			zipFile.Close()
 
