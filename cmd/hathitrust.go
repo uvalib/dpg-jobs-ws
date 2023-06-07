@@ -433,16 +433,19 @@ func (svc *ServiceContext) createHathiTrustPackage(c *gin.Context) {
 
 			addFileToZip(packageFilename, zipWriter, assembleDir, "meta.yml")
 			addFileToZip(packageFilename, zipWriter, assembleDir, "checksum.md5")
+			svc.logInfo(js, fmt.Sprintf("%s successfully generated", packageFilename))
 
 			checksumFile.Close()
 			zipWriter.Close()
 			zipFile.Close()
 
-			svc.logInfo(js, fmt.Sprintf("%s generated. Cleaning up assembly directory %s", packageFilename, assembleDir))
-			err = os.RemoveAll(assembleDir)
-			if err != nil {
-				svc.logError(js, fmt.Sprintf("Unable to clean up assembly directory: %s", err.Error()))
-			}
+			defer func() {
+				svc.logInfo(js, fmt.Sprintf("Cleaning up assembly directory %s", assembleDir))
+				err = os.RemoveAll(assembleDir)
+				if err != nil {
+					svc.logError(js, fmt.Sprintf("Unable to clean up assembly directory: %s", err.Error()))
+				}
+			}()
 		}
 
 		svc.jobDone(js)
