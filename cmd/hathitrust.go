@@ -383,7 +383,7 @@ func (svc *ServiceContext) createHathiTrustPackage(c *gin.Context) {
 			if compressDate == nil {
 				compressDate = tgtUnit.DatePatronDeliverablesReady
 			}
-			ymlMD5, err := svc.writeMetaYML(js, assembleDir, &lastCaptureDate, tgtUnit.DateDLDeliverablesReady)
+			ymlMD5, err := svc.writeMetaYML(js, assembleDir, &lastCaptureDate, compressDate)
 			if err != nil {
 				svc.logError(js, fmt.Sprintf("Unable to write meta.yml: %s", err.Error()))
 				continue
