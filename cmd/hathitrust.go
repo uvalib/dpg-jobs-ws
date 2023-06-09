@@ -117,10 +117,10 @@ func (svc *ServiceContext) submitHathiTrustMetadata(c *gin.Context) {
 		}
 
 		uploadDirectory := "submissions"
-		if req.Mode == "test" {
+		if req.Mode == "test" || req.Mode == "dev" {
 			uploadDirectory = "testrecs"
 		}
-		svc.logInfo(js, fmt.Sprintf("Set FTPS working directory to%s", uploadDirectory))
+		svc.logInfo(js, fmt.Sprintf("Set FTPS working directory to %s", uploadDirectory))
 		err = ftpsConn.Chdir(uploadDirectory)
 		if err != nil {
 			svc.logFatal(js, fmt.Sprintf("Unable to switch to upload directory %s: %s", uploadDirectory, err.Error()))
@@ -379,6 +379,10 @@ func (svc *ServiceContext) createHathiTrustPackage(c *gin.Context) {
 
 			// Write the meta.yml file
 			lastCaptureDate := masterFiles[len(masterFiles)-1].CreatedAt
+			compressDate := tgtUnit.DateDLDeliverablesReady
+			if compressDate == nil {
+				compressDate = tgtUnit.DatePatronDeliverablesReady
+			}
 			ymlMD5, err := svc.writeMetaYML(js, assembleDir, &lastCaptureDate, tgtUnit.DateDLDeliverablesReady)
 			if err != nil {
 				svc.logError(js, fmt.Sprintf("Unable to write meta.yml: %s", err.Error()))
@@ -461,15 +465,14 @@ func (svc *ServiceContext) createHathiTrustPackage(c *gin.Context) {
 }
 
 func (svc *ServiceContext) getMARCMetadata(md metadata) (string, error) {
-	marcBytes, mdErr := svc.getRequest(fmt.Sprintf("%s/api/metadata/%s?type=marc", svc.TrackSys.API, md.PID))
+	marcBytes, mdErr := svc.getRequest(fmt.Sprintf("https://ils.lib.virginia.edu/uhtbin/getMarc?barcode=%s&hathitrust=yes&type=xml", md.Barcode))
 	if mdErr != nil {
 		return "", fmt.Errorf("%d:%s", mdErr.StatusCode, mdErr.Message)
 	}
 	marcStr := string(marcBytes)
-	idx := strings.Index(marcStr, "<record>")
-	marcStr = marcStr[idx:len(marcStr)]
-	idx = strings.Index(marcStr, "</collection>")
-	marcStr = marcStr[:idx]
+	idx := strings.Index(marcStr, "<leader>")
+	marcStr = "<record>" + marcStr[idx:len(marcStr)]
+
 	prettyXML := xmlfmt.FormatXML(marcStr, "", "   ")
 	prettyXML = strings.TrimSpace(prettyXML)
 	return prettyXML, nil

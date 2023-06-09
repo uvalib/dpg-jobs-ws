@@ -225,6 +225,9 @@ func (svc *ServiceContext) sendRequest(verb string, url string, payload *url.Val
 		req, _ = http.NewRequest(verb, url, nil)
 	}
 
+	// NOTE: this is required for the calls to getMarc
+	req.Header.Add("User-Agent", "Golang_DPG_Jobs")
+
 	rawResp, rawErr := svc.HTTPClient.Do(req)
 	resp, err := handleAPIResponse(url, rawResp, rawErr)
 	elapsedNanoSec := time.Since(startTime)
