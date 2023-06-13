@@ -98,8 +98,8 @@ func (svc *ServiceContext) submitHathiTrustMetadata(c *gin.Context) {
 		}()
 
 		svc.logInfo(js, fmt.Sprintf("connecting to ftps server %s as %s", svc.HathiTrust.FTPS, svc.HathiTrust.User))
-		ftpsCtx, cancel := context.WithTimeout(context.Background(), time.Second*10)
-		defer cancel()
+		ftpsCtx, ftpsCancel := context.WithCancel(context.Background())
+		defer ftpsCancel()
 		ftpsConn, err := ftps.Dial(ftpsCtx, ftps.DialOptions{
 			Host:     svc.HathiTrust.FTPS,
 			Port:     21,
@@ -173,6 +173,8 @@ func (svc *ServiceContext) submitHathiTrustMetadata(c *gin.Context) {
 					return
 				}
 			}
+			// cancel the ftps context immediatey when the uopload is done
+			ftpsCancel()
 
 			svc.sendHathiTrustUploadEmail(uploadFN, len(metadataOut), recordCnt)
 			if err != nil {
