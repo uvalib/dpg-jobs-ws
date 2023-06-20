@@ -115,7 +115,7 @@ func (svc *ServiceContext) publishXMLToVirgo(js *jobStatus, xmlMetadata *metadat
 	svc.logInfo(js, fmt.Sprintf("Generating IIIF manifest with %s", iiifURL))
 	_, errResp := svc.getRequest(iiifURL)
 	if errResp != nil {
-		svc.logError(js, fmt.Sprintf("Unable generate IIIF manifest: %s", err.Error()))
+		svc.logError(js, fmt.Sprintf("Unable generate IIIF manifest: %d:%s", errResp.StatusCode, errResp.Message))
 		return fmt.Errorf("Unable to generate IIIF manifest: %d: %s", errResp.StatusCode, errResp.Message)
 	}
 	svc.logInfo(js, "IIIF manifest successfully generated")
