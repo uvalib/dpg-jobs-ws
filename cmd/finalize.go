@@ -36,12 +36,12 @@ func (svc *ServiceContext) finalizeUnit(c *gin.Context) {
 	}
 	if tgtUnit.UnitStatus == "finalizing" {
 		svc.logFatal(js, "Unit is already finalizing.")
-		c.String(http.StatusBadRequest, err.Error())
+		c.String(http.StatusBadRequest, "Unit is already finalizing")
 		return
 	}
 	if tgtUnit.Reorder {
 		svc.logFatal(js, "Unit is a re-order and should not be finalized.")
-		c.String(http.StatusBadRequest, err.Error())
+		c.String(http.StatusBadRequest, "Unit is a re-order and should not be finalized")
 		return
 	}
 

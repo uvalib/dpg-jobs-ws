@@ -473,7 +473,7 @@ func (svc *ServiceContext) getMARCMetadata(md metadata) (string, error) {
 	}
 	marcStr := string(marcBytes)
 	idx := strings.Index(marcStr, "<leader>")
-	marcStr = "<record>" + marcStr[idx:len(marcStr)]
+	marcStr = "<record>" + marcStr[idx:]
 
 	prettyXML := xmlfmt.FormatXML(marcStr, "", "   ")
 	prettyXML = strings.TrimSpace(prettyXML)
