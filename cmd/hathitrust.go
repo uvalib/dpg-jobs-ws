@@ -19,6 +19,19 @@ import (
 	"github.com/kardianos/ftps"
 )
 
+type hathitrustStatus struct {
+	ID                  uint       `json:"id"`
+	MetadataID          int64      `json:"metadataID"`
+	RequestedAt         time.Time  `json:"requestedAt"`
+	PackageCreatedAt    *time.Time `json:"packageCreatedAt"`
+	PackageSubmittedAt  *time.Time `json:"packageSubmittedAt"`
+	PackageStatus       string     `json:"packageStatus"`
+	MetadataSubmittedAt *time.Time `json:"metadataSubmittedAt"`
+	MetadataStatus      string     `json:"metadataStatus"`
+	FinishedAt          *time.Time `json:"finishedAt"`
+	Notes               string     `json:"notes"`
+}
+
 type hathiTrustRequest struct {
 	ComputeID   string  `json:"computeID"`
 	MetadataIDs []int64 `json:"records"`
@@ -91,7 +104,7 @@ func (svc *ServiceContext) submitHathiTrustMetadata(c *gin.Context) {
 	go func() {
 		defer func() {
 			if r := recover(); r != nil {
-				log.Printf("ERROR: Panic recovered: %v", r)
+				log.Printf("ERROR: panic recovered during hathitrust metadata submission: %v", r)
 				debug.PrintStack()
 				svc.logFatal(js, fmt.Sprintf("Panic recovered while submitting hathitrust metadata: %v", r))
 			}
@@ -143,10 +156,10 @@ func (svc *ServiceContext) submitHathiTrustMetadata(c *gin.Context) {
 		}
 		uploadFN += ".xml"
 		metadataOut := "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<collection xmlns=\"http://www.loc.gov/MARC21/slim\">"
-		recordCnt := 0
+		updatedIDs := make([]int64, 0)
 		for _, mdID := range req.MetadataIDs {
 			var tgtMD metadata
-			err = svc.GDB.Find(&tgtMD, mdID).Error
+			err = svc.GDB.First(&tgtMD, mdID).Error
 			if err != nil {
 				svc.logError(js, fmt.Sprintf("Unable to load metadata %d: %s", mdID, err.Error()))
 				continue
@@ -158,15 +171,15 @@ func (svc *ServiceContext) submitHathiTrustMetadata(c *gin.Context) {
 				continue
 			}
 			metadataOut += fmt.Sprintf("\n%s", xml)
-			recordCnt++
+			updatedIDs = append(updatedIDs, tgtMD.ID)
 		}
 		metadataOut += "\n</collection>"
 
-		if recordCnt > 0 {
+		if len(updatedIDs) > 0 {
 			if req.Mode == "dev" {
 				svc.logInfo(js, metadataOut)
 			} else {
-				svc.logInfo(js, fmt.Sprintf("Upload %d MARC records with total size %d to FTPS %s as %s", recordCnt, len(metadataOut), svc.HathiTrust.FTPS, uploadFN))
+				svc.logInfo(js, fmt.Sprintf("Upload %d MARC records with total size %d to FTPS %s as %s", len(updatedIDs), len(metadataOut), svc.HathiTrust.FTPS, uploadFN))
 				err = ftpsConn.Upload(ftpsCtx, uploadFN, strings.NewReader(metadataOut))
 				if err != nil {
 					svc.logFatal(js, fmt.Sprintf("upload failed: %s", err.Error()))
@@ -176,11 +189,22 @@ func (svc *ServiceContext) submitHathiTrustMetadata(c *gin.Context) {
 			// cancel the ftps context immediatey when the uopload is done
 			ftpsCancel()
 
-			svc.sendHathiTrustUploadEmail(uploadFN, len(metadataOut), recordCnt)
+			svc.sendHathiTrustUploadEmail(uploadFN, len(metadataOut), len(updatedIDs))
 			if err != nil {
 				svc.logFatal(js, fmt.Sprintf("Unable to send email to HathiTrust: %s", err.Error()))
 				return
 			}
+
+			if req.Mode == "prod" || req.Mode == "dev" {
+				svc.logInfo(js, "Update metadata submitted dates")
+				now := time.Now()
+				err = svc.GDB.Model(&hathitrustStatus{}).Where("metadata_id in ?", updatedIDs).
+					Updates(hathitrustStatus{MetadataSubmittedAt: &now, MetadataStatus: "pending"}).Error
+				if err != nil {
+					svc.logError(js, fmt.Sprintf("Unable to update HathiTrust status records: %s", err.Error()))
+				}
+			}
+
 		} else {
 			svc.logFatal(js, "No metadata records uploaded")
 			return
@@ -252,10 +276,11 @@ func (svc *ServiceContext) createHathiTrustPackage(c *gin.Context) {
 			if r := recover(); r != nil {
 				log.Printf("ERROR: Panic recovered: %v", r)
 				debug.PrintStack()
-				svc.logFatal(js, fmt.Sprintf("Panic recovered while generating bag: %v", r))
+				svc.logFatal(js, fmt.Sprintf("Panic recovered while generating hathitrust packages: %v", r))
 			}
 		}()
 
+		packagedIDs := make([]int64, 0)
 		for _, mdID := range req.MetadataIDs {
 			svc.logInfo(js, fmt.Sprintf("Validate metadata record %d", mdID))
 			var md metadata
@@ -450,6 +475,7 @@ func (svc *ServiceContext) createHathiTrustPackage(c *gin.Context) {
 			checksumFile.Close()
 			zipWriter.Close()
 			zipFile.Close()
+			packagedIDs = append(packagedIDs, mdID)
 
 			defer func() {
 				svc.logInfo(js, fmt.Sprintf("Cleaning up assembly directory %s", assembleDir))
@@ -458,6 +484,16 @@ func (svc *ServiceContext) createHathiTrustPackage(c *gin.Context) {
 					svc.logError(js, fmt.Sprintf("Unable to clean up assembly directory: %s", err.Error()))
 				}
 			}()
+		}
+
+		if len(packagedIDs) > 0 {
+			svc.logInfo(js, "Update metadata package created dates")
+			now := time.Now()
+			err = svc.GDB.Model(&hathitrustStatus{}).Where("metadata_id in ?", packagedIDs).
+				Updates(hathitrustStatus{PackageCreatedAt: &now}).Error
+			if err != nil {
+				svc.logError(js, fmt.Sprintf("Unable to update HathiTrust status records: %s", err.Error()))
+			}
 		}
 
 		svc.jobDone(js)
