@@ -290,6 +290,11 @@ func (svc *ServiceContext) createHathiTrustPackage(c *gin.Context) {
 				continue
 			}
 
+			if md.Barcode == "" {
+				svc.logError(js, "Metadata is missing the required Barcode")
+				continue
+			}
+
 			if md.OcrHint == nil {
 				svc.logError(js, "Metadata is missing the required OCRHint setting")
 				continue
@@ -303,29 +308,62 @@ func (svc *ServiceContext) createHathiTrustPackage(c *gin.Context) {
 				continue
 			}
 
-			if len(units) > 1 {
-				svc.logError(js, fmt.Sprintf("Too many units found (%d) for metadata %d", len(units), mdID))
-				continue
-			}
-
 			if len(units) == 0 {
 				svc.logError(js, fmt.Sprintf("No units found for metadata %d", mdID))
 				continue
 			}
 
-			tgtUnit := units[0]
-			tgtUnit.Metadata = &md
-			svc.logInfo(js, fmt.Sprintf("Create HathiTrust submission package for metadata %s unit %d", md.PID, tgtUnit.ID))
-
-			svc.logInfo(js, "Load master files for unit")
+			// SPECIAL CASE: metadata 104398, 104399, 104400 are items were multiple volumes were bound together
+			// and have a single metadata record, but were scanned as separate units. For these 3 metadata records
+			// pull master files from ALL  of the units
+			// tgtUnit := units[0]
 			var masterFiles []masterFile
-			err = svc.GDB.Where("unit_id=?", tgtUnit.ID).Find(&masterFiles).Error
-			if err != nil {
-				svc.logError(js, fmt.Sprintf("Unabe to load master files for unit %d: %s", tgtUnit.ID, err.Error()))
+			unitIDs := make([]int64, 0)
+			var latestCompressDate *time.Time
+			specialCase := (mdID == 104398 || mdID == 104399 || mdID == 104400)
+			if specialCase == false {
+				// This is the snandard case; enforce 1 unit per metadata record
+				if len(units) > 1 {
+					svc.logError(js, fmt.Sprintf("Too many units found (%d) for metadata %d", len(units), mdID))
+					continue
+				}
+			} else {
+				svc.logInfo(js, fmt.Sprintf("Metdata %d is a special case and all units will be accepted", mdID))
+			}
+
+			// In special case processing, there will be multiple units here. In the general case, just one
+			log.Printf("INFO: load master files from [%d] units of metadata %d", len(units), mdID)
+			for _, u := range units {
+				unitIDs = append(unitIDs, u.ID)
+				compressDate := u.DateDLDeliverablesReady
+				if compressDate == nil {
+					compressDate = u.DatePatronDeliverablesReady
+				}
+				if compressDate != nil {
+					if latestCompressDate == nil {
+						latestCompressDate = compressDate
+					} else {
+						if compressDate.After(*latestCompressDate) {
+							latestCompressDate = compressDate
+						}
+					}
+				}
+			}
+
+			if latestCompressDate == nil {
+				svc.logError(js, fmt.Sprintf("Unabe to determine latest compression date for metadata %d; skipping", mdID))
 				continue
 			}
+
+			svc.logInfo(js, fmt.Sprintf("Load master files for units [%v]", unitIDs))
+			err = svc.GDB.Where("unit_id in ?", unitIDs).Find(&masterFiles).Error
+			if err != nil {
+				svc.logError(js, fmt.Sprintf("Unabe to load master files: %s", err.Error()))
+				continue
+			}
+
 			if len(masterFiles) == 0 {
-				svc.logError(js, fmt.Sprintf("No master files found for unit %d", tgtUnit.ID))
+				svc.logError(js, fmt.Sprintf("No master files found for metadata %d", mdID))
 				continue
 			}
 
@@ -368,16 +406,20 @@ func (svc *ServiceContext) createHathiTrustPackage(c *gin.Context) {
 					}
 				}
 				if doOCR {
-					// note; this call will not return until all master files in the unit have OCR results
-					err = svc.requestUnitOCR(js, &tgtUnit)
-					if err != nil {
-						svc.logError(js, fmt.Sprintf("Unable to request OCR: %s", err.Error()))
-						continue
+					// NOTE: this works for the special case and normal case; in the normal case, units length will be 1
+					for _, ocrUnit := range units {
+						// note; this call will not return until all master files in the unit have OCR results
+						err = svc.requestUnitOCR(js, &ocrUnit)
+						if err != nil {
+							svc.logError(js, fmt.Sprintf("Unable to request OCR for unit %d: %s", ocrUnit.ID, err.Error()))
+							continue
+						}
 					}
+
 					svc.logInfo(js, "Refreshing master file list after succesful OCR generation")
-					err = svc.GDB.Where("unit_id=?", tgtUnit.ID).Find(&masterFiles).Error
+					err = svc.GDB.Where("unit_id in ?", unitIDs).Find(&masterFiles).Error
 					if err != nil {
-						svc.logError(js, fmt.Sprintf("Unabe to refresh master files for unit %d: %s", tgtUnit.ID, err.Error()))
+						svc.logError(js, fmt.Sprintf("Unabe to refresh master files: %s", err.Error()))
 						continue
 					}
 				}
@@ -406,11 +448,7 @@ func (svc *ServiceContext) createHathiTrustPackage(c *gin.Context) {
 
 			// Write the meta.yml file
 			lastCaptureDate := masterFiles[len(masterFiles)-1].CreatedAt
-			compressDate := tgtUnit.DateDLDeliverablesReady
-			if compressDate == nil {
-				compressDate = tgtUnit.DatePatronDeliverablesReady
-			}
-			ymlMD5, err := svc.writeMetaYML(js, assembleDir, &lastCaptureDate, compressDate)
+			ymlMD5, err := svc.writeMetaYML(js, assembleDir, &lastCaptureDate, latestCompressDate)
 			if err != nil {
 				svc.logError(js, fmt.Sprintf("Unable to write meta.yml: %s", err.Error()))
 				continue
