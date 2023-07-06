@@ -35,7 +35,7 @@ type hathitrustStatus struct {
 type hathiTrustRequest struct {
 	ComputeID   string  `json:"computeID"`
 	MetadataIDs []int64 `json:"records"`
-	OrderID     int64   `json:"order"`
+	OrderIDs    []int64 `json:"orders"`
 	Mode        string  `json:"mode"`
 	Name        string  `json:"name"`
 }
@@ -61,9 +61,9 @@ func (svc *ServiceContext) submitHathiTrustMetadata(c *gin.Context) {
 		c.String(http.StatusBadRequest, "compute if is required")
 		return
 	}
-	if len(req.MetadataIDs) == 0 && req.OrderID == 0 {
-		log.Printf("INFO: hathitrust metadata request requires order id or metadata ids")
-		c.String(http.StatusBadRequest, "order id or metadata id list is required")
+	if len(req.MetadataIDs) == 0 && len(req.OrderIDs) == 0 {
+		log.Printf("INFO: hathitrust metadata request requires a list of order or metadata ids")
+		c.String(http.StatusBadRequest, "order or metadata id list is required")
 		return
 	}
 
@@ -89,14 +89,14 @@ func (svc *ServiceContext) submitHathiTrustMetadata(c *gin.Context) {
 	}
 
 	submissionInfo := fmt.Sprintf("for metadata records %v", req.MetadataIDs)
-	if req.OrderID > 0 {
-		err = svc.GDB.Raw("select metadata_id from units where order_id=? and unit_status != ?", req.OrderID, "canceled").Scan(&req.MetadataIDs).Error
+	if len(req.OrderIDs) > 0 {
+		err = svc.GDB.Raw("select metadata_id from units where order_id in ? and unit_status != ?", req.OrderIDs, "canceled").Scan(&req.MetadataIDs).Error
 		if err != nil {
-			log.Printf("ERROR: unable to get metadata ids for order %d: %s", req.OrderID, err.Error())
-			c.String(http.StatusInternalServerError, fmt.Sprintf("uable to get metadata ids for order: %s", err.Error()))
+			log.Printf("ERROR: unable to get metadata ids for orders %v: %s", req.OrderIDs, err.Error())
+			c.String(http.StatusInternalServerError, fmt.Sprintf("uable to get metadata ids for orders: %s", err.Error()))
 			return
 		}
-		submissionInfo = fmt.Sprintf("for order %d with %d metadata records", req.OrderID, len(req.MetadataIDs))
+		submissionInfo = fmt.Sprintf("for orders %v with %d metadata records", req.OrderIDs, len(req.MetadataIDs))
 	}
 
 	svc.logInfo(js, fmt.Sprintf("%s requests %s hathitrust metadata submission %s", req.ComputeID, req.Mode, submissionInfo))
@@ -205,6 +205,10 @@ func (svc *ServiceContext) submitHathiTrustMetadata(c *gin.Context) {
 				}
 			}
 
+			if len(updatedIDs) != len(req.MetadataIDs) {
+				svc.logError(js, fmt.Sprintf("Not all metadata records uploaded: Total: %d, Uploaded: %d", len(updatedIDs), len(req.MetadataIDs)))
+			}
+
 		} else {
 			svc.logFatal(js, "No metadata records uploaded")
 			return
@@ -231,9 +235,9 @@ func (svc *ServiceContext) createHathiTrustPackage(c *gin.Context) {
 		c.String(http.StatusBadRequest, "compute id is required")
 		return
 	}
-	if len(req.MetadataIDs) == 0 && req.OrderID == 0 {
+	if len(req.MetadataIDs) == 0 && len(req.OrderIDs) == 0 {
 		log.Printf("INFO: hathitrust package request requires order id or metadata ids")
-		c.String(http.StatusBadRequest, "order id or metadata id list is required")
+		c.String(http.StatusBadRequest, "order or metadata id list is required")
 		return
 	}
 
@@ -259,14 +263,14 @@ func (svc *ServiceContext) createHathiTrustPackage(c *gin.Context) {
 	}
 
 	submissionInfo := fmt.Sprintf("for metadata records %v", req.MetadataIDs)
-	if req.OrderID > 0 {
-		err = svc.GDB.Raw("select metadata_id from units where order_id=? and unit_status != ?", req.OrderID, "canceled").Scan(&req.MetadataIDs).Error
+	if len(req.OrderIDs) > 0 {
+		err = svc.GDB.Raw("select metadata_id from units where order_id in ? and unit_status != ?", req.OrderIDs, "canceled").Scan(&req.MetadataIDs).Error
 		if err != nil {
-			log.Printf("ERROR: unable to get metadata ids for order %d: %s", req.OrderID, err.Error())
-			c.String(http.StatusInternalServerError, fmt.Sprintf("uable to get metadata ids for order: %s", err.Error()))
+			log.Printf("ERROR: unable to get metadata ids for orders %v: %s", req.OrderIDs, err.Error())
+			c.String(http.StatusInternalServerError, fmt.Sprintf("uable to get metadata ids for orders: %s", err.Error()))
 			return
 		}
-		submissionInfo = fmt.Sprintf("for order %d with %d metadata records", req.OrderID, len(req.MetadataIDs))
+		submissionInfo = fmt.Sprintf("for orders %v with %d metadata records", req.OrderIDs, len(req.MetadataIDs))
 	}
 
 	svc.logInfo(js, fmt.Sprintf("%s requests hathitrust package generation %s", req.ComputeID, submissionInfo))
@@ -532,6 +536,12 @@ func (svc *ServiceContext) createHathiTrustPackage(c *gin.Context) {
 			if err != nil {
 				svc.logError(js, fmt.Sprintf("Unable to update HathiTrust status records: %s", err.Error()))
 			}
+			if len(packagedIDs) != len(req.MetadataIDs) {
+				svc.logError(js, fmt.Sprintf("Not all packages created: Total: %d, Uploaded: %d", len(packagedIDs), len(req.MetadataIDs)))
+			}
+		} else {
+			svc.logFatal(js, "No packages created")
+			return
 		}
 
 		svc.jobDone(js)
@@ -547,6 +557,9 @@ func (svc *ServiceContext) getMARCMetadata(md metadata) (string, error) {
 	}
 	marcStr := string(marcBytes)
 	idx := strings.Index(marcStr, "<leader>")
+	if idx < 0 {
+		return "", fmt.Errorf("unable to get marc metadata for %s", md.PID)
+	}
 	marcStr = "<record>" + marcStr[idx:]
 
 	prettyXML := xmlfmt.FormatXML(marcStr, "", "   ")
