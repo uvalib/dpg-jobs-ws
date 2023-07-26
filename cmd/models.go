@@ -236,6 +236,7 @@ type order struct {
 	CustomerID                     uint
 	Customer                       customer `gorm:"foreignKey:CustomerID"`
 	Fee                            sql.NullFloat64
+	FeeWaived                      bool
 	Invoices                       []invoice `gorm:"foreignKey:OrderID"`
 	Units                          []unit    `gorm:"foreignKey:OrderID"`
 	Email                          string

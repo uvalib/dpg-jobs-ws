@@ -289,7 +289,7 @@ func (svc *ServiceContext) generateOrderEmail(js *jobStatus, o *order) error {
 		LastName:      o.Customer.LastName,
 		DeliveryFiles: make([]string, 0),
 	}
-	if o.Fee.Valid {
+	if !o.FeeWaived && o.Fee.Valid {
 		data.Fee = &o.Fee.Float64
 		for _, inv := range o.Invoices {
 			if inv.DateFeePaid != nil {

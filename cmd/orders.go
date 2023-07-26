@@ -132,20 +132,26 @@ func (svc *ServiceContext) checkOrderReadyForDelivery(js *jobStatus, orderID int
 		return fmt.Errorf("Order does not have an order status of 'approved'")
 	}
 
-	//  An order whose customer is non-UVA and whose actual fee is blank is invalid.
-	if o.Customer.AcademicStatusID == 1 && o.Fee.Valid == false {
-		return fmt.Errorf("Order has a non-UVA customer and the fee is blank")
-	}
+	//  An order whose customer is non-UVA must validate fee info:
+	if o.Customer.AcademicStatusID == 1 {
+		if o.FeeWaived == false {
+			if o.Fee.Valid == false {
+				return fmt.Errorf("Order has a non-UVA customer and the fee is blank")
+			}
 
-	// If there is a value for order fee then there must be a paid invoice
-	if o.Fee.Valid && o.Fee.Float64 > 0 {
-		if feePaid(&o) == false {
-			svc.logFatal(js, "Order has an unpaid fee.")
+			// If there is a value for order fee then there must be a paid invoice
+			if o.Fee.Valid && o.Fee.Float64 > 0 {
+				if feePaid(&o) == false {
+					svc.logFatal(js, "Order has an unpaid fee.")
+				} else {
+					svc.logInfo(js, "Order fee paid.")
+				}
+			} else {
+				svc.logInfo(js, "Order has no fees associated with it.")
+			}
 		} else {
-			svc.logInfo(js, "Order fee paid.")
+			svc.logInfo(js, "The fee has been waived for this order.")
 		}
-	} else {
-		svc.logInfo(js, "Order has no fees associated with it.")
 	}
 
 	svc.logInfo(js, "Order has passed QA")
