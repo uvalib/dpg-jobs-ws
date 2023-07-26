@@ -190,7 +190,7 @@ func (svc *ServiceContext) sendFeesEmail(c *gin.Context) {
 		Fee       float64
 	}
 	svc.logInfo(js, "Rendering fees email")
-	data := feeData{FirstName: o.Customer.FirstName, LastName: o.Customer.LastName, Fee: o.Fee.Float64}
+	data := feeData{FirstName: o.Customer.FirstName, LastName: o.Customer.LastName, Fee: *o.Fee}
 	var renderedEmail bytes.Buffer
 	err = svc.Templates.Fees.Execute(&renderedEmail, data)
 	if err != nil {
@@ -289,8 +289,8 @@ func (svc *ServiceContext) generateOrderEmail(js *jobStatus, o *order) error {
 		LastName:      o.Customer.LastName,
 		DeliveryFiles: make([]string, 0),
 	}
-	if !o.FeeWaived && o.Fee.Valid {
-		data.Fee = &o.Fee.Float64
+	if !o.FeeWaived {
+		data.Fee = o.Fee
 		for _, inv := range o.Invoices {
 			if inv.DateFeePaid != nil {
 				data.DatePaid = inv.DateFeePaid.Format("2006-01-02")

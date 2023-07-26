@@ -1,7 +1,6 @@
 package main
 
 import (
-	"database/sql"
 	"fmt"
 	"regexp"
 	"strings"
@@ -235,7 +234,7 @@ type order struct {
 	OrderStatus                    string
 	CustomerID                     uint
 	Customer                       customer `gorm:"foreignKey:CustomerID"`
-	Fee                            sql.NullFloat64
+	Fee                            *float64
 	FeeWaived                      bool
 	Invoices                       []invoice `gorm:"foreignKey:OrderID"`
 	Units                          []unit    `gorm:"foreignKey:OrderID"`
