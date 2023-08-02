@@ -57,10 +57,12 @@ func (svc *ServiceContext) checkOrderReady(c *gin.Context) {
 		c.String(http.StatusInternalServerError, err.Error())
 		return
 	}
+
 	err = svc.checkOrderReadyForDelivery(js, orderID)
 	if err != nil {
 		svc.logFatal(js, err.Error())
 		c.String(http.StatusBadRequest, err.Error())
+		return
 	}
 
 	svc.jobDone(js)
@@ -141,10 +143,9 @@ func (svc *ServiceContext) checkOrderReadyForDelivery(js *jobStatus, orderID int
 
 			// If there is a value for order fee then there must be a paid invoice
 			if feePaid(&o) == false {
-				svc.logFatal(js, "Order has an unpaid fee.")
-			} else {
-				svc.logInfo(js, "Order fee paid.")
+				return fmt.Errorf("order has an unpaid fee")
 			}
+			svc.logInfo(js, "Order fee paid.")
 		} else {
 			svc.logInfo(js, "The fee has been waived for this order.")
 		}

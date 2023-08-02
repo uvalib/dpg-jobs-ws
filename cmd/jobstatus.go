@@ -10,10 +10,20 @@ import (
 	"gorm.io/gorm"
 )
 
+type eventLevel uint
+
+// Event levels for job status reporting from rails enum:[:info, :warning, :error, :fatal] - warning is never used
+const (
+	Info  eventLevel = 0
+	Warn  eventLevel = 1
+	Error eventLevel = 2
+	Fatal eventLevel = 3
+)
+
 type event struct {
 	ID          int64
 	JobStatusID int64
-	Level       uint // rails enumerated type [:info, :warning, :error, :fatal] - warning is never used
+	Level       eventLevel
 	Text        string
 	CreatedAt   time.Time
 }
@@ -46,7 +56,7 @@ func (svc *ServiceContext) createJobStatus(job string, origType string, origID i
 
 func (svc *ServiceContext) jobDone(status *jobStatus) {
 	if status.EndedAt == nil {
-		e := event{JobStatusID: status.ID, Level: 0, Text: "job finished"}
+		e := event{JobStatusID: status.ID, Level: Info, Text: "job finished"}
 		err := svc.GDB.Create(&e).Error
 		if err != nil {
 			log.Printf("ERROR: unable to log job %d done event: %s", status.ID, err.Error())
@@ -64,7 +74,7 @@ func (svc *ServiceContext) logInfo(status *jobStatus, text string) {
 		return
 	}
 	log.Printf("INFO: [job %d info]: %s", status.ID, text)
-	e := event{JobStatusID: status.ID, Level: 0, Text: text}
+	e := event{JobStatusID: status.ID, Level: Info, Text: text}
 	err := svc.GDB.Create(&e).Error
 	if err != nil {
 		log.Printf("ERROR: unable to log job %d info event [%s]: %s", status.ID, text, err.Error())
@@ -77,7 +87,7 @@ func (svc *ServiceContext) logError(status *jobStatus, text string) {
 		return
 	}
 	log.Printf("INFO: [job %d error]: %s", status.ID, text)
-	e := event{JobStatusID: status.ID, Level: 2, Text: text}
+	e := event{JobStatusID: status.ID, Level: Error, Text: text}
 	err := svc.GDB.Create(&e).Error
 	if err != nil {
 		log.Printf("ERROR: unable to log job %d error event [%s]: %s", status.ID, text, err.Error())
@@ -88,7 +98,7 @@ func (svc *ServiceContext) logError(status *jobStatus, text string) {
 func (svc *ServiceContext) logFatal(status *jobStatus, text string) {
 	if status.EndedAt == nil {
 		log.Printf("INFO: [job %d fatal]: %s", status.ID, text)
-		e := event{JobStatusID: status.ID, Level: 3, Text: text}
+		e := event{JobStatusID: status.ID, Level: Fatal, Text: text}
 		err := svc.GDB.Create(&e).Error
 		if err != nil {
 			log.Printf("ERROR: unable to log job %d fatal event [%s]: %s", status.ID, text, err.Error())

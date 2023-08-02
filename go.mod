@@ -11,8 +11,8 @@ require (
 	github.com/go-sql-driver/mysql v1.7.1
 	github.com/go-xmlfmt/xmlfmt v1.1.2
 	github.com/kardianos/ftps v1.0.3
-	golang.org/x/image v0.9.0
-	golang.org/x/net v0.12.0
+	golang.org/x/image v0.10.0
+	golang.org/x/net v0.13.0
 	gopkg.in/gomail.v2 v2.0.0-20160411212932-81ebce5c23df
 	gorm.io/driver/mysql v1.5.1
 	gorm.io/gorm v1.25.2

@@ -68,11 +68,21 @@ type intendedUse struct {
 	DeliverableResolution string
 }
 
+type staffRole uint
+
+// Staff roles from rails enum: [:admin, :supervisor, :student, :viewer]
+const (
+	Admin      staffRole = 0
+	Supervisor staffRole = 1
+	Student    staffRole = 2
+	Viewer     staffRole = 3
+)
+
 type staffMember struct {
 	ID          int64
 	ComputingID string
 	Email       string
-	Role        uint // [:admin, :supervisor, :student, :viewer]
+	Role        staffRole
 }
 
 type customer struct {

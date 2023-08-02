@@ -225,11 +225,13 @@ func (svc *ServiceContext) publishMasterFileToIIIF(c *gin.Context) {
 		return
 	}
 
-	srcPath := path.Join(svc.ArchiveDir, fmt.Sprintf("%09d", tgtMF.UnitID))
+	srcPath := path.Join(svc.ArchiveDir, fmt.Sprintf("%09d", tgtMF.UnitID), tgtMF.Filename)
 	if strings.Contains(tgtMF.Unit.StaffNotes, "Archive: ") {
 		tgtDir := strings.Split(tgtMF.Unit.StaffNotes, "Archive: ")[1]
 		srcPath = path.Join(svc.ArchiveDir, tgtDir, tgtMF.Filename)
 	}
+
+	log.Printf("INFO: source file for iiif publish: %s", srcPath)
 
 	if overwrite {
 		if tgtMF.ImageTechMeta.ID != 0 {

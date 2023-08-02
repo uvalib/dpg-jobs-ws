@@ -75,7 +75,7 @@ func (svc *ServiceContext) submitHathiTrustMetadata(c *gin.Context) {
 		return
 	}
 
-	if submitUser.Role != 0 {
+	if submitUser.Role != Admin {
 		log.Printf("ERROR: hathitrust metadata requests can only be submitted by admin users")
 		c.String(http.StatusBadRequest, "you do not have permission to make this request")
 		return
@@ -249,7 +249,7 @@ func (svc *ServiceContext) createHathiTrustPackage(c *gin.Context) {
 		return
 	}
 
-	if submitUser.Role != 0 {
+	if submitUser.Role != Admin {
 		log.Printf("ERROR: hathitrust package requests can only be submitted by admin users")
 		c.String(http.StatusBadRequest, "you do not have permission to make this request")
 		return
