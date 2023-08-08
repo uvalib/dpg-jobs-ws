@@ -31,11 +31,11 @@ import (
 )
 
 type htmlTemplates struct {
-	Fees            *template.Template
-	OrderAvailable  *template.Template
-	AuditResults    *template.Template
-	PHashResults    *template.Template
-	PDFOrderSummary *template.Template
+	Fees           *template.Template
+	OrderAvailable *template.Template
+	AuditResults   *template.Template
+	PHashResults   *template.Template
+	OrderSummary   *template.Template
 }
 
 type archivesSpaceContext struct {
@@ -133,7 +133,7 @@ func InitializeService(version string, cfg *ServiceConfig) *ServiceContext {
 	if err != nil {
 		log.Fatal(err)
 	}
-	ctx.Templates.PDFOrderSummary, err = template.New("pdf_ordersummary.html").ParseFiles("./templates/pdf_ordersummary.html")
+	ctx.Templates.OrderSummary, err = template.New("ordersummary.html").ParseFiles("./templates/ordersummary.html")
 	if err != nil {
 		log.Fatal(err)
 	}

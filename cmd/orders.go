@@ -153,13 +153,13 @@ func (svc *ServiceContext) checkOrderReadyForDelivery(js *jobStatus, orderID int
 
 	svc.logInfo(js, "Order has passed QA")
 
-	svc.logInfo(js, "Create order PDF...")
-	pdfGen, err := svc.generateOrderPDF(&o)
+	svc.logInfo(js, "Create order Summary...")
+	pdfBytes, err := svc.generateOrderSummary(&o)
 	if err != nil {
 		return fmt.Errorf("Unable to generate order PDF: %s", err.Error())
 	}
 
-	err = svc.saveOrderPDF(js, &o, pdfGen)
+	err = svc.saveOrderSummary(js, &o, pdfBytes)
 	if err != nil {
 		return fmt.Errorf("Unable to save order PDF: %s", err.Error())
 	}

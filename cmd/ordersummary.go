@@ -7,16 +7,15 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 	"path"
 	"strconv"
-	"strings"
 
-	"github.com/SebastiaanKlippert/go-wkhtmltopdf"
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 )
 
-func (svc *ServiceContext) viewOrderPDF(c *gin.Context) {
+func (svc *ServiceContext) viewOrderSummary(c *gin.Context) {
 	orderIDStr := c.Param("id")
 	orderID, _ := strconv.ParseInt(orderIDStr, 10, 64)
 
@@ -37,16 +36,16 @@ func (svc *ServiceContext) viewOrderPDF(c *gin.Context) {
 		return
 	}
 
-	pdfGen, err := svc.generateOrderPDF(&o)
+	pdfBytes, err := svc.generateOrderSummary(&o)
 	if err != nil {
 		log.Printf("ERROR: generation of order pdf failed: %s", err.Error())
 		c.String(http.StatusInternalServerError, err.Error())
 		return
 	}
-	c.Data(http.StatusOK, "application/pdf", pdfGen.Bytes())
+	c.Data(http.StatusOK, "text/html", pdfBytes)
 }
 
-func (svc *ServiceContext) createOrderPDF(c *gin.Context) {
+func (svc *ServiceContext) createOrderSummary(c *gin.Context) {
 	orderIDStr := c.Param("id")
 	orderID, _ := strconv.ParseInt(orderIDStr, 10, 64)
 	js, err := svc.createJobStatus("CreateOrderPDF", "Order", orderID)
@@ -74,13 +73,13 @@ func (svc *ServiceContext) createOrderPDF(c *gin.Context) {
 	}
 
 	svc.logInfo(js, "Create order PDF...")
-	pdfGen, err := svc.generateOrderPDF(&o)
+	pdfGen, err := svc.generateOrderSummary(&o)
 	if err != nil {
 		svc.logFatal(js, fmt.Sprintf("Unable to generate order PDF: %s", err.Error()))
 		c.String(http.StatusInternalServerError, err.Error())
 		return
 	}
-	err = svc.saveOrderPDF(js, &o, pdfGen)
+	err = svc.saveOrderSummary(js, &o, pdfGen)
 	if err != nil {
 		svc.logFatal(js, fmt.Sprintf("Unable to save order PDF: %s", err.Error()))
 		c.String(http.StatusInternalServerError, err.Error())
@@ -91,7 +90,7 @@ func (svc *ServiceContext) createOrderPDF(c *gin.Context) {
 	c.String(http.StatusOK, "done")
 }
 
-func (svc *ServiceContext) saveOrderPDF(js *jobStatus, o *order, pdfGen *wkhtmltopdf.PDFGenerator) error {
+func (svc *ServiceContext) saveOrderSummary(js *jobStatus, o *order, orderData []byte) error {
 
 	dir := path.Join(svc.DeliveryDir, fmt.Sprintf("order_%d", o.ID))
 	err := ensureDirExists(dir, 0777)
@@ -99,8 +98,8 @@ func (svc *ServiceContext) saveOrderPDF(js *jobStatus, o *order, pdfGen *wkhtmlt
 		return err
 	}
 
-	pdfFile := path.Join(dir, fmt.Sprintf("%d.pdf", o.ID))
-	err = pdfGen.WriteFile(pdfFile)
+	pdfFile := path.Join(dir, fmt.Sprintf("%d.html", o.ID))
+	err = os.WriteFile(pdfFile, orderData, 0755)
 	if err != nil {
 		return err
 	}
@@ -109,18 +108,7 @@ func (svc *ServiceContext) saveOrderPDF(js *jobStatus, o *order, pdfGen *wkhtmlt
 	return nil
 }
 
-func (svc *ServiceContext) generateOrderPDF(order *order) (*wkhtmltopdf.PDFGenerator, error) {
-	pdfGen, err := wkhtmltopdf.NewPDFGenerator()
-	if err != nil {
-		return nil, err
-	}
-
-	pdfGen.PageSize.Set(wkhtmltopdf.PageSizeA4)
-	pdfGen.MarginBottom.Set(10)
-	pdfGen.MarginTop.Set(10)
-	pdfGen.MarginLeft.Set(10)
-	pdfGen.MarginRight.Set(10)
-
+func (svc *ServiceContext) generateOrderSummary(order *order) ([]byte, error) {
 	type mfData struct {
 		Filename    string
 		Title       string
@@ -206,22 +194,12 @@ func (svc *ServiceContext) generateOrderPDF(order *order) (*wkhtmltopdf.PDFGener
 	}
 
 	var content bytes.Buffer
-	err = svc.Templates.PDFOrderSummary.Execute(&content, data)
-	if err != nil {
-		return nil, err
-	}
-	page := wkhtmltopdf.NewPageReader(strings.NewReader(content.String()))
-	page.Encoding.Set("UTF8")
-	page.FooterRight.Set("[page]")
-	page.FooterFontSize.Set(10)
-	pdfGen.AddPage(page)
-
-	err = pdfGen.Create()
+	err := svc.Templates.OrderSummary.Execute(&content, data)
 	if err != nil {
 		return nil, err
 	}
 
-	return pdfGen, nil
+	return content.Bytes(), nil
 }
 
 type subField struct {
