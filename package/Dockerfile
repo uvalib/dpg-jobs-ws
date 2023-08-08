@@ -14,13 +14,17 @@ RUN make linux
 #
 # build the target container
 #
-FROM public.ecr.aws/docker/library/alpine:3.18
+FROM public.ecr.aws/docker/library/debian:bookworm-slim
 
 # update the packages
-RUN apk update && apk upgrade && apk add bash tzdata ca-certificates curl exiftool libgomp libgcc openjpeg && rm -rf /var/cache/apk/*
+RUN apt-get -y update && apt-get -y upgrade && apt-get -y install bash tzdata ca-certificates curl exiftool imagemagick xfonts-base xfonts-75dpi
+
+# copy in a blank policy.xml
+COPY package/data/policy.xml /etc/ImageMagick-6/policy.xml
 
 # Create the run user and group
-RUN addgroup --gid 10708 libr-snlocal && addgroup --gid 16339 lb-digiserv && adduser --uid 118698 libsnlocal -G libr-snlocal -D
+RUN groupadd -g 10708 libr-snlocal
+RUN groupadd -g 16339 lb-digiserv && useradd -u 118698 -g lb-digiserv -G libr-snlocal libsnlocal
 
 # set the timezone appropriatly
 ENV TZ=UTC
@@ -41,11 +45,6 @@ CMD scripts/entry.sh
 # Move in necessary assets
 COPY package/data/container_bash_profile /home/libsnlocal/.profile
 COPY package/scripts/entry.sh $APP_HOME/scripts/entry.sh
-
-# image magick support
-COPY distro/ImageMagick-7x/bin/convert /usr/local/bin
-COPY distro/ImageMagick-7x/lib/libMagickCore-7.Q16HDRI.so.10 /usr/local/lib
-COPY distro/ImageMagick-7x/lib/libMagickWand-7.Q16HDRI.so.10 /usr/local/lib
 
 # layer build assets
 COPY package/bin/linux/kdu_compress /usr/local/bin/kdu_compress
