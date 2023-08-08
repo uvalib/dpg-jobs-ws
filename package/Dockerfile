@@ -43,7 +43,6 @@ COPY package/data/container_bash_profile /home/libsnlocal/.profile
 COPY package/scripts/entry.sh $APP_HOME/scripts/entry.sh
 COPY package/bin/linux/kdu_compress /usr/local/bin/kdu_compress
 COPY package/bin/linux/libkdu_v63R.so /usr/lib/libkdu_v63R.so
-RUN ldconfig -v
 COPY --from=builder /build/bin/dpg-jobs-ws.linux $APP_HOME/bin/dpg-jobs-ws
 COPY --from=builder /build/bin/templates $APP_HOME/bin/templates
 COPY --from=builder /build/bin/assets $APP_HOME/bin/assets
