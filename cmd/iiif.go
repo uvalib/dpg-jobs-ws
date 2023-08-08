@@ -50,7 +50,8 @@ func (svc *ServiceContext) publishToIIIF(js *jobStatus, mf *masterFile, srcPath 
 		svc.logInfo(js, fmt.Sprintf("Copied JPEG-2000 image using '%s' as input file for the creation of deliverable '%s'", workPath, jp2kInfo.basePath))
 	} else if strings.Index(mf.Filename, ".tif") > -1 {
 		svc.logInfo(js, fmt.Sprintf("Compressing %s to %s using imagemagick...", workPath, jp2kInfo.absolutePath))
-		cmdArray := []string{workPath, "-define", "jp2:rate=50", "-define", "jp2:progression-order=RPCL", "-define", "jp2:number-resolutions=7", jp2kInfo.absolutePath}
+		firstPage := fmt.Sprintf("%s[0]", workPath) // need the [0] as some tifs have multiple pages. only want 1
+		cmdArray := []string{firstPage, "-define", "jp2:rate=50", "-define", "jp2:progression-order=RPCL", "-define", "jp2:number-resolutions=7", jp2kInfo.absolutePath}
 		cmd := exec.Command("convert", cmdArray...)
 		log.Printf("%+v", cmd)
 		_, err = cmd.Output()
