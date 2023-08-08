@@ -17,11 +17,10 @@ RUN make linux
 FROM public.ecr.aws/docker/library/alpine:3.18
 
 # update the packages
-RUN apk update && apk upgrade && apk add bash tzdata ca-certificates curl exiftool imagemagick && rm -rf /var/cache/apk/*
+RUN apk update && apk upgrade && apk add bash tzdata ca-certificates curl exiftool libgomp libgcc openjpeg && rm -rf /var/cache/apk/*
 
 # Create the run user and group
-RUN groupadd -g 10708 libr-snlocal
-RUN groupadd -g 16339 lb-digiserv && useradd -u 118698 -g lb-digiserv -G libr-snlocal libsnlocal
+RUN addgroup --gid 10708 libr-snlocal && addgroup --gid 16339 lb-digiserv && adduser --uid 118698 libsnlocal -G libr-snlocal -D
 
 # set the timezone appropriatly
 ENV TZ=UTC
@@ -42,9 +41,13 @@ CMD scripts/entry.sh
 # Move in necessary assets
 COPY package/data/container_bash_profile /home/libsnlocal/.profile
 COPY package/scripts/entry.sh $APP_HOME/scripts/entry.sh
-COPY package/bin/linux/kdu_compress /usr/local/bin/kdu_compress
-COPY package/bin/linux/libkdu_v63R.so /usr/lib/libkdu_v63R.so
-RUN ldconfig -v
+
+# image magick support
+COPY distro/ImageMagick-7x/bin/convert /usr/local/bin
+COPY distro/ImageMagick-7x/lib/libMagickCore-7.Q16HDRI.so.10 /usr/local/lib
+COPY distro/ImageMagick-7x/lib/libMagickWand-7.Q16HDRI.so.10 /usr/local/lib
+
+# layer build assets
 COPY --from=builder /build/bin/dpg-jobs-ws.linux $APP_HOME/bin/dpg-jobs-ws
 COPY --from=builder /build/bin/templates $APP_HOME/bin/templates
 COPY --from=builder /build/bin/assets $APP_HOME/bin/assets
