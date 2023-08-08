@@ -50,8 +50,6 @@ func main() {
 
 	router.GET("/jstor/lookup", svc.lookupJstorMetadata)
 
-	router.POST("/iiif/publish", svc.publishMasterFileToIIIF)
-
 	router.POST("/metadata/:id/baggit", svc.createBag)
 	router.POST("/metadata/:id/publish", svc.publishToVirgo)
 

@@ -48,6 +48,8 @@ COPY distro/ImageMagick-7x/lib/libMagickCore-7.Q16HDRI.so.10 /usr/local/lib
 COPY distro/ImageMagick-7x/lib/libMagickWand-7.Q16HDRI.so.10 /usr/local/lib
 
 # layer build assets
+COPY package/bin/linux/kdu_compress /usr/local/bin/kdu_compress
+COPY package/bin/linux/libkdu_v63R.so /usr/lib/libkdu_v63R.so
 COPY --from=builder /build/bin/dpg-jobs-ws.linux $APP_HOME/bin/dpg-jobs-ws
 COPY --from=builder /build/bin/templates $APP_HOME/bin/templates
 COPY --from=builder /build/bin/assets $APP_HOME/bin/assets
