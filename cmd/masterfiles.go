@@ -591,15 +591,18 @@ func (svc *ServiceContext) updateMasterFileIIIF(c *gin.Context) {
 		return
 	}
 
-	err = svc.publishToIIIF(js, &tgtMF, archiveFile, true)
-	if err != nil {
-		svc.logFatal(js, fmt.Sprintf("Update IIIF for master file %d from archive %s failed: %s", mfID, archiveFile, err.Error()))
-		c.String(http.StatusInternalServerError, err.Error())
-		return
-	}
+	go func() {
+		err = svc.publishToIIIF(js, &tgtMF, archiveFile, true)
+		if err != nil {
+			svc.logFatal(js, fmt.Sprintf("Update IIIF for master file %d from archive %s failed: %s", mfID, archiveFile, err.Error()))
+			c.String(http.StatusInternalServerError, err.Error())
+			return
+		}
 
-	svc.jobDone(js)
-	c.String(http.StatusOK, "updated")
+		svc.jobDone(js)
+	}()
+
+	c.String(http.StatusOK, fmt.Sprintf("%d", js.ID))
 }
 
 func (svc *ServiceContext) deaccessionMasterFile(c *gin.Context) {
