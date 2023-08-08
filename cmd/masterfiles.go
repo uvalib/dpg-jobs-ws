@@ -578,6 +578,19 @@ func (svc *ServiceContext) updateMasterFileIIIF(c *gin.Context) {
 		return
 	}
 
+	if tgtMF.ImageTechMeta.Width == 0 || tgtMF.ImageTechMeta.Height == 0 {
+		svc.logFatal(js, fmt.Sprintf("%s has invalid tech metdata and is likely corrupt; skipping further processing", tgtMF.PID))
+		c.String(http.StatusBadRequest, "invalid tech metadata; width and height are zero")
+		return
+	}
+
+	colorTest := strings.TrimSpace(tgtMF.ImageTechMeta.ColorSpace)
+	if colorTest == "CMYK" {
+		svc.logFatal(js, fmt.Sprintf("%s has unsupported colorspace %s; skipping further processing", tgtMF.PID, colorTest))
+		c.String(http.StatusBadRequest, fmt.Sprintf("unsupported colorspace %s", colorTest))
+		return
+	}
+
 	err = svc.publishToIIIF(js, &tgtMF, archiveFile, true)
 	if err != nil {
 		svc.logFatal(js, fmt.Sprintf("Update IIIF for master file %d from archive %s failed: %s", mfID, archiveFile, err.Error()))
