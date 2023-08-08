@@ -1,7 +1,6 @@
 package main
 
 import (
-	"errors"
 	"fmt"
 	"io/ioutil"
 	"log"
@@ -12,7 +11,7 @@ import (
 )
 
 func (svc *ServiceContext) publishToIIIF(js *jobStatus, mf *masterFile, srcPath string, overwrite bool) error {
-	svc.logInfo(js, fmt.Sprintf("Publish master file %s from %s to IIIF", mf.PID, srcPath))
+	svc.logInfo(js, fmt.Sprintf("Publish master file %s from %s to IIIF; overwrite %t", mf.PID, srcPath, overwrite))
 
 	svc.logInfo(js, "Validate file type")
 	workPath := srcPath
@@ -46,36 +45,13 @@ func (svc *ServiceContext) publishToIIIF(js *jobStatus, mf *masterFile, srcPath 
 		return err
 	}
 
-	if strings.Index(mf.Filename, ".tif") > -1 {
-		// kakadu cant handle compression. remove it if detected
-		if mf.ImageTechMeta.Compression != "Uncompressed" {
-			cmdArray := []string{"-compress", "none", "-quiet", workPath, workPath}
-			_, err := exec.Command("convert", cmdArray...).Output()
-			if err != nil {
-				svc.logError(js, fmt.Sprintf("Unable to remove compression on %s: %s", mf.PID, err.Error()))
-			} else {
-				svc.logInfo(js, fmt.Sprintf("MasterFile %s is compressed. This has been corrected automatically.", mf.PID))
-				mf.MD5 = md5Checksum(workPath)
-				svc.GDB.Model(mf).Select("MD5").Updates(mf)
-			}
-		}
-	}
-
 	if strings.Index(mf.Filename, ".jp2") > -1 {
 		copyFile(workPath, jp2kInfo.absolutePath, 0664)
 		svc.logInfo(js, fmt.Sprintf("Copied JPEG-2000 image using '%s' as input file for the creation of deliverable '%s'", workPath, jp2kInfo.basePath))
 	} else if strings.Index(mf.Filename, ".tif") > -1 {
-		svc.logInfo(js, fmt.Sprintf("Compressing %s to %s...", workPath, jp2kInfo.absolutePath))
-		_, err := exec.LookPath("kdu_compress")
-		if err != nil {
-			return errors.New("kdu_compress is not available")
-		}
-		cmdArray := []string{"-i", workPath, "-o", jp2kInfo.absolutePath, "-rate", "0.5",
-			"Clayers=1", "Clevels=7", "Cuse_sop=yes", "-quiet", "-num_threads", "8",
-			"Cprecincts={256,256},{256,256},{256,256},{128,128},{128,128},{64,64},{64,64},{32,32},{16,16}",
-			"Corder=RPCL", "ORGgen_plt=yes", "ORGtparts=R", "Cblk={64,64}",
-		}
-		cmd := exec.Command("kdu_compress", cmdArray...)
+		svc.logInfo(js, fmt.Sprintf("Compressing %s to %s using imagemagick...", workPath, jp2kInfo.absolutePath))
+		cmdArray := []string{workPath, "-define", "jp2:rate=50", "-define", "jp2:progression-order=RPCL", "-define", "jp2:number-resolutions=7", jp2kInfo.absolutePath}
+		cmd := exec.Command("convert", cmdArray...)
 		log.Printf("%+v", cmd)
 		_, err = cmd.Output()
 		if err != nil {
