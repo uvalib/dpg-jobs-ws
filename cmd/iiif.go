@@ -36,6 +36,7 @@ func (svc *ServiceContext) publishToIIIF(js *jobStatus, mf *masterFile, srcPath 
 		svc.logInfo(js, fmt.Sprintf("Copied JPEG-2000 image using '%s' as input file for the creation of deliverable '%s'", workPath, jp2kInfo.basePath))
 	} else if fileType == "tiff" {
 		svc.logInfo(js, fmt.Sprintf("Compressing %s to %s using imagemagick...", workPath, jp2kInfo.absolutePath))
+		rawFileInfo, _ := os.Stat(workPath)
 		firstPage := fmt.Sprintf("%s[0]", workPath) // need the [0] as some tifs have multiple pages. only want the first.
 		cmdArray := []string{firstPage, "-define", "jp2:rate=50", "-define", "jp2:progression-order=RPCL", "-define", "jp2 :number-resolutions=7", jp2kInfo.absolutePath}
 		startTime := time.Now()
@@ -46,7 +47,7 @@ func (svc *ServiceContext) publishToIIIF(js *jobStatus, mf *masterFile, srcPath 
 			return err
 		}
 		elapsed := time.Since(startTime)
-		svc.logInfo(js, fmt.Sprintf("...compression complete; tif size %.2fM, elapsed time %.2f seconds", float64(mf.Filesize)/1000000.0, elapsed.Seconds()))
+		svc.logInfo(js, fmt.Sprintf("...compression complete; tif size %.2fM, elapsed time %.2f seconds", float64(rawFileInfo.Size())/1000000.0, elapsed.Seconds()))
 	}
 
 	svc.logInfo(js, fmt.Sprintf("%s has been published to IIIF", mf.PID))
