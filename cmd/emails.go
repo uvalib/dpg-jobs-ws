@@ -275,7 +275,7 @@ func (svc *ServiceContext) sendEmail(request *emailRequest) error {
 	return dialer.DialAndSend(mail)
 }
 
-func (svc *ServiceContext) generateOrderEmail(js *jobStatus, o *order) error {
+func (svc *ServiceContext) generateOrderEmail(js *jobStatus, o *order) ([]byte, error) {
 	svc.logInfo(js, "Create email for order")
 	type MailData struct {
 		FirstName     string
@@ -316,7 +316,7 @@ func (svc *ServiceContext) generateOrderEmail(js *jobStatus, o *order) error {
 	var renderedEmail bytes.Buffer
 	err = svc.Templates.OrderAvailable.Execute(&renderedEmail, data)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	log.Printf(renderedEmail.String())
@@ -324,5 +324,5 @@ func (svc *ServiceContext) generateOrderEmail(js *jobStatus, o *order) error {
 	svc.GDB.Model(o).Select("email").Updates(order{Email: renderedEmail.String()})
 	svc.logInfo(js, "An email for web delivery has been created")
 
-	return nil
+	return renderedEmail.Bytes(), nil
 }

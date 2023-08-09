@@ -37,7 +37,7 @@ func (svc *ServiceContext) createOrderEmail(c *gin.Context) {
 		return
 	}
 
-	err = svc.generateOrderEmail(js, &o)
+	emailBytes, err := svc.generateOrderEmail(js, &o)
 	if err != nil {
 		svc.logFatal(js, fmt.Sprintf("Unable to generate email: %s", err.Error()))
 		c.String(http.StatusInternalServerError, err.Error())
@@ -45,7 +45,7 @@ func (svc *ServiceContext) createOrderEmail(c *gin.Context) {
 	}
 
 	svc.jobDone(js)
-	c.String(http.StatusOK, "done")
+	c.String(http.StatusOK, string(emailBytes))
 }
 
 func (svc *ServiceContext) checkOrderReady(c *gin.Context) {
@@ -164,7 +164,7 @@ func (svc *ServiceContext) checkOrderReadyForDelivery(js *jobStatus, orderID int
 		return fmt.Errorf("Unable to save order PDF: %s", err.Error())
 	}
 
-	err = svc.generateOrderEmail(js, &o)
+	_, err = svc.generateOrderEmail(js, &o)
 	if err != nil {
 		return fmt.Errorf("Unable to generate email: %s", err.Error())
 	}
