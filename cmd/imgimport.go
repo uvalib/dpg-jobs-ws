@@ -348,7 +348,7 @@ func (svc *ServiceContext) importImages(js *jobStatus, tgtUnit *unit, srcDir str
 		textFilePath := path.Join(srcDir, fmt.Sprintf("%s.txt", baseFN))
 		if pathExists(textFilePath) {
 			svc.logInfo(js, fmt.Sprintf("Add transcription text for %s", fi.filename))
-			bytes, err := ioutil.ReadFile(textFilePath)
+			bytes, err := os.ReadFile(textFilePath)
 			if err != nil {
 				svc.logError(js, fmt.Sprintf("Unable to read txt file %s: %s", textFilePath, err.Error()))
 			} else {

@@ -3,7 +3,6 @@ package main
 import (
 	"fmt"
 	"io/ioutil"
-	"log"
 	"os"
 	"os/exec"
 	"path"
@@ -13,25 +12,12 @@ import (
 func (svc *ServiceContext) publishToIIIF(js *jobStatus, mf *masterFile, srcPath string, overwrite bool) error {
 	svc.logInfo(js, fmt.Sprintf("Publish master file %s from %s to IIIF; overwrite %t", mf.PID, srcPath, overwrite))
 
-	svc.logInfo(js, "Validate file type")
+	svc.logInfo(js, "Validate file type is TIF or JP2")
 	workPath := srcPath
-	if strings.ToLower(mf.ImageTechMeta.ImageFormat) != "tiff" {
-		workPath = path.Join("/tmp", fmt.Sprintf("%s.tif", mf.PID))
-		svc.logInfo(js, fmt.Sprintf("%s is format [%s], converting to a TIF here: %s", mf.PID, mf.ImageTechMeta.ImageFormat, workPath))
-
-		cmdArray := []string{srcPath, workPath}
-		cmd := exec.Command("convert", cmdArray...)
-		svc.logInfo(js, fmt.Sprintf("Conversion command: %+v", cmd))
-		_, err := cmd.Output()
-		if err != nil {
-			svc.logError(js, fmt.Sprintf("Unable to convert %s %s to a TIF: %s", mf.PID, srcPath, err.Error()))
-			return err
-		}
-
-		defer func() {
-			svc.logInfo(js, fmt.Sprintf("Cleaning up temporary converted TIF file %s", workPath))
-			os.Remove(workPath)
-		}()
+	fileType := strings.ToLower(mf.ImageTechMeta.ImageFormat)
+	if fileType != "tiff" && fileType != "jp2" {
+		svc.logError(js, fmt.Sprintf("Unsupported image format for %s: %s", mf.PID, mf.ImageTechMeta.ImageFormat))
+		return fmt.Errorf("unsupported image format for %s: %s", mf.PID, mf.ImageTechMeta.ImageFormat)
 	}
 
 	jp2kInfo := svc.iiifPath(mf.PID)
@@ -45,22 +31,20 @@ func (svc *ServiceContext) publishToIIIF(js *jobStatus, mf *masterFile, srcPath 
 		return err
 	}
 
-	if strings.Index(mf.Filename, ".jp2") > -1 {
+	if fileType == "jp2" {
 		copyFile(workPath, jp2kInfo.absolutePath, 0664)
 		svc.logInfo(js, fmt.Sprintf("Copied JPEG-2000 image using '%s' as input file for the creation of deliverable '%s'", workPath, jp2kInfo.basePath))
-	} else if strings.Index(mf.Filename, ".tif") > -1 {
+	} else if fileType == "tiff" {
 		svc.logInfo(js, fmt.Sprintf("Compressing %s to %s using imagemagick...", workPath, jp2kInfo.absolutePath))
-		firstPage := fmt.Sprintf("%s[0]", workPath) // need the [0] as some tifs have multiple pages. only want 1
+		firstPage := fmt.Sprintf("%s[0]", workPath) // need the [0] as some tifs have multiple pages. only want the first.
 		cmdArray := []string{firstPage, "-define", "jp2:rate=50", "-define", "jp2:progression-order=RPCL", "-define", "jp2:number-resolutions=7", jp2kInfo.absolutePath}
 		cmd := exec.Command("convert", cmdArray...)
-		log.Printf("%+v", cmd)
+		svc.logInfo(js, fmt.Sprintf("%+v", cmd))
 		_, err = cmd.Output()
 		if err != nil {
 			return err
 		}
 		svc.logInfo(js, "...compression complete.")
-	} else {
-		return fmt.Errorf("%s is not a .tif or .jp2", workPath)
 	}
 
 	svc.logInfo(js, fmt.Sprintf("%s has been published to IIIF", mf.PID))
