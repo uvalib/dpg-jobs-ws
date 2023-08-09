@@ -46,7 +46,7 @@ func (svc *ServiceContext) publishToIIIF(js *jobStatus, mf *masterFile, srcPath 
 			return err
 		}
 		elapsed := time.Since(startTime)
-		svc.logInfo(js, fmt.Sprintf("...compression complete; elapsed time %.2f seconds", elapsed.Seconds()))
+		svc.logInfo(js, fmt.Sprintf("...compression complete; tif size %.2fM, elapsed time %.2f seconds", float64(mf.Filesize)/1000000.0, elapsed.Seconds()))
 	}
 
 	svc.logInfo(js, fmt.Sprintf("%s has been published to IIIF", mf.PID))
