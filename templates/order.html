@@ -18,8 +18,13 @@
       </p>
       {{end}}
 
-      <p>The order summary included in the above list contains all metadata and descriptive information about your digital order.</p>
-      <p>*** Please note that your image files will only be available for the next 30 days ***</p>
+      <p>
+         A summary of the order including all metadata and descriptive information can be found
+         <a href="{{.SummaryURL}}">here</a>.
+         <br/><b>Please print or download a copy of this summary for your records.</b>
+      </p>
+
+      <p><b>*** Please note that your image files will only be available for the next 30 days ***</b></p>
 
       {{if .Fee}}
          <p>
