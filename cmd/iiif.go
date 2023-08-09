@@ -2,11 +2,11 @@ package main
 
 import (
 	"fmt"
-	"io/ioutil"
 	"os"
 	"os/exec"
 	"path"
 	"strings"
+	"time"
 )
 
 func (svc *ServiceContext) publishToIIIF(js *jobStatus, mf *masterFile, srcPath string, overwrite bool) error {
@@ -37,14 +37,16 @@ func (svc *ServiceContext) publishToIIIF(js *jobStatus, mf *masterFile, srcPath 
 	} else if fileType == "tiff" {
 		svc.logInfo(js, fmt.Sprintf("Compressing %s to %s using imagemagick...", workPath, jp2kInfo.absolutePath))
 		firstPage := fmt.Sprintf("%s[0]", workPath) // need the [0] as some tifs have multiple pages. only want the first.
-		cmdArray := []string{firstPage, "-define", "jp2:rate=50", "-define", "jp2:progression-order=RPCL", "-define", "jp2:number-resolutions=7", jp2kInfo.absolutePath}
+		cmdArray := []string{firstPage, "-define", "jp2:rate=50", "-define", "jp2:progression-order=RPCL", "-define", "jp2 :number-resolutions=7", jp2kInfo.absolutePath}
+		startTime := time.Now()
 		cmd := exec.Command("convert", cmdArray...)
 		svc.logInfo(js, fmt.Sprintf("%+v", cmd))
 		_, err = cmd.Output()
 		if err != nil {
 			return err
 		}
-		svc.logInfo(js, "...compression complete.")
+		elapsed := time.Since(startTime)
+		svc.logInfo(js, fmt.Sprintf("...compression complete; elapsed time %.2f seconds", elapsed.Seconds()))
 	}
 
 	svc.logInfo(js, fmt.Sprintf("%s has been published to IIIF", mf.PID))
@@ -56,7 +58,7 @@ func (svc *ServiceContext) unpublishIIIF(js *jobStatus, mf *masterFile) {
 	svc.logInfo(js, fmt.Sprintf("Removing file published to IIIF: %s", iiifInfo.absolutePath))
 	if pathExists(iiifInfo.absolutePath) {
 		os.Remove(iiifInfo.absolutePath)
-		files, _ := ioutil.ReadDir(iiifInfo.basePath)
+		files, _ := os.ReadDir(iiifInfo.basePath)
 		if len(files) == 0 {
 			os.Remove(iiifInfo.basePath)
 		}
