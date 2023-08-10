@@ -26,27 +26,23 @@ func (svc *ServiceContext) createPatronPDF(js *jobStatus, tgtUnit *unit) error {
 	pdfPath := path.Join(assembleDir, pdfFileName)
 	os.Remove(pdfPath)
 
-	unitDir := path.Join(svc.ProcessingDir, "finalization", fmt.Sprintf("%09d", tgtUnit.ID))
-	tifFiles, err := svc.getTifFiles(js, unitDir, tgtUnit.ID)
+	// convert all tif files to scaled down jpgs
+	srcTifFiles := path.Join(svc.ProcessingDir, "finalization", fmt.Sprintf("%09d", tgtUnit.ID), "*.tif[0]")
+	svc.logInfo(js, fmt.Sprintf("Covert tif images in %s to scaled down JPGs in %s...", srcTifFiles, assembleDir))
+	cmdArray := []string{"mogrify", "-quiet", "-resize", "1024x", "-density", "150",
+		"-format", "jpg", "-path", assembleDir, srcTifFiles}
+	cmd := exec.Command("magick", cmdArray...)
+	svc.logInfo(js, fmt.Sprintf("%+v", cmd))
+	_, err = cmd.Output()
 	if err != nil {
-		return fmt.Errorf("Unable to read tif files from %s: %s", unitDir, err.Error())
+		return fmt.Errorf("downsize failed: %s", err.Error())
 	}
 
-	// process each tif one at a time. convert to scaled down jpg for PDF
-	for _, tf := range tifFiles {
-		svc.logInfo(js, fmt.Sprintf("Covert %s to scaled down JPG...", tf.filename))
-		cmdArray := []string{"-quiet", "-resize", "1024x", "-density", "150",
-			"-format", "jpg", "-path", assembleDir, fmt.Sprintf("%s[0]", tf.path)}
-		_, err := exec.Command("mogrify", cmdArray...).Output()
-		if err != nil {
-			return fmt.Errorf("Unable to downsize %s: %s", tf.path, err.Error())
-		}
-	}
-
+	// convert all scaled jpg files to a single PDF
 	jpgFiles := path.Join(assembleDir, "*.jpg")
 	svc.logInfo(js, fmt.Sprintf("Covert %s to %s...", jpgFiles, pdfPath))
-	cmdArray := []string{jpgFiles, pdfPath}
-	_, err = exec.Command("convert", cmdArray...).Output()
+	cmdArray = []string{"-quiet", jpgFiles, pdfPath}
+	_, err = exec.Command("magick", cmdArray...).Output()
 	if err != nil {
 		return fmt.Errorf("Unable to convert jpg files to pdf: %s", err.Error())
 	}
@@ -172,7 +168,7 @@ func (svc *ServiceContext) createPatronDeliverable(js *jobStatus, tgtUnit *unit,
 		cmdArray = append(cmdArray, "-resample", fmt.Sprintf("%d", resample))
 	}
 	cmdArray = append(cmdArray, destPath)
-	cmd := exec.Command("convert", cmdArray...)
+	cmd := exec.Command("magick", cmdArray...)
 	log.Printf("INFO: command for patron deliverable: %v", cmd)
 	cmdOut, err := cmd.CombinedOutput()
 	if err != nil {

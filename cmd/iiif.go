@@ -38,9 +38,9 @@ func (svc *ServiceContext) publishToIIIF(js *jobStatus, mf *masterFile, srcPath 
 		svc.logInfo(js, fmt.Sprintf("Compressing %s to %s using imagemagick...", workPath, jp2kInfo.absolutePath))
 		rawFileInfo, _ := os.Stat(workPath)
 		firstPage := fmt.Sprintf("%s[0]", workPath) // need the [0] as some tifs have multiple pages. only want the first.
-		cmdArray := []string{firstPage, "-define", "jp2:rate=50", "-define", "jp2:progression-order=RPCL", "-define", "jp2 :number-resolutions=7", jp2kInfo.absolutePath}
+		cmdArray := []string{firstPage, "-define", "jp2:rate=50 jp2:progression-order=RPCL jp2:number-resolutions=7", jp2kInfo.absolutePath}
 		startTime := time.Now()
-		cmd := exec.Command("convert", cmdArray...)
+		cmd := exec.Command("magick", cmdArray...)
 		svc.logInfo(js, fmt.Sprintf("%+v", cmd))
 		_, err = cmd.Output()
 		if err != nil {
