@@ -21,7 +21,8 @@ RUN apk update && apk upgrade && apk add bash tzdata ca-certificates curl exifto
 
 # image magick support
 RUN apk add fftw-double-libs fontconfig freetype lcms2 libbz2 libgcc libgomp libheif libjxl libltdl libraw libx11 libxext libxml2 openjpeg pango tiff zlib
-COPY distro/convert /usr/local/bin
+COPY distro/magick /usr/local/bin
+RUN ln -s /usr/local/bin/magick /usr/local/bin/convert
 
 # Create the run user and group
 RUN addgroup --gid 10708 libr-snlocal && addgroup --gid 16339 lb-digiserv && adduser --uid 118698 libsnlocal -G libr-snlocal -D
@@ -47,8 +48,6 @@ COPY package/data/container_bash_profile /home/libsnlocal/.profile
 COPY package/scripts/entry.sh $APP_HOME/scripts/entry.sh
 
 # layer build assets
-COPY package/bin/linux/kdu_compress /usr/local/bin/kdu_compress
-COPY package/bin/linux/libkdu_v63R.so /usr/lib/libkdu_v63R.so
 COPY --from=builder /build/bin/dpg-jobs-ws.linux $APP_HOME/bin/dpg-jobs-ws
 COPY --from=builder /build/bin/templates $APP_HOME/bin/templates
 COPY --from=builder /build/bin/assets $APP_HOME/bin/assets
