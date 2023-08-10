@@ -1,7 +1,7 @@
 #
 # build the target application
 #
-FROM public.ecr.aws/docker/library/golang:1.20-alpine3.18 as builder
+FROM public.ecr.aws/docker/library/golang:1.21.0-alpine3.18 as builder
 RUN apk update && apk upgrade && apk add --no-cache make npm yarn
 
 WORKDIR /build
@@ -14,17 +14,17 @@ RUN make linux
 #
 # build the target container
 #
-FROM public.ecr.aws/docker/library/debian:bookworm-slim
+FROM public.ecr.aws/docker/library/alpine:3.18
 
 # update the packages
-RUN apt-get -y update && apt-get -y upgrade && apt-get -y install bash tzdata ca-certificates curl exiftool imagemagick xfonts-base xfonts-75dpi
+RUN apk update && apk upgrade && apk add bash tzdata ca-certificates curl exiftool && rm -rf /var/cache/apk/*
 
-# copy in a blank policy.xml
-COPY package/data/policy.xml /etc/ImageMagick-6/policy.xml
+# image magick support
+RUN apk add fftw-double-libs fontconfig freetype lcms2 libbz2 libgcc libgomp libheif libjxl libltdl libraw libx11 libxext libxml2 openjpeg pango tiff zlib
+COPY distro/convert /usr/local/bin
 
 # Create the run user and group
-RUN groupadd -g 10708 libr-snlocal
-RUN groupadd -g 16339 lb-digiserv && useradd -u 118698 -g lb-digiserv -G libr-snlocal libsnlocal
+RUN addgroup --gid 10708 libr-snlocal && addgroup --gid 16339 lb-digiserv && adduser --uid 118698 libsnlocal -G libr-snlocal -D
 
 # set the timezone appropriatly
 ENV TZ=UTC
