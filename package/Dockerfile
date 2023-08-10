@@ -22,7 +22,7 @@ RUN apk update && apk upgrade && apk add bash tzdata ca-certificates curl exifto
 # image magick support
 RUN apk add fftw-double-libs fontconfig freetype lcms2 libbz2 libgcc libgomp libheif libjxl libltdl libraw libx11 libxext libxml2 openjpeg pango tiff zlib
 COPY distro/magick /usr/local/bin
-RUN ln -s /usr/local/bin/magick /usr/local/bin/convert
+RUN ln -s /usr/local/bin/magick /usr/local/bin/convert && ln -s /usr/local/bin/magick /usr/local/bin/identify
 
 # Create the run user and group
 RUN addgroup --gid 10708 libr-snlocal && addgroup --gid 16339 lb-digiserv && adduser --uid 118698 libsnlocal -G libr-snlocal -D
