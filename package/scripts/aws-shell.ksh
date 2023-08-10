@@ -8,7 +8,7 @@
 # set the definitions
 INSTANCE=dpg-jobs-ws
 NAMESPACE=115119339709.dkr.ecr.us-east-1.amazonaws.com/uvalib
-TAG=build-20230810135036
+TAG=build-20230810164757
 
 if [ $# -eq 1 ]; then
   TAG=$1
