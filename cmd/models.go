@@ -5,6 +5,8 @@ import (
 	"regexp"
 	"strings"
 	"time"
+
+	"gorm.io/gorm"
 )
 
 type academicStatus struct {
@@ -197,6 +199,10 @@ type masterFile struct {
 	DateDlUpdate      *time.Time `gorm:"column:date_dl_update"`
 	CreatedAt         time.Time
 	UpdatedAt         time.Time
+}
+
+func (mf *masterFile) AfterCreate(tx *gorm.DB) (err error) {
+	return tx.Model(mf).Update("pid", fmt.Sprintf("tsm:%d", mf.ID)).Error
 }
 
 func (mf *masterFile) location() *location {
