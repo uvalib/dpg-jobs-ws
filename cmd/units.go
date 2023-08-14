@@ -262,8 +262,6 @@ func (svc *ServiceContext) cloneMasterFile(js *jobStatus, srcUnit *unit, srcMF *
 	if err != nil {
 		return fmt.Errorf("Unable to create %s: %s", newFN, err.Error())
 	}
-	newMF.PID = fmt.Sprintf("tsm:%d", newMF.ID)
-	svc.GDB.Model(&newMF).Select("PID").Updates(newMF)
 	if srcMF.location() != nil {
 		svc.GDB.Exec("INSERT into master_file_locations (master_file_id, location_id) values (?,?)", newMF.ID, srcMF.location().ID)
 	}

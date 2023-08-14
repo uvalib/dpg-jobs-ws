@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"log"
+	"math"
 	"net/http"
 	"os"
 	"os/exec"
@@ -13,6 +14,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -25,6 +27,13 @@ type tifMetadata struct {
 	ComponentID int64
 	Box         string
 	Folder      string
+}
+
+const maxJP2Batches = 5
+
+type jp2Source struct {
+	MasterFile *masterFile
+	Path       string
 }
 
 func (svc *ServiceContext) importGuestImages(c *gin.Context) {
@@ -119,8 +128,6 @@ func (svc *ServiceContext) importGuestImages(c *gin.Context) {
 				log.Printf("ERROR: unable to create masterfile %s: %s", entry.Name(), err.Error())
 				return err
 			}
-			newMF.PID = fmt.Sprintf("tsm:%d", newMF.ID)
-			svc.GDB.Model(&newMF).Select("PID").Updates(newMF)
 		} else {
 			log.Printf("INFO: master file %s already exists", tifFile.filename)
 			if newMF.PID == "" {
@@ -231,14 +238,21 @@ func (svc *ServiceContext) importImages(js *jobStatus, tgtUnit *unit, srcDir str
 	}
 
 	// iterate through all of the .tif files in the unit directory
-	mfCount := 0
 	tifFiles, err := svc.getTifFiles(js, srcDir, tgtUnit.ID)
 	if err != nil {
 		return err
 	}
+
+	// set up parallel jp2 batch processing
+	filePerBatch := int(math.Ceil(float64(len(tifFiles)) / float64(maxJP2Batches)))
+	batches := uint(math.Ceil(float64(len(tifFiles)) / float64(filePerBatch)))
+	jp2Batch := make([]jp2Source, 0)
+	var jp2WG sync.WaitGroup
+	svc.logInfo(js, fmt.Sprintf("IIIF processing: %d masterfiles with a max of %d batches; %d files per batch, %d batches", len(tifFiles), maxJP2Batches, filePerBatch, batches))
+	startTime := time.Now()
+
 	for _, fi := range tifFiles {
 		svc.logInfo(js, fmt.Sprintf("Import %s", fi.path))
-		mfCount++
 
 		// grab metadata from exif headers
 		tifMD, err := extractTifMetadata(fi.path)
@@ -271,15 +285,9 @@ func (svc *ServiceContext) importImages(js *jobStatus, tgtUnit *unit, srcDir str
 			if err != nil {
 				return err
 			}
-			newMF.PID = fmt.Sprintf("tsm:%d", newMF.ID)
-			svc.GDB.Model(&newMF).Select("PID").Updates(newMF)
 			svc.logInfo(js, fmt.Sprintf("Master file %s created", fi.filename))
 		} else {
 			svc.logInfo(js, fmt.Sprintf("Master file %s already exists", fi.filename))
-			if newMF.PID == "" {
-				newMF.PID = fmt.Sprintf("tsm:%d", newMF.ID)
-				svc.GDB.Model(&newMF).Select("PID").Updates(newMF)
-			}
 		}
 
 		if newMF.ImageTechMeta.ID == 0 {
@@ -321,9 +329,23 @@ func (svc *ServiceContext) importImages(js *jobStatus, tgtUnit *unit, srcDir str
 			}
 		}
 
-		err = svc.publishToIIIF(js, newMF, fi.path, false)
-		if err != nil {
-			return fmt.Errorf("IIIF publish failed: %s", err.Error())
+		jp2Batch = append(jp2Batch, jp2Source{MasterFile: newMF, Path: fi.path})
+		if len(jp2Batch) == filePerBatch {
+			svc.logInfo(js, fmt.Sprintf("Start JP2 processing for a batch of %d master files", len(jp2Batch)))
+			jp2WG.Add(1)
+
+			batchCopy := make([]jp2Source, len(jp2Batch))
+			cnt := copy(batchCopy, jp2Batch)
+			if cnt == 0 {
+				return fmt.Errorf("unable to start iiif batch processing; source copy failed")
+			}
+
+			go func() {
+				defer jp2WG.Done()
+				svc.batchIIIFPublish(js, batchCopy, false)
+			}()
+
+			jp2Batch = make([]jp2Source, 0)
 		}
 
 		if tgtUnit.ThrowAway == false && tgtUnit.DateArchived == nil {
@@ -358,7 +380,20 @@ func (svc *ServiceContext) importImages(js *jobStatus, tgtUnit *unit, srcDir str
 		}
 	}
 
-	svc.logInfo(js, fmt.Sprintf("%d master files ingested", mfCount))
+	if len(jp2Batch) > 0 {
+		svc.logInfo(js, fmt.Sprintf("Start FINAL JP2 processing for a batch of %d master files", len(jp2Batch)))
+		jp2WG.Add(1)
+		go func() {
+			defer jp2WG.Done()
+			svc.batchIIIFPublish(js, jp2Batch, false)
+		}()
+	}
+
+	svc.logInfo(js, fmt.Sprintf("%d master files processed; await completion of IIIF publish", len(tifFiles)))
+	jp2WG.Wait()
+
+	elapsed := time.Since(startTime)
+	svc.logInfo(js, fmt.Sprintf("%d master files ingested; total time %.2f seconds", len(tifFiles), elapsed.Seconds()))
 	now := time.Now()
 	tgtUnit.DateArchived = &now
 	svc.GDB.Model(tgtUnit).Select("DateArchived").Updates(*tgtUnit)
@@ -376,6 +411,19 @@ func (svc *ServiceContext) loadMasterFile(filename string) (*masterFile, error) 
 		return nil, err
 	}
 	return &newMF, nil
+}
+
+func (svc *ServiceContext) batchIIIFPublish(js *jobStatus, items []jp2Source, overwrite bool) {
+	svc.logInfo(js, fmt.Sprintf("Process batch of %d master files", len(items)))
+	startTime := time.Now()
+	for _, item := range items {
+		err := svc.publishToIIIF(js, item.MasterFile, item.Path, overwrite)
+		if err != nil {
+			svc.logError(js, fmt.Sprintf("Unable to publish master file %s to IIIF: %s", item.MasterFile.PID, err.Error()))
+		}
+	}
+	elapsed := time.Since(startTime)
+	svc.logInfo(js, fmt.Sprintf("Finished IIIF processing for a batch of %d files; total time %.2f seconds", len(items), elapsed.Seconds()))
 }
 
 func extractTifMetadata(tifPath string) (*tifMetadata, error) {

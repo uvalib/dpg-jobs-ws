@@ -453,8 +453,6 @@ func (svc *ServiceContext) addMasterFiles(c *gin.Context) {
 				svc.logFatal(js, fmt.Sprintf("Unable to create %s: %s", tf.filename, err.Error()))
 				return
 			}
-			newMF.PID = fmt.Sprintf("tsm:%d", newMF.ID)
-			svc.GDB.Model(&newMF).Select("PID").Updates(newMF)
 			svc.logInfo(js, fmt.Sprintf("Created masterfile for %s, PID: %s", tf.filename, newMF.PID))
 			if existingLoc != nil {
 				svc.logInfo(js, fmt.Sprintf("Adding location %+v", *existingLoc))

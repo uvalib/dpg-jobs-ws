@@ -169,7 +169,7 @@ func (svc *ServiceContext) createPatronDeliverable(js *jobStatus, tgtUnit *unit,
 	}
 	cmdArray = append(cmdArray, destPath)
 	cmd := exec.Command("magick", cmdArray...)
-	log.Printf("INFO: command for patron deliverable: %v", cmd)
+	svc.logInfo(js, fmt.Sprintf("%+v", cmd))
 	cmdOut, err := cmd.CombinedOutput()
 	if err != nil {
 		log.Printf("ERROR: convert command failed: %s - %s", err.Error(), cmdOut)

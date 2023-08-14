@@ -91,3 +91,39 @@ func main() {
 	log.Printf("INFO: start service v%s on port %s", version, portStr)
 	log.Fatal(router.Run(portStr))
 }
+
+// func (svc *ServiceContext) hack(c *gin.Context) {
+// 	unitID := int64(49877)
+// 	js, err := svc.createJobStatus("RepublishIIIF", "Unit", unitID)
+// 	if err != nil {
+// 		log.Printf("ERROR: unable to create job js: %s", err.Error())
+// 		c.String(http.StatusInternalServerError, err.Error())
+// 		return
+// 	}
+
+// 	var tgtUnit unit
+// 	err = svc.GDB.Preload("Metadata").Preload("Metadata.OcrHint").
+// 		Preload("Order").Preload("IntendedUse").First(&tgtUnit, unitID).Error
+// 	if err != nil {
+// 		svc.logFatal(js, fmt.Sprintf("Unable to load unit %d: %s", unitID, err.Error()))
+// 		c.String(http.StatusBadRequest, err.Error())
+// 		return
+// 	}
+
+// 	srcDir := path.Join(svc.ProcessingDir, "finalization", fmt.Sprintf("%09d", unitID))
+// 	if pathExists(srcDir) == false {
+// 		svc.setUnitFatal(js, &tgtUnit, fmt.Sprintf("Finalization directory %s does not exist.", srcDir))
+// 		c.String(http.StatusBadRequest, err.Error())
+// 		return
+// 	}
+
+// 	svc.logInfo(js, fmt.Sprintf("HACK: reimport all images for unit %d", unitID))
+// 	err = svc.importImages(js, &tgtUnit, srcDir)
+// 	if err != nil {
+// 		svc.setUnitFatal(js, &tgtUnit, err.Error())
+// 		c.String(http.StatusBadRequest, err.Error())
+// 		return
+// 	}
+
+// 	c.String(http.StatusOK, "happy")
+// }
