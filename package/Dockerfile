@@ -26,7 +26,7 @@ RUN ln -s /usr/local/bin/magick /usr/local/bin/convert && ln -s /usr/local/bin/m
 COPY distro/etc/ /usr/local/etc
 
 # Create the run user and group
-RUN addgroup --gid 10708 libr-snlocal && addgroup --gid 16339 lb-digiserv && adduser --uid 118698 libsnlocal -G libr-snlocal -D
+RUN addgroup --gid 10708 libr-snlocal && addgroup --gid 16339 lb-digiserv && adduser --uid 118698 libsnlocal -G lb-digiserv -D && addgroup libsnlocal libr-snlocal
 
 # set the timezone appropriatly
 ENV TZ=UTC
