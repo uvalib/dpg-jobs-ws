@@ -187,7 +187,8 @@ type masterFile struct {
 	Description       string
 	Locations         []location `gorm:"many2many:master_file_locations"`
 	Filesize          int64
-	MD5               string  `gorm:"column:md5"`
+	MD5               string `gorm:"column:md5"`
+	Sensitive         bool
 	PHash             *uint64 `gorm:"column:phash" json:"-"`
 	OriginalMfID      *int64  `gorm:"column:original_mf_id"`
 	DateArchived      *time.Time

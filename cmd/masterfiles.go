@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"os/exec"
 	"path"
 	"sort"
 	"strconv"
@@ -714,4 +715,140 @@ func (svc *ServiceContext) makeGapForInsertion(js *jobStatus, tgtUnit *unit, tif
 		}
 	}
 	return nil
+}
+
+func (svc *ServiceContext) setMasterFileSensitive(c *gin.Context) {
+	mfID, _ := strconv.ParseInt(c.Param("id"), 10, 64)
+	js, err := svc.createJobStatus("UpdateSensitivity", "MasterFile", mfID)
+	if err != nil {
+		log.Printf("ERROR: unable to create UpdateSensitivity job status: %s", err.Error())
+		c.String(http.StatusInternalServerError, err.Error())
+		return
+	}
+	svc.logInfo(js, fmt.Sprintf("Flag sensitive content in master file %d", mfID))
+
+	var mf masterFile
+	err = svc.GDB.Find(&mf, mfID).Error
+	if err != nil {
+		svc.logFatal(js, fmt.Sprintf("Unable to load masterfile %d: %s", mfID, err.Error()))
+		c.String(http.StatusBadRequest, err.Error())
+		return
+	}
+
+	err = svc.updateMasterFileSensitivity(&mf, true)
+	if err != nil {
+		svc.logFatal(js, err.Error())
+		c.String(http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	jp2PathInfo := svc.iiifPath(mf.PID)
+	origFileName := strings.Replace(jp2PathInfo.fileName, ".jp2", "-original.jp2", 1)
+	origPath := path.Join(jp2PathInfo.basePath, origFileName)
+	svc.logInfo(js, fmt.Sprintf("Copy full resolution image to %s", origPath))
+	err = os.Rename(jp2PathInfo.absolutePath, origPath)
+	if err != nil {
+		svc.logFatal(js, fmt.Sprintf("Unable to copy %s to %s: %s", jp2PathInfo.absolutePath, origPath, err.Error()))
+		c.String(http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	svc.logInfo(js, "Reduce resolution of image")
+	cmdArray := []string{origPath, "-resize", "100x100", jp2PathInfo.absolutePath}
+	cmd := exec.Command("magick", cmdArray...)
+	svc.logInfo(js, fmt.Sprintf("%+v", cmd))
+	_, err = cmd.Output()
+	if err != nil {
+		svc.logFatal(js, err.Error())
+		c.String(http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	gifPath := path.Join(jp2PathInfo.basePath, "full.jpg")
+	cmdArray = []string{origPath, gifPath}
+	cmd = exec.Command("magick", cmdArray...)
+	_, err = cmd.Output()
+
+	svc.jobDone(js)
+}
+
+func (svc *ServiceContext) updateMasterFileSensitivity(mf *masterFile, sensitive bool) error {
+	if mf.Sensitive == sensitive {
+		return fmt.Errorf("master file %s is already has sensitive %t", mf.PID, sensitive)
+	}
+
+	mf.Sensitive = sensitive
+	err := svc.GDB.Model(&mf).Select("Sensitive").Updates(mf).Error
+	if err != nil {
+		return fmt.Errorf("unable to set master file %s sensitive %t: %s", mf.PID, sensitive, err.Error())
+	}
+	return nil
+}
+
+func (svc *ServiceContext) clearMasterFileSensitive(c *gin.Context) {
+	mfID, _ := strconv.ParseInt(c.Param("id"), 10, 64)
+	js, err := svc.createJobStatus("UpdateSensitivity", "MasterFile", mfID)
+	if err != nil {
+		log.Printf("ERROR: unable to create UpdateSensitivity job status: %s", err.Error())
+		c.String(http.StatusInternalServerError, err.Error())
+		return
+	}
+	svc.logInfo(js, fmt.Sprintf("Remove sensitive content flag for master file %d", mfID))
+
+	var mf masterFile
+	err = svc.GDB.Find(&mf, mfID).Error
+	if err != nil {
+		svc.logFatal(js, fmt.Sprintf("Unable to load masterfile %d: %s", mfID, err.Error()))
+		c.String(http.StatusBadRequest, err.Error())
+		return
+	}
+
+	err = svc.updateMasterFileSensitivity(&mf, false)
+	if err != nil {
+		svc.logFatal(js, err.Error())
+		c.String(http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	jp2PathInfo := svc.iiifPath(mf.PID)
+	origFileName := strings.Replace(jp2PathInfo.fileName, ".jp2", "-original.jp2", 1)
+	origPath := path.Join(jp2PathInfo.basePath, origFileName)
+	svc.logInfo(js, fmt.Sprintf("Restore resolution image to %s", jp2PathInfo.absolutePath))
+
+	// the usual JP2 path holds the reduced resolution images. remove it ad rename XXX-original.jp2
+	os.Remove(jp2PathInfo.absolutePath)
+	os.Remove(path.Join(jp2PathInfo.basePath, "full.jpg"))
+	err = os.Rename(origPath, jp2PathInfo.absolutePath)
+	if err != nil {
+		svc.logFatal(js, fmt.Sprintf("Unable to rename %s to %s: %s", origPath, jp2PathInfo.absolutePath, err.Error()))
+		c.String(http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	svc.jobDone(js)
+}
+
+func (svc *ServiceContext) getFullResolutionJP2(c *gin.Context) {
+	mfID := c.Param("id")
+	log.Printf("INFO: get full full resolution jp2 for sensitive master file %s", mfID)
+	var mf masterFile
+	err := svc.GDB.Find(&mf, mfID).Error
+	if err != nil {
+		log.Printf("ERROR: unable to load masterfile %s: %s", mfID, err.Error())
+		c.String(http.StatusBadRequest, err.Error())
+		return
+	}
+
+	if mf.Sensitive == false {
+		log.Printf("INFO: invalid request for original resolution master file %s that is not sensitive", mfID)
+		c.String(http.StatusNotFound, "image is not sensitive")
+		return
+	}
+
+	jp2PathInfo := svc.iiifPath(mf.PID)
+	origPath := path.Join(jp2PathInfo.basePath, "full.jpg")
+	log.Printf("INFO: get full respolution image from %s", origPath)
+	c.Header("Content-Type", "image/jpg")
+	c.File(origPath)
+	c.Status(http.StatusOK)
 }
