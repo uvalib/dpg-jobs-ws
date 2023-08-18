@@ -89,7 +89,7 @@ func (svc *ServiceContext) projectFinishedFinalization(js *jobStatus, currProj *
 	processingMins := uint(math.Round(diff.Seconds() / 60.0))
 
 	var activeAssign assignment
-	err := svc.GDB.Where("project_id=?", currProj.ID).Order("assigned_at DESC").Limit(1).First(&activeAssign).Error
+	err := svc.GDB.Where("project_id=?", currProj.ID).Order("assigned_at DESC").First(&activeAssign).Error
 	if err != nil {
 		return fmt.Errorf("unable to get finalization assignment: %s", err.Error())
 	}
@@ -167,15 +167,17 @@ func (svc *ServiceContext) projectFinishedFinalization(js *jobStatus, currProj *
 		svc.logInfo(js, fmt.Sprintf("Total project duration (minutes): %d", total))
 	}
 
-	err = svc.GDB.Model(currProj).Select(fields).Updates(*currProj).Error
+	svc.logInfo(js, "Update project to reflect completed finalization")
+	err = svc.GDB.Debug().Model(currProj).Select(fields).Updates(*currProj).Error
 	if err != nil {
 		return err
 	}
 
+	svc.logInfo(js, "Update finalize assignmet to reflect results")
 	activeAssign.FinishedAt = &now
 	activeAssign.Status = 2 // finished
 	activeAssign.DurationMinutes = activeAssign.DurationMinutes + processingMins
-	err = svc.GDB.Model(&activeAssign).Select("FinishedAt", "Status", "DurationMinutes").Updates(activeAssign).Error
+	err = svc.GDB.Debug().Model(&activeAssign).Select("FinishedAt", "Status", "DurationMinutes").Updates(activeAssign).Error
 	if err != nil {
 		return err
 	}
