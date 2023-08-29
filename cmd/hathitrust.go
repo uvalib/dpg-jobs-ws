@@ -208,7 +208,14 @@ func (svc *ServiceContext) submitHathiTrustMetadata(c *gin.Context) {
 					svc.logFatal(js, fmt.Sprintf("upload failed: %s", err.Error()))
 					return
 				}
-				svc.sendHathiTrustDataToRequestor(submitUser, metadataOut)
+
+				localCopy := path.Join(svc.ProcessingDir, "hathitrust", uploadFN)
+				svc.logInfo(js, fmt.Sprintf("Write local copy of metadata submission to %s", localCopy))
+				err = os.WriteFile(localCopy, []byte(metadataOut), 0664)
+				if err != nil {
+					svc.logError(js, fmt.Sprintf("Unable to write local copy to %s: %s", localCopy, err.Error()))
+				}
+
 			}
 			// cancel the ftps context immediately when the upload is done
 			ftpsCancel()
