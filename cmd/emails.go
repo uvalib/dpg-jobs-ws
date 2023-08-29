@@ -27,6 +27,23 @@ type emailRequest struct {
 	Body    string
 }
 
+func (svc *ServiceContext) sendHathiTrustDataToRequestor(staff staffMember, metadata string) {
+	log.Printf("INFO: sending copy of hathitrust metadata to staff %s", staff.Email)
+	req := emailRequest{Subject: "HathiTrust Metadata Submission",
+		To:      []string{staff.Email},
+		From:    "lf6f@virginia.edu",
+		ReplyTo: "lf6f@virginia.edu",
+		Body:    metadata,
+	}
+
+	err := svc.sendEmail(&req)
+	if err != nil {
+		log.Printf("ERROR: unable to hathitrust metadata record to %s: %s", staff.Email, err.Error())
+		return
+	}
+	log.Printf("INFO: hathitrust metadata email successfully sent to %s", staff.Email)
+}
+
 func (svc *ServiceContext) sendHathiTrustUploadEmail(fileName string, fileSize int, recordCount int) {
 	log.Printf("INFO: sending hathitrust upload email")
 	req := emailRequest{Subject: "Zephir metadata file submission",
