@@ -235,11 +235,6 @@ func (svc *ServiceContext) submitHathiTrustMetadata(c *gin.Context) {
 					svc.logError(js, fmt.Sprintf("Unable to update HathiTrust status records: %s", err.Error()))
 				}
 			}
-
-			if len(updatedIDs) != len(req.MetadataIDs) {
-				svc.logError(js, fmt.Sprintf("Not all metadata records uploaded: Total: %d, Uploaded: %d", len(updatedIDs), len(req.MetadataIDs)))
-			}
-
 		} else {
 			svc.logFatal(js, "No metadata records uploaded")
 			return
