@@ -112,9 +112,9 @@ func (svc *ServiceContext) finalizeUnit(c *gin.Context) {
 			// an error if one was encountered. Ignore it here as a problem publishing should
 			// not cause finalization to fail; the error log is enough.
 			if tgtUnit.Metadata.Type == "SirsiMetadata" {
-				svc.publishSirsiToVirgo(js, tgtUnit.Metadata)
+				svc.publishSirsiToVirgo(js, tgtUnit.Metadata, &tgtUnit)
 			} else if tgtUnit.Metadata.Type == "XmlMetadata" {
-				svc.publishXMLToVirgo(js, tgtUnit.Metadata)
+				svc.publishXMLToVirgo(js, tgtUnit.Metadata, &tgtUnit)
 			} else {
 				svc.logError(js, fmt.Sprintf("Unit is flagged for inclusion in DL, but metadata %d type %s is not supported", tgtUnit.Metadata.ID, tgtUnit.Metadata.Type))
 			}
