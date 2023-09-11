@@ -110,45 +110,6 @@ func (svc *ServiceContext) submitHathiTrustMetadata(c *gin.Context) {
 			}
 		}()
 
-		svc.logInfo(js, fmt.Sprintf("connecting to ftps server %s as %s", svc.HathiTrust.FTPS, svc.HathiTrust.User))
-		ftpsCtx, ftpsCancel := context.WithCancel(context.Background())
-		defer ftpsCancel()
-		ftpsConn, err := ftps.Dial(ftpsCtx, ftps.DialOptions{
-			Host:     svc.HathiTrust.FTPS,
-			Port:     21,
-			Username: svc.HathiTrust.User,
-			Passowrd: svc.HathiTrust.Pass,
-			TLSConfig: &tls.Config{
-				InsecureSkipVerify: true,
-			},
-			ExplicitTLS: true,
-		})
-		defer ftpsConn.Close()
-		if err != nil {
-			svc.logFatal(js, fmt.Sprintf("Unable to connect to FTPS: %s", err.Error()))
-			return
-		}
-
-		uploadDirectory := "submissions"
-		if req.Mode == "test" || req.Mode == "dev" {
-			uploadDirectory = "testrecs"
-		}
-		svc.logInfo(js, fmt.Sprintf("Set FTPS working directory to %s", uploadDirectory))
-		err = ftpsConn.Chdir(uploadDirectory)
-		if err != nil {
-			svc.logFatal(js, fmt.Sprintf("Unable to switch to upload directory %s: %s", uploadDirectory, err.Error()))
-			return
-		}
-		pwd, err := ftpsConn.Getwd()
-		if err != nil {
-			svc.logFatal(js, fmt.Sprintf("Unable to get working directory: %s", err.Error()))
-			return
-		}
-		if strings.Contains(pwd, uploadDirectory) == false {
-			svc.logFatal(js, fmt.Sprintf("Working directory mismatch; %s vs %s", pwd, uploadDirectory))
-			return
-		}
-
 		dateStr := time.Now().Format("20060102")
 		uploadFN := fmt.Sprintf("UVA-2_%s", dateStr)
 		if req.Name != "" {
@@ -199,6 +160,46 @@ func (svc *ServiceContext) submitHathiTrustMetadata(c *gin.Context) {
 		metadataOut += "\n</collection>"
 
 		if len(updatedIDs) > 0 {
+
+			svc.logInfo(js, fmt.Sprintf("connecting to ftps server %s as %s", svc.HathiTrust.FTPS, svc.HathiTrust.User))
+			ftpsCtx, ftpsCancel := context.WithCancel(context.Background())
+			defer ftpsCancel()
+			ftpsConn, err := ftps.Dial(ftpsCtx, ftps.DialOptions{
+				Host:     svc.HathiTrust.FTPS,
+				Port:     21,
+				Username: svc.HathiTrust.User,
+				Passowrd: svc.HathiTrust.Pass,
+				TLSConfig: &tls.Config{
+					InsecureSkipVerify: true,
+				},
+				ExplicitTLS: true,
+			})
+			defer ftpsConn.Close()
+			if err != nil {
+				svc.logFatal(js, fmt.Sprintf("Unable to connect to FTPS: %s", err.Error()))
+				return
+			}
+
+			uploadDirectory := "submissions"
+			if req.Mode == "test" || req.Mode == "dev" {
+				uploadDirectory = "testrecs"
+			}
+			svc.logInfo(js, fmt.Sprintf("Set FTPS working directory to %s", uploadDirectory))
+			err = ftpsConn.Chdir(uploadDirectory)
+			if err != nil {
+				svc.logFatal(js, fmt.Sprintf("Unable to switch to upload directory %s: %s", uploadDirectory, err.Error()))
+				return
+			}
+			pwd, err := ftpsConn.Getwd()
+			if err != nil {
+				svc.logFatal(js, fmt.Sprintf("Unable to get working directory: %s", err.Error()))
+				return
+			}
+			if strings.Contains(pwd, uploadDirectory) == false {
+				svc.logFatal(js, fmt.Sprintf("Working directory mismatch; %s vs %s", pwd, uploadDirectory))
+				return
+			}
+
 			if req.Mode == "dev" {
 				svc.logInfo(js, metadataOut)
 			} else {
@@ -215,7 +216,6 @@ func (svc *ServiceContext) submitHathiTrustMetadata(c *gin.Context) {
 				if err != nil {
 					svc.logError(js, fmt.Sprintf("Unable to write local copy to %s: %s", localCopy, err.Error()))
 				}
-
 			}
 			// cancel the ftps context immediately when the upload is done
 			ftpsCancel()
