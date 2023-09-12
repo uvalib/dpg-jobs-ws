@@ -385,7 +385,7 @@ func (svc *ServiceContext) createHathiTrustPackage(c *gin.Context) {
 				continue
 			}
 
-			svc.logInfo(js, fmt.Sprintf("Load master files for units [%v]", unitIDs))
+			svc.logInfo(js, fmt.Sprintf("Load master files for units %v", unitIDs))
 			err = svc.GDB.Where("unit_id in ?", unitIDs).Find(&masterFiles).Error
 			if err != nil {
 				svc.logError(js, fmt.Sprintf("Unabe to load master files: %s", err.Error()))
@@ -397,11 +397,13 @@ func (svc *ServiceContext) createHathiTrustPackage(c *gin.Context) {
 				continue
 			}
 
-			// Setup package assembly directory; /digiserv-production/hathitrust/[barcode]
-			// final package data will reside at /digiserv-production/hathitrust/[barcode].zip
-			assembleDir := path.Join(svc.ProcessingDir, "hathitrust", md.Barcode)
+			// Setup package assembly directory; /digiserv-production/hathitrust/order_[order_id]/[barcode]
+			// final package data will reside at /digiserv-production/hathitrust/order_[order_id]/[barcode].zip
+			srcOrderID := units[0].OrderID
+			orderDir := fmt.Sprintf("order_%d", srcOrderID)
+			assembleDir := path.Join(svc.ProcessingDir, "hathitrust", orderDir, md.Barcode)
 			packageName := fmt.Sprintf("%s.zip", md.Barcode)
-			packageFilename := path.Join(svc.ProcessingDir, "hathitrust", packageName)
+			packageFilename := path.Join(svc.ProcessingDir, "hathitrust", orderDir, packageName)
 			if pathExists(assembleDir) {
 				svc.logInfo(js, fmt.Sprintf("Clean up pre-existing package assembly directory %s", assembleDir))
 				err := os.RemoveAll(assembleDir)
