@@ -66,7 +66,7 @@ func (svc *ServiceContext) handleOCRRequest(c *gin.Context) {
 				svc.logFatal(js, fmt.Sprintf("Unable to load unit %d: %s", req.ID, err.Error()))
 				return
 			}
-			err = svc.requestUnitOCR(js, &tgtUnit)
+			err = svc.requestUnitOCR(js, tgtUnit.Metadata.PID, tgtUnit.ID, tgtUnit.Metadata.OcrLanguageHint)
 			if err != nil {
 				svc.logError(js, fmt.Sprintf("Unable to request unit OCR: %s", err.Error()))
 			}
@@ -82,12 +82,11 @@ func (svc *ServiceContext) handleOCRRequest(c *gin.Context) {
 	c.String(http.StatusOK, fmt.Sprintf("%d", js.ID))
 }
 
-func (svc *ServiceContext) requestUnitOCR(js *jobStatus, tgtUnit *unit) error {
+func (svc *ServiceContext) requestUnitOCR(js *jobStatus, metadataPID string, unitID int64, lang string) error {
 	svc.logInfo(js, "Requesting OCR for unit")
-	lang := tgtUnit.Metadata.OcrLanguageHint
 	callbackURL := fmt.Sprintf("%s/callbacks/%d/ocr", svc.ServiceURL, js.ID)
 	callbackURL = url.QueryEscape(callbackURL)
-	ocrURL := fmt.Sprintf("%s/%s?lang=%s&unit=%d&force=true&callback=%s", svc.OcrURL, tgtUnit.Metadata.PID, lang, tgtUnit.ID, callbackURL)
+	ocrURL := fmt.Sprintf("%s/%s?lang=%s&unit=%d&force=true&callback=%s", svc.OcrURL, metadataPID, lang, unitID, callbackURL)
 	svc.logInfo(js, fmt.Sprintf("OCR request URL: %s", ocrURL))
 	_, getErr := svc.getRequest(ocrURL)
 	if getErr != nil {

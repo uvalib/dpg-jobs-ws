@@ -441,7 +441,7 @@ func (svc *ServiceContext) createHathiTrustPackage(c *gin.Context) {
 					// NOTE: this works for the special case and normal case; in the normal case, units length will be 1
 					for _, ocrUnit := range units {
 						// note; this call will not return until all master files in the unit have OCR results
-						err = svc.requestUnitOCR(js, &ocrUnit)
+						err = svc.requestUnitOCR(js, md.PID, ocrUnit.ID, md.OcrLanguageHint)
 						if err != nil {
 							svc.logError(js, fmt.Sprintf("Unable to request OCR for unit %d: %s", ocrUnit.ID, err.Error()))
 							continue

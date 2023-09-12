@@ -100,7 +100,7 @@ func (svc *ServiceContext) finalizeUnit(c *gin.Context) {
 		// If OCR has been requested, do it AFTER archive (OCR requires tif to be in archive)
 		// but before deliverable generation (deliverables require OCR text to be present)
 		if tgtUnit.OcrMasterFiles {
-			err = svc.requestUnitOCR(js, &tgtUnit)
+			err = svc.requestUnitOCR(js, tgtUnit.Metadata.PID, tgtUnit.ID, tgtUnit.Metadata.OcrLanguageHint)
 			if err != nil {
 				svc.logError(js, fmt.Sprintf("Unable to request OCR: %s", err.Error()))
 			}
