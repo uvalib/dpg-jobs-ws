@@ -121,6 +121,7 @@ type metadata struct {
 	OcrHintID            *int64
 	OcrHint              *ocrHint `gorm:"foreignKey:OcrHintID"`
 	OcrLanguageHint      string
+	HathiTrustStatus     *hathitrustStatus `gorm:"foreignKey:MetadataID" json:"hathiTrustStatus,omitempty"`
 	PreservationTierID   int64
 	CollectionID         string
 	DateDlIngest         *time.Time      `gorm:"column:date_dl_ingest"`

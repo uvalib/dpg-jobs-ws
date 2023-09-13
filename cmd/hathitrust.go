@@ -4,12 +4,16 @@ import (
 	"archive/zip"
 	"context"
 	"crypto/tls"
+	"encoding/json"
 	"fmt"
 	"io"
+	"io/fs"
 	"log"
 	"net/http"
 	"os"
+	"os/exec"
 	"path"
+	"path/filepath"
 	"runtime/debug"
 	"strings"
 	"time"
@@ -38,6 +42,12 @@ type hathiTrustRequest struct {
 	OrderIDs    []int64 `json:"orders"`
 	Mode        string  `json:"mode"`
 	Name        string  `json:"name"`
+}
+
+type hathiTrustSubmitRequest struct {
+	ComputeID string   `json:"computeID"`
+	OrderID   int64    `json:"order"`
+	Barcodes  []string `json:"barcodes"`
 }
 
 func (svc *ServiceContext) submitHathiTrustMetadata(c *gin.Context) {
@@ -576,6 +586,178 @@ func (svc *ServiceContext) createHathiTrustPackage(c *gin.Context) {
 	}()
 
 	c.String(http.StatusOK, fmt.Sprintf("%d", js.ID))
+}
+
+func (svc *ServiceContext) submitHathiTrustPackage(c *gin.Context) {
+	log.Printf("INFO: received hathitrust package submit request")
+	var req hathiTrustSubmitRequest
+	err := c.ShouldBindJSON(&req)
+	if err != nil {
+		log.Printf("ERROR: unable to parse hathitrust subite request: %s", err.Error())
+		c.String(http.StatusBadRequest, err.Error())
+		return
+	}
+
+	if req.ComputeID == "" {
+		log.Printf("ERROR: hathitrust package submit request requires compute id")
+		c.String(http.StatusBadRequest, "compute id is required")
+		return
+	}
+	if req.OrderID == 0 {
+		log.Printf("INFO: hathitrust package submit request requires am order id")
+		c.String(http.StatusBadRequest, "order id is required")
+		return
+	}
+
+	var submitUser staffMember
+	err = svc.GDB.Where("computing_id=?", req.ComputeID).First(&submitUser).Error
+	if err != nil {
+		log.Printf("ERROR: user %s not found: %s", req.ComputeID, err.Error())
+		c.String(http.StatusBadRequest, err.Error())
+		return
+	}
+
+	if submitUser.Role != Admin {
+		log.Printf("ERROR: hathitrust  package submit requests can only be submitted by admin users")
+		c.String(http.StatusBadRequest, "you do not have permission to make this request")
+		return
+	}
+
+	orderDir := path.Join(svc.ProcessingDir, "hathitrust", fmt.Sprintf("order_%d", req.OrderID))
+	if pathExists(orderDir) == false {
+		log.Printf("ERROR: order directory %s not found", orderDir)
+		c.String(http.StatusNotFound, fmt.Sprintf("order directory %s not found", orderDir))
+		return
+	}
+
+	js, err := svc.createJobStatus("HathiTrustPackgeSubmit", "StaffMember", submitUser.ID)
+	if err != nil {
+		log.Printf("ERROR: unable to create HathiTrush submission job status: %s", err.Error())
+		c.String(http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	if len(req.Barcodes) == 0 {
+		svc.logInfo(js, fmt.Sprintf("%s requests hathitrust full package submission for order %d", req.ComputeID, req.OrderID))
+	} else {
+		svc.logInfo(js, fmt.Sprintf("%s requests hathitrust package submission of barcodes %v from order %d", req.ComputeID, req.Barcodes, req.OrderID))
+	}
+
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				log.Printf("ERROR: panic recovered during hathitrust package submission: %v", r)
+				debug.PrintStack()
+				svc.logFatal(js, fmt.Sprintf("Panic recovered while submitting hathitrust packages: %v", r))
+			}
+		}()
+
+		svc.logInfo(js, fmt.Sprintf("submit files from %s", orderDir))
+		submitted := 0
+		err = filepath.WalkDir(orderDir, func(filePath string, d fs.DirEntry, err error) error {
+			if d.IsDir() {
+				return nil
+			}
+			if filepath.Ext(d.Name()) != ".zip" {
+				return nil
+			}
+			doSubmit := false
+			tgtBC := strings.TrimSuffix(d.Name(), filepath.Ext(d.Name()))
+			if len(req.Barcodes) > 0 {
+				for bcIdx, bc := range req.Barcodes {
+					if bc == tgtBC {
+						doSubmit = true
+						req.Barcodes[bcIdx] = req.Barcodes[len(req.Barcodes)-1]
+						req.Barcodes = req.Barcodes[:len(req.Barcodes)-1]
+						break
+					}
+				}
+			} else {
+				doSubmit = true
+			}
+
+			if doSubmit == false {
+				return nil
+			}
+
+			svc.logInfo(js, fmt.Sprintf("submit %s", filePath))
+			cmd := exec.Command(path.Join(svc.HathiTrust.RCloneBin, "rclone"),
+				"--config", svc.HathiTrust.RCloneConfig,
+				"copyto", filePath,
+				fmt.Sprintf("%s:%s/%s", svc.HathiTrust.RCloneRemote, svc.HathiTrust.RemoteDir, d.Name()))
+			svc.logInfo(js, fmt.Sprintf("Submit command: %v", cmd))
+			out, err := cmd.CombinedOutput()
+			if err != nil {
+				svc.logError(js, fmt.Sprintf("Unable to submit %s: %s:%s", d.Name(), err.Error(), out))
+				return nil
+			}
+			submitted++
+
+			svc.logInfo(js, fmt.Sprintf("update status for %s", tgtBC))
+			var mdRec metadata
+			err = svc.GDB.Preload("HathiTrustStatus").Where("barcode=?", tgtBC).First(&mdRec).Error
+			if err != nil {
+				svc.logError(js, fmt.Sprintf("Unable to load metadata for %s: %s", tgtBC, err.Error()))
+				return nil
+			}
+			now := time.Now()
+			mdRec.HathiTrustStatus.PackageSubmittedAt = &now
+			mdRec.HathiTrustStatus.PackageStatus = "submitted"
+			err = svc.GDB.Model(&mdRec.HathiTrustStatus).Select("PackageSubmittedAt", "PackageStatus").Updates(mdRec.HathiTrustStatus).Error
+			if err != nil {
+				svc.logError(js, fmt.Sprintf("Unable to update hathitrust status for %s: %s", tgtBC, err.Error()))
+				return nil
+			}
+
+			return nil
+		})
+
+		if err != nil {
+			svc.logFatal(js, fmt.Sprintf("Unable to traverse order dir: %s", err.Error()))
+			return
+		}
+
+		if len(req.Barcodes) > 0 {
+			svc.logError(js, fmt.Sprintf("Requested barcodes not found: %v", req.Barcodes))
+		}
+		svc.logInfo(js, fmt.Sprintf("%d packages submitted", submitted))
+		svc.jobDone(js)
+	}()
+
+	c.String(http.StatusOK, "package submit request started")
+}
+
+func (svc *ServiceContext) listHathiTrustSubmissions(c *gin.Context) {
+	// rclone lsjson hathitrust:virginia
+	cmd := exec.Command(path.Join(svc.HathiTrust.RCloneBin, "rclone"),
+		"--config", svc.HathiTrust.RCloneConfig,
+		"lsjson",
+		fmt.Sprintf("%s:%s", svc.HathiTrust.RCloneRemote, svc.HathiTrust.RemoteDir))
+	log.Printf("INFO: list submitted hathitrust package request: %v", cmd)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		log.Printf("ERROR: unable to list submitted hathitrist packages: %s:%s", err.Error(), out)
+		c.String(http.StatusInternalServerError, string(out))
+		return
+	}
+
+	type submittedResponse struct {
+		Path     string
+		Name     string
+		Size     int
+		MimeType string
+		IsDir    bool
+		ID       string
+	}
+
+	var resp []submittedResponse
+	err = json.Unmarshal(out, &resp)
+	if err != nil {
+		log.Printf("ERROR: unable to parse rclone response: %s", err.Error())
+		c.String(http.StatusInternalServerError, err.Error())
+		return
+	}
+	c.JSON(http.StatusOK, resp)
 }
 
 func (svc *ServiceContext) getMARCMetadata(md metadata) (string, error) {

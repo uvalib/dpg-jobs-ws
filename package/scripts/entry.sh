@@ -26,6 +26,10 @@ cd bin; ./dpg-jobs-ws              \
   -htftps     ${HT_FTPS}           \
   -htuser     ${HT_USER}           \
   -htpass     ${HT_PASS}           \
+  -rcbin      ${RC_BIN}            \
+  -rccfg      ${RC_CFG}            \
+  -rcremote   ${RC_REMOTE}         \
+  -rcdir      ${RC_DIR}            \
   -tsapi      ${TSAPI}             \
   -tsadmin    ${TSADMIN}           \
   -reindex    ${REINDEX}           \

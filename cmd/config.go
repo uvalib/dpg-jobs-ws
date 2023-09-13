@@ -38,9 +38,13 @@ type ArchivesSpaceConfig struct {
 
 // HathiTrustConfig contains the configuration data for HathiTrust submissions
 type HathiTrustConfig struct {
-	FTPS string
-	User string
-	Pass string
+	FTPS         string
+	User         string
+	Pass         string
+	RCloneRemote string
+	RCloneBin    string
+	RCloneConfig string
+	RemoteDir    string
 }
 
 // TrackSysConfig contains the configuration data for tracksys endpoints
@@ -93,6 +97,10 @@ func LoadConfiguration() *ServiceConfig {
 	flag.StringVar(&cfg.HathiTrust.FTPS, "htftps", "", "HathiTrust FTPS")
 	flag.StringVar(&cfg.HathiTrust.User, "htuser", "", "HathiTrust user")
 	flag.StringVar(&cfg.HathiTrust.Pass, "htpass", "", "HathiTrust pass")
+	flag.StringVar(&cfg.HathiTrust.RCloneBin, "rcbin", "", "Path to rclone binary")
+	flag.StringVar(&cfg.HathiTrust.RCloneConfig, "rccfg", "", "Path to rclone config")
+	flag.StringVar(&cfg.HathiTrust.RCloneRemote, "rcremote", "hathitrust", "Name of the rclone remote")
+	flag.StringVar(&cfg.HathiTrust.RemoteDir, "rcdir", "virginia", "Remote submission directory for HathiTrust")
 
 	// TrackSys
 	flag.StringVar(&cfg.TrackSys.API, "tsapi", "https://tracksys-api-ws.internal.lib.virginia.edu", "URL for TrackSys API")
@@ -181,6 +189,10 @@ func LoadConfiguration() *ServiceConfig {
 	log.Printf("[CONFIG] asuser        = [%s]", cfg.ArchivesSpace.User)
 	log.Printf("[CONFIG] htftps        = [%s]", cfg.HathiTrust.FTPS)
 	log.Printf("[CONFIG] htuser        = [%s]", cfg.HathiTrust.User)
+	log.Printf("[CONFIG] rcbin         = [%s]", cfg.HathiTrust.RCloneBin)
+	log.Printf("[CONFIG] rccfg         = [%s]", cfg.HathiTrust.RCloneConfig)
+	log.Printf("[CONFIG] rcremote      = [%s]", cfg.HathiTrust.RCloneRemote)
+	log.Printf("[CONFIG] rcdir         = [%s]", cfg.HathiTrust.RemoteDir)
 
 	if cfg.SMTP.FakeSMTP {
 		log.Printf("[CONFIG] fakesmtp      = [true]")
