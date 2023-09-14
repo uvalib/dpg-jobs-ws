@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"log"
+	"net/http"
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-contrib/gzip"
@@ -34,6 +35,8 @@ func main() {
 	router.GET("/favicon.ico", svc.ignoreFavicon)
 	router.GET("/version", svc.getVersion)
 	router.GET("/healthcheck", svc.healthCheck)
+
+	router.POST("/script", svc.runScript)
 
 	router.POST("/audit", svc.auditMasterFiles)
 	router.POST("/phash", svc.generateMasterFilesPHash)
@@ -96,6 +99,67 @@ func main() {
 	portStr := fmt.Sprintf(":%d", cfg.Port)
 	log.Printf("INFO: start service v%s on port %s", version, portStr)
 	log.Fatal(router.Run(portStr))
+}
+
+type scriptParams struct {
+	ComputeID string                 `json:"computeID"`
+	Name      string                 `json:"name"`
+	Params    map[string]interface{} `json:"params"`
+}
+
+func (svc *ServiceContext) runScript(c *gin.Context) {
+	var req scriptParams
+	err := c.ShouldBindJSON(&req)
+	if err != nil {
+		log.Printf("ERROR: unable to parse script request params: %s", err.Error())
+		c.String(http.StatusBadRequest, err.Error())
+		return
+	}
+
+	if req.ComputeID == "" {
+		log.Printf("ERROR: missing required computeID param")
+		c.String(http.StatusBadRequest, "missing required computeID param")
+		return
+	}
+
+	var submitUser staffMember
+	err = svc.GDB.Where("computing_id=?", req.ComputeID).First(&submitUser).Error
+	if err != nil {
+		log.Printf("ERROR: user %s not found: %s", req.ComputeID, err.Error())
+		c.String(http.StatusBadRequest, fmt.Sprintf("%s not found", req.ComputeID))
+		return
+	}
+
+	if submitUser.Role != Admin {
+		log.Printf("ERROR: scripts can only be submitted by admin users")
+		c.String(http.StatusBadRequest, "you do not have permission to make this request")
+		return
+	}
+
+	log.Printf("INFO: script request %+v", req)
+	scripts := map[string]interface{}{
+		"createBondLocations": svc.createBondLocations,
+		"createBondUnits":     svc.createBondUnits,
+		"ingestBondFolder":    svc.ingestBondFolder,
+	}
+
+	tgtScript := scripts[req.Name]
+	if tgtScript == nil {
+		log.Printf("ERROR: unrecognized script name %s", req.Name)
+		c.String(http.StatusBadRequest, fmt.Sprintf("%s is not a known script", req.Name))
+		return
+	}
+
+	js, err := svc.createJobStatus(req.Name, "StaffMember", submitUser.ID)
+	if err != nil {
+		log.Printf("ERROR: unable to create HathiTrush submission job status: %s", err.Error())
+		c.String(http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	tgtScript.(func(*jobStatus, map[string]interface{}))(js, req.Params)
+
+	c.String(http.StatusOK, "ok")
 }
 
 // func (svc *ServiceContext) hack(c *gin.Context) {
