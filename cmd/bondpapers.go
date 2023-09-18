@@ -107,6 +107,15 @@ func (svc *ServiceContext) createBondUnits(js *jobStatus, params map[string]inte
 		return
 	}
 
+	tgtBox, found := params["box"].(string)
+	if found {
+		svc.logInfo(js, fmt.Sprintf("process files from box %s", tgtBox))
+	}
+	tgtFolder, found := params["folder"].(string)
+	if found {
+		svc.logInfo(js, fmt.Sprintf("process files from folder %s", tgtFolder))
+	}
+
 	cnt := 0
 	updated := 0
 	indendedUseID := int64(110) // digital collection building
@@ -128,6 +137,13 @@ func (svc *ServiceContext) createBondUnits(js *jobStatus, params map[string]inte
 		folderNum := bits[3]
 		callNum := fmt.Sprintf("MSS 13347 Box %s", boxNum)
 		ingestFolder := fmt.Sprintf("mss13347-b%s-f%s", boxNum, folderNum) // directory name for src images
+
+		if tgtBox != "" && tgtBox != boxNum {
+			continue
+		}
+		if tgtFolder != "" && tgtFolder != folderNum {
+			continue
+		}
 
 		// get the image list, clean it up and sort
 		var images []string
