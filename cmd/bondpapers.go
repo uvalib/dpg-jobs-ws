@@ -5,7 +5,10 @@ import (
 	"fmt"
 	"os"
 	"path"
+	"regexp"
 	"strings"
+
+	"golang.org/x/exp/slices"
 )
 
 func (svc *ServiceContext) createBondLocations(js *jobStatus, params map[string]interface{}) {
@@ -40,7 +43,6 @@ func (svc *ServiceContext) createBondLocations(js *jobStatus, params map[string]
 
 		// col 8 contains box folder info that is formatted: Box 3 Folder 28
 		boxFolder := line[8]
-		svc.logInfo(js, fmt.Sprintf("add location %s", boxFolder))
 		bits := strings.Split(boxFolder, " ")
 		boxNum := bits[1]
 		folderNum := bits[3]
@@ -65,7 +67,7 @@ func (svc *ServiceContext) createBondLocations(js *jobStatus, params map[string]
 			newLoc := location{MetadataID: tgtMD.ID, ContainerTypeID: boxContainer.ID, FolderID: folderNum, ContainerID: boxNum}
 			err = svc.GDB.Create(&newLoc).Error
 			if err != nil {
-				svc.logError(js, fmt.Sprintf("unable to create %s: %s", boxFolder, js.Error))
+				svc.logError(js, fmt.Sprintf("unable to create %s: %s", boxFolder, err.Error()))
 				continue
 			}
 			cnt++
@@ -85,6 +87,7 @@ func (svc *ServiceContext) createBondUnits(js *jobStatus, params map[string]inte
 		svc.logFatal(js, "missing required fileName param")
 		return
 	}
+
 	csvPath := path.Join(svc.ProcessingDir, "bondpapers", csvFileName)
 	svc.logInfo(js, fmt.Sprintf("read locations from %s", csvPath))
 	recs, err := readCSV(csvPath)
@@ -92,18 +95,101 @@ func (svc *ServiceContext) createBondUnits(js *jobStatus, params map[string]inte
 		svc.logFatal(js, err.Error())
 	}
 
-	// col 1: title, col 8: BOX/FOLDER, col 9: num pages, col 10: filenames with | sep
-	// Box format: "Box # Folder #"
+	rawOrderID, found := params["orderID"].(float64)
+	if found == false {
+		svc.logFatal(js, "missing required orderID param")
+		return
+	}
+	tgtOrder := order{ID: int64(rawOrderID)}
+	err = svc.GDB.First(&tgtOrder).Error
+	if err != nil {
+		svc.logFatal(js, fmt.Sprintf("order %d not found: %s", tgtOrder.ID, err.Error()))
+		return
+	}
+
+	cnt := 0
+	updated := 0
+	indendedUseID := int64(110) // digital collection building
+	chunkRegex := regexp.MustCompile(`\s\((Doc\s)?[1-9]{1}\sof\s[1-9]{1}\)$`)
 	for i, line := range recs {
 		if i == 0 {
 			continue
 		}
-		boxFolder := line[8]
+
+		// title may appear multiple times with different prefix / suffix
+		// suffix looks like (Doc # of #) or (# of #). This happens when a folder was scanned in multiple chunks; strip and ignore
 		title := line[1]
-		svc.logInfo(js, fmt.Sprintf("add unit for %s: %s", boxFolder, title))
+		title = chunkRegex.ReplaceAllString(title, "")
+
+		// extract box/folder info
+		boxFolder := line[8]
+		bits := strings.Split(boxFolder, " ")
+		boxNum := bits[1]
+		folderNum := bits[3]
+		callNum := fmt.Sprintf("MSS 13347 Box %s", boxNum)
+		ingestFolder := fmt.Sprintf("mss13347-b%s-f%s", boxNum, folderNum) // directory name for src images
+
+		// get the image list, clean it up and sort
+		var images []string
+		for _, img := range strings.Split(line[10], "|") {
+			img = strings.TrimSpace(img)
+			images = append(images, img)
+		}
+
+		// get parent metadata record...
+		var tgtMD metadata
+		err = svc.GDB.Where("call_number=?", callNum).First(&tgtMD).Error
+		if err != nil {
+			svc.logError(js, fmt.Sprintf("unable to find metadata %s", callNum))
+			continue
+		}
+
+		// see if a unit for this record already exists
+		var tgtUnit unit
+		svc.GDB.Where("metadata_id=? and staff_notes=?", tgtMD.ID, title).Limit(1).Find(&tgtUnit)
+		if tgtUnit.ID == 0 {
+			svc.logInfo(js, fmt.Sprintf("create unit for %s", ingestFolder))
+			si := fmt.Sprintf("Ingest from: %s\nImages: %s", ingestFolder, sortImages(strings.Join(images, ",")))
+			newUnit := unit{OrderID: tgtOrder.ID, MetadataID: &tgtMD.ID, UnitStatus: "approved", IntendedUseID: &indendedUseID,
+				CompleteScan: true, StaffNotes: title, SpecialInstructions: si}
+			err = svc.GDB.Create(&newUnit).Error
+			if err != nil {
+				svc.logError(js, fmt.Sprintf("unable to create unit for %s: %s", ingestFolder, err.Error()))
+				continue
+			}
+			cnt++
+		} else {
+			if strings.Contains(tgtUnit.SpecialInstructions, "Images:") == false {
+				svc.logInfo(js, fmt.Sprintf("add first batch of images to unit %d", tgtUnit.ID))
+				si := tgtUnit.SpecialInstructions + "\nImages: " + sortImages(strings.Join(images, ","))
+				err = svc.GDB.Model(&tgtUnit).Update("special_instructions", si).Error
+				if err != nil {
+					svc.logError(js, fmt.Sprintf("Unable to add image list to unit %d: %s", tgtMD.ID, err.Error()))
+					continue
+				}
+				updated++
+			} else {
+				// images are present, see if it contains the current batch
+				if strings.Contains(tgtUnit.SpecialInstructions, images[0]) == false {
+					svc.logInfo(js, fmt.Sprintf("add batch of images to unit %d", tgtUnit.ID))
+					bits := strings.Split(tgtUnit.SpecialInstructions, ":")
+					siImages := bits[len(bits)-1]
+					siImages = siImages + "," + strings.Join(images, ",")
+					siImages = sortImages(siImages)
+					si := strings.Split(tgtUnit.SpecialInstructions, "\n")[0] + "\nImages: " + siImages
+					err = svc.GDB.Model(&tgtUnit).Update("special_instructions", si).Error
+					if err != nil {
+						svc.logError(js, fmt.Sprintf("Unable to add image list to unit %d: %s", tgtMD.ID, err.Error()))
+						continue
+					}
+					updated++
+				}
+			}
+		}
 	}
 
-	svc.logFatal(js, "Not implemented")
+	svc.logInfo(js, fmt.Sprintf("%d units created", cnt))
+	svc.jobDone(js)
 }
 
 func (svc *ServiceContext) ingestBondFolder(js *jobStatus, params map[string]interface{}) {
@@ -126,4 +212,22 @@ func readCSV(filePath string) ([][]string, error) {
 	}
 
 	return csvRecs, nil
+}
+
+func sortImages(images string) string {
+	y := strings.Split(images, ",")
+	slices.SortFunc(y,
+		func(a, b string) int {
+			aSeq := strings.TrimSuffix(a, ".tif")
+			bits := strings.Split(a, "_")
+			aSeq = bits[len(bits)-1]
+			bSeq := strings.TrimSuffix(b, ".tif")
+			bits = strings.Split(b, "_")
+			bSeq = bits[len(bits)-1]
+			if aSeq > bSeq {
+				return 1
+			}
+			return -1
+		})
+	return strings.Join(y, ",")
 }

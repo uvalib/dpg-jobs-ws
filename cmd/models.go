@@ -242,6 +242,7 @@ type unit struct {
 	OcrMasterFiles              bool         `gorm:"column:ocr_master_files"`
 	MasterFiles                 []masterFile `gorm:"foreignKey:UnitID"`
 	StaffNotes                  string
+	SpecialInstructions         string
 	DateArchived                *time.Time
 	DatePatronDeliverablesReady *time.Time
 	DateDLDeliverablesReady     *time.Time `gorm:"column:date_dl_deliverables_ready"`
