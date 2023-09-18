@@ -49,6 +49,7 @@ CMD scripts/entry.sh
 
 # Move in necessary assets
 COPY package/data/container_bash_profile /home/libsnlocal/.profile
+COPY package/data/rclone.conf /usr/local/etc/rclone.conf
 COPY package/scripts/entry.sh $APP_HOME/scripts/entry.sh
 
 # layer build assets
