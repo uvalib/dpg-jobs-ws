@@ -140,7 +140,7 @@ func (svc *ServiceContext) runScript(c *gin.Context) {
 	scripts := map[string]interface{}{
 		"createBondLocations": svc.createBondLocations,
 		"createBondUnits":     svc.createBondUnits,
-		"ingestBondFolder":    svc.ingestBondFolder,
+		"ingestBondImages":    svc.ingestBondImages,
 	}
 
 	tgtScript := scripts[req.Name]
@@ -157,9 +157,13 @@ func (svc *ServiceContext) runScript(c *gin.Context) {
 		return
 	}
 
-	tgtScript.(func(*jobStatus, map[string]interface{}))(js, req.Params)
-
-	c.String(http.StatusOK, "ok")
+	err = tgtScript.(func(*jobStatus, map[string]interface{}) error)(js, req.Params)
+	if err != nil {
+		svc.logFatal(js, err.Error())
+		c.String(http.StatusBadRequest, err.Error())
+	} else {
+		c.String(http.StatusOK, fmt.Sprintf("%s started. check tracksys job %d status for details", req.Name, js.ID))
+	}
 }
 
 // func (svc *ServiceContext) hack(c *gin.Context) {
