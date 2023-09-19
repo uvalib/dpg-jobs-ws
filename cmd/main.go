@@ -160,7 +160,7 @@ func (svc *ServiceContext) runScript(c *gin.Context) {
 	err = tgtScript.(func(*jobStatus, map[string]interface{}) error)(js, req.Params)
 	if err != nil {
 		svc.logFatal(js, err.Error())
-		c.String(http.StatusBadRequest, err.Error())
+		c.String(http.StatusBadRequest, err.Error()+"\n")
 	} else {
 		c.String(http.StatusOK, fmt.Sprintf("%s started. check tracksys job %d status for details\n", req.Name, js.ID))
 	}

@@ -116,6 +116,9 @@ func (svc *ServiceContext) createBondUnits(js *jobStatus, params map[string]inte
 	if err != nil {
 		return fmt.Errorf("order %d not found: %s", tgtOrder.ID, err.Error())
 	}
+	if strings.Contains(tgtOrder.OrderTitle, "Julian Bond Papers") == false {
+		return fmt.Errorf("order %d is not for Julian Bond Papers; title [%s]", tgtOrder.ID, tgtOrder.OrderTitle)
+	}
 
 	tgtBox, found := params["box"].(string)
 	if found {
@@ -250,6 +253,9 @@ func (svc *ServiceContext) ingestBondImages(js *jobStatus, params map[string]int
 	err := svc.GDB.First(&tgtOrder).Error
 	if err != nil {
 		return fmt.Errorf("order %d not found: %s", tgtOrder.ID, err.Error())
+	}
+	if strings.Contains(tgtOrder.OrderTitle, "Julian Bond Papers") == false {
+		return fmt.Errorf("order %d is not for Julian Bond Papers; title [%s]", tgtOrder.ID, tgtOrder.OrderTitle)
 	}
 
 	tgtBox, found := params["box"].(string)

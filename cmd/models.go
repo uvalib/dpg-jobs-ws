@@ -251,6 +251,7 @@ type unit struct {
 
 type order struct {
 	ID                             int64
+	OrderTitle                     string
 	OrderStatus                    string
 	CustomerID                     uint
 	Customer                       customer `gorm:"foreignKey:CustomerID"`
