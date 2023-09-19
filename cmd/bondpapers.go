@@ -101,7 +101,7 @@ func (svc *ServiceContext) createBondUnits(js *jobStatus, params map[string]inte
 	}
 
 	csvPath := path.Join(svc.ProcessingDir, "bondpapers", csvFileName)
-	svc.logInfo(js, fmt.Sprintf("read locations from %s", csvPath))
+	svc.logInfo(js, fmt.Sprintf("read unit data from %s", csvPath))
 	recs, err := readCSV(csvPath)
 	if err != nil {
 		return err
@@ -119,11 +119,11 @@ func (svc *ServiceContext) createBondUnits(js *jobStatus, params map[string]inte
 
 	tgtBox, found := params["box"].(string)
 	if found {
-		svc.logInfo(js, fmt.Sprintf("process files from box %s", tgtBox))
+		svc.logInfo(js, fmt.Sprintf("process units from box %s", tgtBox))
 	}
 	tgtFolder, found := params["folder"].(string)
 	if found {
-		svc.logInfo(js, fmt.Sprintf("process files from folder %s", tgtFolder))
+		svc.logInfo(js, fmt.Sprintf("process units from folder %s", tgtFolder))
 	}
 
 	go func() {
@@ -194,6 +194,7 @@ func (svc *ServiceContext) createBondUnits(js *jobStatus, params map[string]inte
 				}
 				cnt++
 			} else {
+				svc.logInfo(js, fmt.Sprintf("unit %d for [%s] exists", tgtUnit.ID, title))
 				if strings.Contains(tgtUnit.SpecialInstructions, "Images:") == false {
 					svc.logInfo(js, fmt.Sprintf("add first batch of images to unit %d", tgtUnit.ID))
 					si := tgtUnit.SpecialInstructions + "\nImages: " + sortImages(strings.Join(images, ","))
