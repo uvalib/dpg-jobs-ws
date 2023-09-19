@@ -9,6 +9,7 @@ import (
 	"regexp"
 	"runtime/debug"
 	"strings"
+	"time"
 
 	"golang.org/x/exp/slices"
 )
@@ -258,7 +259,7 @@ func (svc *ServiceContext) ingestBondImages(js *jobStatus, params map[string]int
 	callNum := fmt.Sprintf("MSS 13347 Box %s", tgtBox)
 	svc.logInfo(js, fmt.Sprintf("lookup unit from order %d with metadata call number %s", tgtOrder.ID, callNum))
 	var tgtMD metadata
-	err = svc.GDB.Where("call_number=?", callNum).First(&tgtMD).Error
+	err = svc.GDB.Preload("Locations").Where("call_number=?", callNum).First(&tgtMD).Error
 	if err != nil {
 		svc.logFatal(js, fmt.Sprintf("unable to find metadata %s", callNum))
 	}
@@ -287,6 +288,10 @@ func (svc *ServiceContext) ingestBondImages(js *jobStatus, params map[string]int
 
 		cnt := 0
 		for _, tgtUnit := range boxUnits {
+			if tgtUnit.UnitStatus != "approved" {
+				svc.logInfo(js, fmt.Sprintf("skipping unit %d with status [%s]", tgtUnit.ID, tgtUnit.UnitStatus))
+				continue
+			}
 			if tgtFolder != "" {
 				unitIngestFrom := fmt.Sprintf("mss13347-b%s-f%s", tgtBox, tgtFolder)
 				if strings.Contains(tgtUnit.SpecialInstructions, unitIngestFrom) == false {
@@ -306,10 +311,101 @@ func (svc *ServiceContext) ingestBondImages(js *jobStatus, params map[string]int
 
 			imageStr := strings.Split(tgtUnit.SpecialInstructions, "\n")[1]
 			imageStr = strings.Split(imageStr, ":")[1]
-			for _, imgFN := range strings.Split(imageStr, ",") {
+			srcImages := strings.Split(imageStr, ",")
+			mfPageNum := 0
+			for _, imgFN := range srcImages {
+				mfPageNum++
 				srcImg := path.Join(srcDir, strings.TrimSpace(imgFN))
 				svc.logInfo(js, fmt.Sprintf("ingest %s", srcImg))
+				if pathExists(srcImg) == false {
+					svc.logInfo(js, fmt.Sprintf("image %s does not exist", srcImg))
+					continue
+				}
+
+				tsMasterFileName := fmt.Sprintf("%09d_%04d.tif", tgtUnit.ID, mfPageNum)
+				newMF, err := svc.loadMasterFile(tsMasterFileName)
+				if err != nil {
+					svc.logError(js, fmt.Sprintf("error loading masterfile %s: %s", tsMasterFileName, err.Error()))
+					continue
+				}
+				if newMF.ID == 0 {
+					svc.logInfo(js, fmt.Sprintf("Create new master file %s", tsMasterFileName))
+					newMD5 := md5Checksum(srcImg)
+					newFileSize := getFileSize(srcImg)
+					desc := ""
+					if mfPageNum == 1 {
+						desc = tgtUnit.StaffNotes
+					}
+					newMF = &masterFile{UnitID: tgtUnit.ID, MetadataID: tgtUnit.MetadataID, Filename: tsMasterFileName,
+						Filesize: newFileSize, MD5: newMD5, Title: fmt.Sprintf("%d", mfPageNum), Description: desc}
+					err = svc.GDB.Create(&newMF).Error
+					if err != nil {
+						svc.logError(js, fmt.Sprintf("unable to create masterfile %s: %s", tsMasterFileName, err.Error()))
+						continue
+					}
+				} else {
+					svc.logInfo(js, fmt.Sprintf("master file %s already exists", tsMasterFileName))
+				}
+
+				if newMF.ImageTechMeta.ID == 0 {
+					svc.logInfo(js, "Create image tech metadata")
+					err = svc.createImageTechMetadata(newMF, srcImg)
+					if err != nil {
+						svc.logError(js, fmt.Sprintf("Unable to create image tech metadata: %s", err.Error()))
+					}
+				} else {
+					svc.logInfo(js, "Image tech metadata already exists")
+				}
+
+				if len(newMF.Locations) == 0 {
+					var tgtLoc *location
+					bits := strings.Split(ingestFrom, "-")
+					unitFolder := strings.Replace(bits[len(bits)-1], "f", "", 1)
+					for _, loc := range tgtMD.Locations {
+						if loc.ContainerID == tgtBox && loc.FolderID == unitFolder {
+							tgtLoc = &loc
+							break
+						}
+					}
+					if tgtLoc == nil {
+						svc.logError(js, fmt.Sprintf("location record not found for %s", ingestFrom))
+					} else {
+						err = svc.GDB.Exec("INSERT into master_file_locations (master_file_id, location_id) values (?,?)", newMF.ID, tgtLoc.ID).Error
+						if err != nil {
+							svc.logError(js, fmt.Sprintf("Unable to link location %d to masterfile %d: %s", tgtLoc.ID, newMF.ID, err.Error()))
+						}
+					}
+				} else {
+					svc.logInfo(js, "Masterfile already has location info")
+				}
+
+				err = svc.publishToIIIF(js, newMF, srcImg, false)
+				if err != nil {
+					svc.logError(js, fmt.Sprintf("Unable to publish masterfile %d to IIIF: %s", newMF.ID, err.Error()))
+				}
+
+				archiveMD5, err := svc.archiveFile(js, srcImg, tgtUnit.ID, newMF)
+				if err != nil {
+					svc.logError(js, fmt.Sprintf("Unable to archive masterfile %d %s: %s", newMF.ID, srcImg, err.Error()))
+				} else {
+					if archiveMD5 != newMF.MD5 {
+						svc.logError(js, fmt.Sprintf("Archive MD5 does not match source MD5 for masterfile %d", newMF.ID))
+					}
+				}
 			}
+			if len(srcImages) != mfPageNum {
+				svc.logError(js, fmt.Sprintf("Masterfile count mismatch for unit %d: %d images vs %d masterfiles", tgtUnit.ID, len(srcImages), mfPageNum))
+			} else {
+				svc.logInfo(js, fmt.Sprintf("Unit %d ingested; marking complete", tgtMD.ID))
+				now := time.Now()
+				tgtUnit.DateArchived = &now
+				tgtUnit.UnitStatus = "done"
+				err = svc.GDB.Model(&tgtUnit).Select("DateArchived", "UnitStatus").Updates(tgtUnit).Error
+				if err != nil {
+					svc.logError(js, fmt.Sprintf("unable to update status of completed unit %d: %s", tgtUnit.ID, err.Error()))
+				}
+			}
+			cnt++
 		}
 
 		svc.logInfo(js, fmt.Sprintf("%d units ingested", cnt))

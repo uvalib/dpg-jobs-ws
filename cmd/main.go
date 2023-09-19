@@ -153,7 +153,7 @@ func (svc *ServiceContext) runScript(c *gin.Context) {
 	js, err := svc.createJobStatus(req.Name, "StaffMember", submitUser.ID)
 	if err != nil {
 		log.Printf("ERROR: unable to create HathiTrush submission job status: %s", err.Error())
-		c.String(http.StatusInternalServerError, err.Error())
+		c.String(http.StatusInternalServerError, err.Error()+"\n")
 		return
 	}
 
@@ -162,7 +162,7 @@ func (svc *ServiceContext) runScript(c *gin.Context) {
 		svc.logFatal(js, err.Error())
 		c.String(http.StatusBadRequest, err.Error())
 	} else {
-		c.String(http.StatusOK, fmt.Sprintf("%s started. check tracksys job %d status for details", req.Name, js.ID))
+		c.String(http.StatusOK, fmt.Sprintf("%s started. check tracksys job %d status for details\n", req.Name, js.ID))
 	}
 }
 

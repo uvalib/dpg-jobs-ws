@@ -334,6 +334,15 @@ func pathExists(path string) bool {
 	return true
 }
 
+func getFileSize(path string) int64 {
+	fi, err := os.Stat(path)
+	if err != nil {
+		log.Printf("ERROR: unable to get %s file size: %s", path, err.Error())
+		return 0
+	}
+	return fi.Size()
+}
+
 func ensureDirExists(dir string, mode fs.FileMode) error {
 	if _, err := os.Stat(dir); os.IsNotExist(err) {
 		err := os.MkdirAll(dir, 0777)
