@@ -239,7 +239,10 @@ func (svc *ServiceContext) ingestBondImages(js *jobStatus, params map[string]int
 	if found == false {
 		return fmt.Errorf("missing required src param")
 	}
-	bondRoot = path.Join(bondRoot, "New from Bond Project")
+	if pathExists(bondRoot) == false {
+		return fmt.Errorf("root path %s does not exist", bondRoot)
+	}
+	bondRoot = path.Join(bondRoot, `New from Bond Project`)
 	if pathExists(bondRoot) == false {
 		return fmt.Errorf("source path %s does not exist", bondRoot)
 	}
