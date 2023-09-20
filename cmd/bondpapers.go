@@ -95,12 +95,16 @@ func (svc *ServiceContext) createBondLocations(js *jobStatus, params map[string]
 
 func (svc *ServiceContext) createBondUnits(js *jobStatus, params map[string]interface{}) error {
 	svc.logInfo(js, fmt.Sprintf("start script to create units for bond papers"))
+	bondRoot, found := params["src"].(string)
+	if found == false {
+		return fmt.Errorf("missing required src param")
+	}
 	csvFileName, found := params["fileName"].(string)
 	if found == false {
 		return fmt.Errorf("missing required fileName param")
 	}
 
-	csvPath := path.Join(svc.ProcessingDir, "bondpapers", csvFileName)
+	csvPath := path.Join(bondRoot, csvFileName)
 	svc.logInfo(js, fmt.Sprintf("read unit data from %s", csvPath))
 	recs, err := readCSV(csvPath)
 	if err != nil {
@@ -238,9 +242,6 @@ func (svc *ServiceContext) ingestBondImages(js *jobStatus, params map[string]int
 	bondRoot, found := params["src"].(string)
 	if found == false {
 		return fmt.Errorf("missing required src param")
-	}
-	if pathExists(bondRoot) == false {
-		return fmt.Errorf("root path %s does not exist", bondRoot)
 	}
 	bondRoot = path.Join(bondRoot, `New from Bond Project`)
 	if pathExists(bondRoot) == false {
