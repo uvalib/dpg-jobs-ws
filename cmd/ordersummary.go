@@ -98,13 +98,13 @@ func (svc *ServiceContext) saveOrderSummary(js *jobStatus, o *order, orderData [
 		return err
 	}
 
-	pdfFile := path.Join(dir, fmt.Sprintf("%d.html", o.ID))
-	err = os.WriteFile(pdfFile, orderData, 0755)
+	summaryFileName := path.Join(dir, "summary.html")
+	err = os.WriteFile(summaryFileName, orderData, 0755)
 	if err != nil {
 		return err
 	}
 
-	svc.logInfo(js, fmt.Sprintf("PDF created at %s", pdfFile))
+	svc.logInfo(js, fmt.Sprintf("HTML order summary created at %s", summaryFileName))
 	return nil
 }
 
