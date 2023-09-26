@@ -4,6 +4,7 @@ import (
 	"encoding/csv"
 	"fmt"
 	"log"
+	"net/http"
 	"os"
 	"path"
 	"regexp"
@@ -11,10 +12,11 @@ import (
 	"strings"
 	"time"
 
+	"github.com/gin-gonic/gin"
 	"golang.org/x/exp/slices"
 )
 
-func (svc *ServiceContext) createBondLocations(js *jobStatus, params map[string]interface{}) error {
+func (svc *ServiceContext) createBondLocations(c *gin.Context, js *jobStatus, params map[string]interface{}) error {
 	svc.logInfo(js, fmt.Sprintf("start script to create locations for bond papers"))
 	csvFileName, found := params["fileName"].(string)
 	if found == false {
@@ -35,65 +37,55 @@ func (svc *ServiceContext) createBondLocations(js *jobStatus, params map[string]
 		return err
 	}
 
-	go func() {
-		defer func() {
-			if r := recover(); r != nil {
-				log.Printf("ERROR: panic recovered during createBondLocations: %v", r)
-				debug.PrintStack()
-				svc.logFatal(js, fmt.Sprintf("Panic recovered during createBondLocations: %v", r))
-			}
-		}()
+	cnt := 0
+	for i, line := range recs {
+		if i == 0 {
+			// the first row is the csv header... skip it
+			continue
+		}
 
-		cnt := 0
-		for i, line := range recs {
-			if i == 0 {
-				// the first row is the csv header... skip it
-				continue
-			}
+		// col 8 contains box folder info that is formatted: Box 3 Folder 28
+		boxFolder := line[8]
+		bits := strings.Split(boxFolder, " ")
+		boxNum := bits[1]
+		folderNum := bits[3]
+		callNum := fmt.Sprintf("MSS 13347 Box %s", boxNum)
+		var tgtMD metadata
+		err = svc.GDB.Preload("Locations").Where("call_number=?", callNum).First(&tgtMD).Error
+		if err != nil {
+			svc.logError(js, fmt.Sprintf("unable to find metadata %s", callNum))
+			continue
+		}
 
-			// col 8 contains box folder info that is formatted: Box 3 Folder 28
-			boxFolder := line[8]
-			bits := strings.Split(boxFolder, " ")
-			boxNum := bits[1]
-			folderNum := bits[3]
-			callNum := fmt.Sprintf("MSS 13347 Box %s", boxNum)
-			var tgtMD metadata
-			err = svc.GDB.Preload("Locations").Where("call_number=?", callNum).First(&tgtMD).Error
-			if err != nil {
-				svc.logError(js, fmt.Sprintf("unable to find metadata %s", callNum))
-				continue
-			}
-
-			hasLocation := false
-			for _, loc := range tgtMD.Locations {
-				if loc.FolderID == folderNum {
-					hasLocation = true
-					break
-				}
-			}
-
-			if hasLocation == false {
-				svc.logInfo(js, fmt.Sprintf("add location %s to metadata %s", boxFolder, tgtMD.PID))
-				newLoc := location{MetadataID: tgtMD.ID, ContainerTypeID: boxContainer.ID, FolderID: folderNum, ContainerID: boxNum}
-				err = svc.GDB.Create(&newLoc).Error
-				if err != nil {
-					svc.logError(js, fmt.Sprintf("unable to create %s: %s", boxFolder, err.Error()))
-					continue
-				}
-				cnt++
-			} else {
-				svc.logInfo(js, fmt.Sprintf("metadata %s already has location %s", tgtMD.PID, boxFolder))
+		hasLocation := false
+		for _, loc := range tgtMD.Locations {
+			if loc.FolderID == folderNum {
+				hasLocation = true
+				break
 			}
 		}
 
-		svc.logInfo(js, fmt.Sprintf("%d locations created", cnt))
-		svc.jobDone(js)
-	}()
+		if hasLocation == false {
+			svc.logInfo(js, fmt.Sprintf("add location %s to metadata %s", boxFolder, tgtMD.PID))
+			newLoc := location{MetadataID: tgtMD.ID, ContainerTypeID: boxContainer.ID, FolderID: folderNum, ContainerID: boxNum}
+			err = svc.GDB.Create(&newLoc).Error
+			if err != nil {
+				svc.logError(js, fmt.Sprintf("unable to create %s: %s", boxFolder, err.Error()))
+				continue
+			}
+			cnt++
+		} else {
+			svc.logInfo(js, fmt.Sprintf("metadata %s already has location %s", tgtMD.PID, boxFolder))
+		}
+	}
 
+	svc.logInfo(js, fmt.Sprintf("%d locations created", cnt))
+	svc.jobDone(js)
+	c.String(http.StatusOK, fmt.Sprintf("%d locations created; check tracksys job %d status for details\n", cnt, js.ID))
 	return nil
 }
 
-func (svc *ServiceContext) createBondUnits(js *jobStatus, params map[string]interface{}) error {
+func (svc *ServiceContext) createBondUnits(c *gin.Context, js *jobStatus, params map[string]interface{}) error {
 	svc.logInfo(js, fmt.Sprintf("start script to create units for bond papers"))
 	bondRoot, found := params["src"].(string)
 	if found == false {
@@ -234,16 +226,22 @@ func (svc *ServiceContext) createBondUnits(js *jobStatus, params map[string]inte
 		svc.logInfo(js, fmt.Sprintf("%d units created", cnt))
 		svc.jobDone(js)
 	}()
+	c.String(http.StatusOK, fmt.Sprintf("createBondUnits started; check tracksys job %d status for details\n", js.ID))
 	return nil
 }
 
-func (svc *ServiceContext) ingestBondImages(js *jobStatus, params map[string]interface{}) error {
+// ingestBond images will ingest a number of images from the bond papers image mount
+// params:
+//   - src : the source directory for the bond image mount (ex: /bondpapers/New from Bond Project)
+//   - orderID: the TS order ID for the destination
+//   - box: which box of images to igest
+//   - folder: (OPTIONAL) folder to ingest. If omitted, the entire box will be ingested
+func (svc *ServiceContext) ingestBondImages(c *gin.Context, js *jobStatus, params map[string]interface{}) error {
 	svc.logInfo(js, fmt.Sprintf("start script to ingest bond images"))
 	bondRoot, found := params["src"].(string)
 	if found == false {
 		return fmt.Errorf("missing required src param")
 	}
-	bondRoot = path.Join(bondRoot, `New from Bond Project`)
 	if pathExists(bondRoot) == false {
 		return fmt.Errorf("source path %s does not exist", bondRoot)
 	}
@@ -422,6 +420,88 @@ func (svc *ServiceContext) ingestBondImages(js *jobStatus, params map[string]int
 		svc.logInfo(js, fmt.Sprintf("%d units ingested", cnt))
 		svc.jobDone(js)
 	}()
+
+	c.String(http.StatusOK, fmt.Sprintf("ingestBondImages started; check tracksys job %d status for details\n", js.ID))
+	return nil
+}
+
+// generateBondMapping generate a CVS mapping for the bon project. Columns: original file, tracksys pid
+// params:
+//   - orderID: the target TS order ID. By default, all units will be exported
+//   - box: (OPTIONAL) which box of images use
+//   - folder: (OPTIONAL) which folder to export
+func (svc *ServiceContext) generateBondMapping(c *gin.Context, js *jobStatus, params map[string]interface{}) error {
+	svc.logInfo(js, fmt.Sprintf("start script to export a bond to tracksys mapping csv"))
+	rawOrderID, found := params["orderID"].(float64)
+	if found == false {
+		return fmt.Errorf("missing required orderID param")
+	}
+	tgtOrder := order{ID: int64(rawOrderID)}
+	err := svc.GDB.First(&tgtOrder).Error
+	if err != nil {
+		return fmt.Errorf("order %d not found: %s", tgtOrder.ID, err.Error())
+	}
+	if strings.Contains(tgtOrder.OrderTitle, "Julian Bond Papers") == false {
+		return fmt.Errorf("order %d is not for Julian Bond Papers; title [%s]", tgtOrder.ID, tgtOrder.OrderTitle)
+	}
+
+	tgtFolder := ""
+	tgtBox, found := params["box"].(string)
+	if found {
+		svc.logInfo(js, fmt.Sprintf("export box %s", tgtBox))
+		tgtFolder, found = params["folder"].(string)
+		if found {
+			svc.logInfo(js, fmt.Sprintf("export folder %s", tgtFolder))
+		}
+	} else {
+		svc.logInfo(js, "export mapping for entire order")
+	}
+
+	var tgtUnits []unit
+	if tgtBox != "" {
+		err := svc.GDB.Debug().
+			Joins("inner join metadata m on m.id=units.metadata_id").Preload("MasterFiles").
+			Where("order_id=? and call_number REGEXP(?)", tgtOrder.ID, fmt.Sprintf("^.*[:space:]Box[:space:]%s", tgtBox)).
+			Find(&tgtUnits).Error
+		if err != nil {
+			return fmt.Errorf("unable to get box units: %s", err.Error())
+		}
+	} else {
+		err := svc.GDB.Where("order_id=?", tgtOrder.ID).Preload("MasterFiles").Find(&tgtUnits).Error
+		if err != nil {
+			return fmt.Errorf("unable to get units: %s", err.Error())
+		}
+	}
+
+	c.Header("Content-Type", "text/csv")
+	cw := csv.NewWriter(c.Writer)
+	csvHead := []string{"original file", "tracksys pid"}
+	cw.Write(csvHead)
+	cnt := 0
+	for _, tgtUnit := range tgtUnits {
+		si := strings.Split(tgtUnit.SpecialInstructions, "\n")[0]
+		imgDir := strings.TrimSpace(strings.Split(si, ":")[1])
+		if tgtFolder != "" {
+			bits := strings.Split(imgDir, "-")
+			folder := bits[len(bits)-1]
+			folder = strings.Replace(folder, "f", "", 1)
+			if folder != tgtFolder {
+				continue
+			}
+		}
+		svc.logInfo(js, fmt.Sprintf("export unit %d:[%s] from [%s]", tgtUnit.ID, tgtUnit.StaffNotes, imgDir))
+		siImages := strings.Split(tgtUnit.SpecialInstructions, "\n")[1]
+		images := strings.TrimSpace(strings.Split(siImages, ":")[1])
+		for srcIdx, srcImg := range strings.Split(images, ",") {
+			tgtMF := tgtUnit.MasterFiles[srcIdx]
+			line := []string{srcImg, tgtMF.PID}
+			cw.Write(line)
+			break
+		}
+	}
+	svc.logInfo(js, fmt.Sprintf("%d units ingested", cnt))
+	svc.jobDone(js)
+	cw.Flush()
 
 	return nil
 }

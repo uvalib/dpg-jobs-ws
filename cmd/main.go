@@ -141,6 +141,7 @@ func (svc *ServiceContext) runScript(c *gin.Context) {
 		"createBondLocations": svc.createBondLocations,
 		"createBondUnits":     svc.createBondUnits,
 		"ingestBondImages":    svc.ingestBondImages,
+		"generateBondMapping": svc.generateBondMapping,
 	}
 
 	tgtScript := scripts[req.Name]
@@ -157,12 +158,10 @@ func (svc *ServiceContext) runScript(c *gin.Context) {
 		return
 	}
 
-	err = tgtScript.(func(*jobStatus, map[string]interface{}) error)(js, req.Params)
+	err = tgtScript.(func(*gin.Context, *jobStatus, map[string]interface{}) error)(c, js, req.Params)
 	if err != nil {
 		svc.logFatal(js, err.Error())
 		c.String(http.StatusBadRequest, err.Error()+"\n")
-	} else {
-		c.String(http.StatusOK, fmt.Sprintf("%s started. check tracksys job %d status for details\n", req.Name, js.ID))
 	}
 }
 
