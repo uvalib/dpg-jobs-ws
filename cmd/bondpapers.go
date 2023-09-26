@@ -461,7 +461,7 @@ func (svc *ServiceContext) generateBondMapping(c *gin.Context, js *jobStatus, pa
 	if tgtBox != "" {
 		err := svc.GDB.Debug().
 			Joins("inner join metadata m on m.id=units.metadata_id").Preload("MasterFiles").
-			Where("order_id=? and call_number REGEXP(?)", tgtOrder.ID, fmt.Sprintf("^.*[:space:]Box[:space:]%s", tgtBox)).
+			Where("order_id=? and call_number LIKE ?", tgtOrder.ID, fmt.Sprintf("%%Box %s", tgtBox)).
 			Find(&tgtUnits).Error
 		if err != nil {
 			return fmt.Errorf("unable to get box units: %s", err.Error())
@@ -494,10 +494,10 @@ func (svc *ServiceContext) generateBondMapping(c *gin.Context, js *jobStatus, pa
 		images := strings.TrimSpace(strings.Split(siImages, ":")[1])
 		for srcIdx, srcImg := range strings.Split(images, ",") {
 			tgtMF := tgtUnit.MasterFiles[srcIdx]
-			line := []string{srcImg, tgtMF.PID}
+			line := []string{strings.TrimSpace(srcImg), tgtMF.PID}
 			cw.Write(line)
-			break
 		}
+		cnt++
 	}
 	svc.logInfo(js, fmt.Sprintf("%d units ingested", cnt))
 	svc.jobDone(js)
