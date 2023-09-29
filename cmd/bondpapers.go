@@ -207,7 +207,7 @@ func (svc *ServiceContext) createBondUnits(c *gin.Context, js *jobStatus, params
 				svc.logInfo(js, fmt.Sprintf("%d units exist for metadata %d title [%s]", len(tgtUnits), tgtMD.ID, title))
 				exists := false
 				for _, tgtUnit := range tgtUnits {
-					tgtImages := extractUnitImageList(&tgtUnit)
+					tgtImages := extractBondUnitImageList(&tgtUnit)
 					svc.logInfo(js, fmt.Sprintf("first page in existing unit %d [%s]", tgtUnit.ID, tgtImages[0]))
 					if len(tgtImages) == len(images) && tgtImages[0] == images[0] && tgtImages[len(tgtImages)-1] == images[len(images)-1] {
 						exists = true
@@ -295,6 +295,8 @@ func (svc *ServiceContext) ingestBondImages(c *gin.Context, js *jobStatus, param
 				svc.logFatal(js, fmt.Sprintf("Panic recovered during ingest: %v", r))
 			}
 		}()
+
+		// metadata records are at the box level. get the one for this box or fail
 		var boxUnits []unit
 		err = svc.GDB.Where("order_id=? and metadata_id=?", tgtOrder.ID, tgtMD.ID).Find(&boxUnits).Error
 		if err != nil {
@@ -308,26 +310,23 @@ func (svc *ServiceContext) ingestBondImages(c *gin.Context, js *jobStatus, param
 				svc.logInfo(js, fmt.Sprintf("skipping unit %d with status [%s]", tgtUnit.ID, tgtUnit.UnitStatus))
 				continue
 			}
+			unitIngestFrom := extractBondImageFolder(&tgtUnit)
+
 			if tgtFolder != "" {
-				unitIngestFrom := fmt.Sprintf("mss13347-b%s-f%s", tgtBox, tgtFolder)
-				if strings.Contains(tgtUnit.SpecialInstructions, unitIngestFrom) == false {
+				tgtIngestFrom := fmt.Sprintf("mss13347-b%s-f%s", tgtBox, tgtFolder)
+				if unitIngestFrom != tgtIngestFrom {
 					continue
 				}
 			}
 
-			ingestFrom := strings.Split(tgtUnit.SpecialInstructions, "\n")[0]
-			ingestFrom = strings.Split(ingestFrom, ":")[1]
-			ingestFrom = strings.TrimSpace(ingestFrom)
-			srcDir := path.Join(bondRoot, fmt.Sprintf("Box %s", tgtBox), ingestFrom, "TIFF")
+			srcDir := path.Join(bondRoot, fmt.Sprintf("Box %s", tgtBox), unitIngestFrom, "TIFF")
 			svc.logInfo(js, fmt.Sprintf("ingest folder %s into unit %d", srcDir, tgtUnit.ID))
 			if pathExists(srcDir) == false {
 				svc.logInfo(js, fmt.Sprintf("image source dir %s does not exist", srcDir))
 				continue
 			}
 
-			imageStr := strings.Split(tgtUnit.SpecialInstructions, "\n")[1]
-			imageStr = strings.Split(imageStr, ":")[1]
-			srcImages := strings.Split(imageStr, ",")
+			srcImages := extractBondUnitImageList(&tgtUnit)
 			mfPageNum := 0
 			for _, imgFN := range srcImages {
 				mfPageNum++
@@ -375,7 +374,7 @@ func (svc *ServiceContext) ingestBondImages(c *gin.Context, js *jobStatus, param
 
 				if len(newMF.Locations) == 0 {
 					var tgtLoc *location
-					bits := strings.Split(ingestFrom, "-")
+					bits := strings.Split(unitIngestFrom, "-")
 					unitFolder := strings.Replace(bits[len(bits)-1], "f", "", 1)
 					for _, loc := range tgtMD.Locations {
 						if loc.ContainerID == tgtBox && loc.FolderID == unitFolder {
@@ -384,7 +383,7 @@ func (svc *ServiceContext) ingestBondImages(c *gin.Context, js *jobStatus, param
 						}
 					}
 					if tgtLoc == nil {
-						svc.logError(js, fmt.Sprintf("location record not found for %s", ingestFrom))
+						svc.logError(js, fmt.Sprintf("location record not found for %s", unitIngestFrom))
 					} else {
 						err = svc.GDB.Exec("INSERT into master_file_locations (master_file_id, location_id) values (?,?)", newMF.ID, tgtLoc.ID).Error
 						if err != nil {
@@ -486,8 +485,7 @@ func (svc *ServiceContext) generateBondMapping(c *gin.Context, js *jobStatus, pa
 	cw.Write(csvHead)
 	cnt := 0
 	for _, tgtUnit := range tgtUnits {
-		si := strings.Split(tgtUnit.SpecialInstructions, "\n")[0]
-		imgDir := strings.TrimSpace(strings.Split(si, ":")[1])
+		imgDir := extractBondImageFolder(&tgtUnit)
 		if tgtFolder != "" {
 			bits := strings.Split(imgDir, "-")
 			folder := bits[len(bits)-1]
@@ -497,9 +495,8 @@ func (svc *ServiceContext) generateBondMapping(c *gin.Context, js *jobStatus, pa
 			}
 		}
 		svc.logInfo(js, fmt.Sprintf("export unit %d:[%s] from [%s]", tgtUnit.ID, tgtUnit.StaffNotes, imgDir))
-		siImages := strings.Split(tgtUnit.SpecialInstructions, "\n")[1]
-		images := strings.TrimSpace(strings.Split(siImages, ":")[1])
-		for srcIdx, srcImg := range strings.Split(images, ",") {
+		images := extractBondUnitImageList(&tgtUnit)
+		for srcIdx, srcImg := range images {
 			tgtMF := tgtUnit.MasterFiles[srcIdx]
 			line := []string{strings.TrimSpace(srcImg), tgtMF.PID}
 			cw.Write(line)
@@ -529,7 +526,14 @@ func readCSV(filePath string) ([][]string, error) {
 	return csvRecs, nil
 }
 
-func extractUnitImageList(tgtUnit *unit) []string {
+func extractBondImageFolder(tgtUnit *unit) string {
+	ingestFrom := strings.Split(tgtUnit.SpecialInstructions, "\n")[0]
+	ingestFrom = strings.Split(ingestFrom, ":")[1]
+	ingestFrom = strings.TrimSpace(ingestFrom)
+	return ingestFrom
+}
+
+func extractBondUnitImageList(tgtUnit *unit) []string {
 	imagesLine := strings.Split(tgtUnit.SpecialInstructions, "\n")[1]
 	imagesStr := strings.Split(imagesLine, ":")[1]
 	var images []string
