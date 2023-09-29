@@ -85,6 +85,15 @@ func (svc *ServiceContext) createBondLocations(c *gin.Context, js *jobStatus, pa
 	return nil
 }
 
+// createBondUnits will generate TrackSys units based on a bond papers inventory CSV. NOTE: each row of the spreadsheet
+// is to be considered a unique document and should be added to a unique unit. This will resut in some units for documents with
+// the same title, but that is OK as they are just different revisions
+// params:
+//   - src : the source directory for the bond image mount (ex: /bondpapers/New from Bond Project)
+//   - fileName : the file name of the CSV inventory
+//   - orderID: the TS order ID for the destination
+//   - box: (OPTIONAL) which box of images to igest.  If omitted, all boxes will be processed
+//   - folder: (OPTIONAL) folder to ingest. If omitted, the entire box will be ingested
 func (svc *ServiceContext) createBondUnits(c *gin.Context, js *jobStatus, params map[string]interface{}) error {
 	svc.logInfo(js, fmt.Sprintf("start script to create units for bond papers"))
 	bondRoot, found := params["src"].(string)
@@ -135,7 +144,6 @@ func (svc *ServiceContext) createBondUnits(c *gin.Context, js *jobStatus, params
 		}()
 
 		cnt := 0
-		updated := 0
 		indendedUseID := int64(110) // digital collection building
 		chunkRegex := regexp.MustCompile(`\s\((Doc\s)?[1-9]{1}\sof\s[1-9]{1}\)$`)
 		for i, line := range recs {
@@ -144,7 +152,7 @@ func (svc *ServiceContext) createBondUnits(c *gin.Context, js *jobStatus, params
 			}
 
 			// title may appear multiple times with different prefix / suffix
-			// suffix looks like (Doc # of #) or (# of #). This happens when a folder was scanned in multiple chunks; strip and ignore
+			// suffix looks like (Doc # of #) or (# of #). Strip it and ignore
 			title := line[1]
 			title = chunkRegex.ReplaceAllString(title, "")
 
@@ -169,6 +177,8 @@ func (svc *ServiceContext) createBondUnits(c *gin.Context, js *jobStatus, params
 				img = strings.TrimSpace(img)
 				images = append(images, img)
 			}
+			images = sortImages(images)
+			svc.logInfo(js, fmt.Sprintf("first page in new record [%s]", images[0]))
 
 			// get parent metadata record...
 			var tgtMD metadata
@@ -178,12 +188,13 @@ func (svc *ServiceContext) createBondUnits(c *gin.Context, js *jobStatus, params
 				continue
 			}
 
-			// see if a unit for this record already exists
-			var tgtUnit unit
-			svc.GDB.Where("metadata_id=? and staff_notes=?", tgtMD.ID, title).Limit(1).Find(&tgtUnit)
-			if tgtUnit.ID == 0 {
+			// see if a unit for this record already exists: IMPORTANT; titles are held in staff_notes and may be duplicated
+			// need to pull all that match metadata and title, then check page info to see if its already been processed.
+			var tgtUnits []unit
+			svc.GDB.Where("metadata_id=? and staff_notes=?", tgtMD.ID, title).Find(&tgtUnits)
+			if len(tgtUnits) == 0 {
 				svc.logInfo(js, fmt.Sprintf("create unit for %s", ingestFolder))
-				si := fmt.Sprintf("Ingest from: %s\nImages: %s", ingestFolder, sortImages(strings.Join(images, ",")))
+				si := fmt.Sprintf("Ingest from: %s\nImages: %s", ingestFolder, strings.Join(images, ","))
 				newUnit := unit{OrderID: tgtOrder.ID, MetadataID: &tgtMD.ID, UnitStatus: "approved", IntendedUseID: &indendedUseID,
 					CompleteScan: true, StaffNotes: title, SpecialInstructions: si}
 				err = svc.GDB.Create(&newUnit).Error
@@ -193,32 +204,28 @@ func (svc *ServiceContext) createBondUnits(c *gin.Context, js *jobStatus, params
 				}
 				cnt++
 			} else {
-				svc.logInfo(js, fmt.Sprintf("unit %d for [%s] exists", tgtUnit.ID, title))
-				if strings.Contains(tgtUnit.SpecialInstructions, "Images:") == false {
-					svc.logInfo(js, fmt.Sprintf("add first batch of images to unit %d", tgtUnit.ID))
-					si := tgtUnit.SpecialInstructions + "\nImages: " + sortImages(strings.Join(images, ","))
-					err = svc.GDB.Model(&tgtUnit).Update("special_instructions", si).Error
+				svc.logInfo(js, fmt.Sprintf("%d units exist for metadata %d title [%s]", len(tgtUnits), tgtMD.ID, title))
+				exists := false
+				for _, tgtUnit := range tgtUnits {
+					tgtImages := extractUnitImageList(&tgtUnit)
+					svc.logInfo(js, fmt.Sprintf("first page in existing unit %d [%s]", tgtUnit.ID, tgtImages[0]))
+					if len(tgtImages) == len(images) && tgtImages[0] == images[0] && tgtImages[len(tgtImages)-1] == images[len(images)-1] {
+						exists = true
+						svc.logInfo(js, fmt.Sprintf("matching pages found in %d; nothing more to do", tgtUnit.ID))
+						break
+					}
+				}
+				if exists == false {
+					svc.logInfo(js, fmt.Sprintf("pages not found in existing units; create new unit for %s", ingestFolder))
+					si := fmt.Sprintf("Ingest from: %s\nImages: %s", ingestFolder, strings.Join(images, ","))
+					newUnit := unit{OrderID: tgtOrder.ID, MetadataID: &tgtMD.ID, UnitStatus: "approved", IntendedUseID: &indendedUseID,
+						CompleteScan: true, StaffNotes: title, SpecialInstructions: si}
+					err = svc.GDB.Create(&newUnit).Error
 					if err != nil {
-						svc.logError(js, fmt.Sprintf("Unable to add image list to unit %d: %s", tgtMD.ID, err.Error()))
+						svc.logError(js, fmt.Sprintf("unable to create unit for %s: %s", ingestFolder, err.Error()))
 						continue
 					}
-					updated++
-				} else {
-					// images are present, see if it contains the current batch
-					if strings.Contains(tgtUnit.SpecialInstructions, images[0]) == false {
-						svc.logInfo(js, fmt.Sprintf("add batch of images to unit %d", tgtUnit.ID))
-						bits := strings.Split(tgtUnit.SpecialInstructions, ":")
-						siImages := bits[len(bits)-1]
-						siImages = siImages + "," + strings.Join(images, ",")
-						siImages = sortImages(siImages)
-						si := strings.Split(tgtUnit.SpecialInstructions, "\n")[0] + "\nImages: " + siImages
-						err = svc.GDB.Model(&tgtUnit).Update("special_instructions", si).Error
-						if err != nil {
-							svc.logError(js, fmt.Sprintf("Unable to add image list to unit %d: %s", tgtMD.ID, err.Error()))
-							continue
-						}
-						updated++
-					}
+					cnt++
 				}
 			}
 		}
@@ -522,9 +529,20 @@ func readCSV(filePath string) ([][]string, error) {
 	return csvRecs, nil
 }
 
-func sortImages(images string) string {
-	y := strings.Split(images, ",")
-	slices.SortFunc(y,
+func extractUnitImageList(tgtUnit *unit) []string {
+	imagesLine := strings.Split(tgtUnit.SpecialInstructions, "\n")[1]
+	imagesStr := strings.Split(imagesLine, ":")[1]
+	var images []string
+	for _, img := range strings.Split(imagesStr, ",") {
+		img = strings.TrimSpace(img)
+		images = append(images, img)
+	}
+	return sortImages(images)
+}
+
+func sortImages(images []string) []string {
+	// y := strings.Split(images, ",")
+	slices.SortFunc(images,
 		func(a, b string) int {
 			aSeq := strings.TrimSuffix(a, ".tif")
 			bits := strings.Split(a, "_")
@@ -537,5 +555,6 @@ func sortImages(images string) string {
 			}
 			return -1
 		})
-	return strings.Join(y, ",")
+	return images
+	// return strings.Join(y, ",")
 }
