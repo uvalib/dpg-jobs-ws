@@ -76,10 +76,6 @@ func (svc *ServiceContext) publishXMLToVirgo(js *jobStatus, xmlMetadata *metadat
 			svc.logError(js, "Too many units flagged for inclusion in Virgo")
 			return fmt.Errorf("too many units flagged for publication")
 		}
-		if len(dlUnits) == 0 {
-			svc.logError(js, "No units flagged for inclusion in Virgo")
-			return fmt.Errorf("no units flagged for publication")
-		}
 
 		if len(dlUnits) == 0 {
 			// if there are no units this means that descriptive XML
