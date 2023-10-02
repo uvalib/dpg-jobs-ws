@@ -333,7 +333,7 @@ func (svc *ServiceContext) ingestBondImages(c *gin.Context, js *jobStatus, param
 				srcImg := path.Join(srcDir, strings.TrimSpace(imgFN))
 				svc.logInfo(js, fmt.Sprintf("ingest %s", srcImg))
 				if pathExists(srcImg) == false {
-					svc.logInfo(js, fmt.Sprintf("image %s does not exist", srcImg))
+					svc.logError(js, fmt.Sprintf("image %s does not exist", srcImg))
 					continue
 				}
 
