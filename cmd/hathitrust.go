@@ -754,6 +754,7 @@ func (svc *ServiceContext) listHathiTrustSubmissions(c *gin.Context) {
 	err = json.Unmarshal(out, &resp)
 	if err != nil {
 		log.Printf("ERROR: unable to parse rclone response: %s", err.Error())
+		log.Printf("ERROR: raw response [%s]", out)
 		c.String(http.StatusInternalServerError, err.Error())
 		return
 	}
