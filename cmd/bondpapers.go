@@ -171,11 +171,19 @@ func (svc *ServiceContext) createBondUnits(c *gin.Context, js *jobStatus, params
 				continue
 			}
 
+			svc.logInfo(js, fmt.Sprintf("processing csv line %d", i))
+
 			// get the image list, clean it up and sort
 			var images []string
 			for _, img := range strings.Split(line[10], "|") {
 				img = strings.TrimSpace(img)
-				images = append(images, img)
+				if img != "" {
+					images = append(images, img)
+				}
+			}
+			if len(images) == 0 || images == nil {
+				svc.logInfo(js, fmt.Sprintf("%s has no images and is being skipped", boxFolder))
+				continue
 			}
 			images = sortImages(images)
 			svc.logInfo(js, fmt.Sprintf("first page in new record [%s]", images[0]))
@@ -296,7 +304,7 @@ func (svc *ServiceContext) ingestBondImages(c *gin.Context, js *jobStatus, param
 			}
 		}()
 
-		// metadata records are at the box level. get the one for this box or fail
+		//get all of the unis associated with the target order / meetadata record (box)
 		var boxUnits []unit
 		err = svc.GDB.Where("order_id=? and metadata_id=?", tgtOrder.ID, tgtMD.ID).Find(&boxUnits).Error
 		if err != nil {
@@ -322,7 +330,7 @@ func (svc *ServiceContext) ingestBondImages(c *gin.Context, js *jobStatus, param
 			srcDir := path.Join(bondRoot, fmt.Sprintf("Box %s", tgtBox), unitIngestFrom, "TIFF")
 			svc.logInfo(js, fmt.Sprintf("ingest folder %s into unit %d", srcDir, tgtUnit.ID))
 			if pathExists(srcDir) == false {
-				svc.logInfo(js, fmt.Sprintf("image source dir %s does not exist", srcDir))
+				svc.logError(js, fmt.Sprintf("image source dir %s does not exist", srcDir))
 				continue
 			}
 
