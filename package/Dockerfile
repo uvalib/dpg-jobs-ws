@@ -62,6 +62,9 @@ RUN chown libsnlocal:lb-digiserv /home/libsnlocal/.profile $APP_HOME/scripts/ent
 RUN chown -R libsnlocal:lb-digiserv $APP_HOME/bin/assets $APP_HOME/bin/templates && chmod -R 755 $APP_HOME/bin/assets $APP_HOME/bin/templates
 RUN chown -R libsnlocal:lb-digiserv $APP_HOME/bin && chmod -R 755 $APP_HOME/bin
 
+# cos decrypting rclone config needs to write here
+RUN chmod 777 /usr/local/etc
+
 # Add the build tag
 ARG BUILD_TAG
 RUN test -n "$BUILD_TAG" && touch $APP_HOME/buildtag.build-$BUILD_TAG || touch $APP_HOME/buildtag.build-0
