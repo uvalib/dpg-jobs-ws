@@ -593,7 +593,7 @@ func (svc *ServiceContext) submitHathiTrustPackage(c *gin.Context) {
 	var req hathiTrustSubmitRequest
 	err := c.ShouldBindJSON(&req)
 	if err != nil {
-		log.Printf("ERROR: unable to parse hathitrust subite request: %s", err.Error())
+		log.Printf("ERROR: unable to parse hathitrust submit request: %s", err.Error())
 		c.String(http.StatusBadRequest, err.Error())
 		return
 	}
@@ -652,7 +652,6 @@ func (svc *ServiceContext) submitHathiTrustPackage(c *gin.Context) {
 			}
 		}()
 
-		svc.logInfo(js, fmt.Sprintf("submit files from %s", orderDir))
 		submitted := 0
 		err = filepath.WalkDir(orderDir, func(filePath string, d fs.DirEntry, err error) error {
 			if d.IsDir() {
@@ -661,14 +660,13 @@ func (svc *ServiceContext) submitHathiTrustPackage(c *gin.Context) {
 			if filepath.Ext(d.Name()) != ".zip" {
 				return nil
 			}
+
 			doSubmit := false
 			tgtBC := strings.TrimSuffix(d.Name(), filepath.Ext(d.Name()))
 			if len(req.Barcodes) > 0 {
-				for bcIdx, bc := range req.Barcodes {
+				for _, bc := range req.Barcodes {
 					if bc == tgtBC {
 						doSubmit = true
-						req.Barcodes[bcIdx] = req.Barcodes[len(req.Barcodes)-1]
-						req.Barcodes = req.Barcodes[:len(req.Barcodes)-1]
 						break
 					}
 				}

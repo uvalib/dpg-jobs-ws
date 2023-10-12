@@ -11,7 +11,7 @@ import (
 )
 
 // Version of the service
-const version = "1.16.3"
+const version = "1.16.4"
 
 func main() {
 	log.Printf("===> DPG backend processing service starting up <===")
@@ -200,3 +200,5 @@ func (svc *ServiceContext) runScript(c *gin.Context) {
 
 // 	c.String(http.StatusOK, "happy")
 // }
+
+// curl -X POST  https://dpg-jobs.lib.virginia.edu/hathitrust/package/submit -H "Content-Type: application/json" --data '{"computeID": "lf6f", "order": 11662, "barcodes": ["X031014505"]}'
