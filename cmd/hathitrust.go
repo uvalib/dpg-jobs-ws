@@ -50,6 +50,15 @@ type hathiTrustSubmitRequest struct {
 	Barcodes  []string `json:"barcodes"`
 }
 
+type hathiTrustSubmission struct {
+	Path     string
+	Name     string
+	Size     int
+	MimeType string
+	IsDir    bool
+	ID       string
+}
+
 func (svc *ServiceContext) submitHathiTrustMetadata(c *gin.Context) {
 	log.Printf("INFO: received hathitrust metadata request")
 	var req hathiTrustRequest
@@ -652,6 +661,9 @@ func (svc *ServiceContext) submitHathiTrustPackage(c *gin.Context) {
 			}
 		}()
 
+		svc.logInfo(js, "get a list of packages in the submission directory")
+		priorSubmissions, err := svc.getHathiTrustDirectoryContent()
+
 		submitted := 0
 		err = filepath.WalkDir(orderDir, func(filePath string, d fs.DirEntry, err error) error {
 			if d.IsDir() {
@@ -678,6 +690,18 @@ func (svc *ServiceContext) submitHathiTrustPackage(c *gin.Context) {
 				return nil
 			}
 
+			for _, ps := range priorSubmissions {
+				subName := strings.TrimSuffix(ps.Name, ".zip")
+				if subName == tgtBC {
+					svc.logInfo(js, fmt.Sprintf("package for %s already exists in the submission directory", tgtBC))
+					doSubmit = false
+					break
+				}
+			}
+			if doSubmit == false {
+				return nil
+			}
+
 			svc.logInfo(js, fmt.Sprintf("submit %s", filePath))
 			cmd := exec.Command(path.Join(svc.HathiTrust.RCloneBin, "rclone"),
 				"--config", svc.HathiTrust.RCloneConfig,
@@ -693,7 +717,7 @@ func (svc *ServiceContext) submitHathiTrustPackage(c *gin.Context) {
 
 			svc.logInfo(js, fmt.Sprintf("update status for %s", tgtBC))
 			var mdRec metadata
-			err = svc.GDB.Preload("HathiTrustStatus").Where("barcode=?", tgtBC).First(&mdRec).Error
+			err = svc.GDB.InnerJoins("HathiTrustStatus").Where("barcode=?", tgtBC).First(&mdRec).Error
 			if err != nil {
 				svc.logError(js, fmt.Sprintf("Unable to load metadata for %s: %s", tgtBC, err.Error()))
 				return nil
@@ -726,6 +750,16 @@ func (svc *ServiceContext) submitHathiTrustPackage(c *gin.Context) {
 }
 
 func (svc *ServiceContext) listHathiTrustSubmissions(c *gin.Context) {
+	resp, err := svc.getHathiTrustDirectoryContent()
+	if err != nil {
+		log.Printf("ERROR: listHathiTrustSubmissions failed: %s", err.Error())
+		c.String(http.StatusInternalServerError, err.Error())
+		return
+	}
+	c.JSON(http.StatusOK, resp)
+}
+
+func (svc *ServiceContext) getHathiTrustDirectoryContent() ([]hathiTrustSubmission, error) {
 	// rclone lsjson hathitrust:virginia
 	cmd := exec.Command(path.Join(svc.HathiTrust.RCloneBin, "rclone"),
 		"--config", svc.HathiTrust.RCloneConfig,
@@ -734,29 +768,15 @@ func (svc *ServiceContext) listHathiTrustSubmissions(c *gin.Context) {
 	log.Printf("INFO: list submitted hathitrust package request: %v", cmd)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
-		log.Printf("ERROR: unable to list submitted hathitrist packages: %s:%s", err.Error(), out)
-		c.String(http.StatusInternalServerError, string(out))
-		return
+		return nil, err
 	}
 
-	type submittedResponse struct {
-		Path     string
-		Name     string
-		Size     int
-		MimeType string
-		IsDir    bool
-		ID       string
-	}
-
-	var resp []submittedResponse
+	var resp []hathiTrustSubmission
 	err = json.Unmarshal(out, &resp)
 	if err != nil {
-		log.Printf("ERROR: unable to parse rclone response: %s", err.Error())
-		log.Printf("ERROR: raw response [%s]", out)
-		c.String(http.StatusInternalServerError, err.Error())
-		return
+		return nil, fmt.Errorf("unable to parse rclone response: %s", err.Error())
 	}
-	c.JSON(http.StatusOK, resp)
+	return resp, nil
 }
 
 func (svc *ServiceContext) getMARCMetadata(md metadata) (string, error) {
