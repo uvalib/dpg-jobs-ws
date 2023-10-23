@@ -210,31 +210,10 @@ func (svc *ServiceContext) createBondUnits(c *gin.Context, js *jobStatus, params
 					svc.logError(js, fmt.Sprintf("unable to create unit for %s: %s", ingestFolder, err.Error()))
 					continue
 				}
+				svc.logInfo(js, fmt.Sprintf("created unit %d for %s", newUnit.ID, ingestFolder))
 				cnt++
 			} else {
 				svc.logInfo(js, fmt.Sprintf("%d units exist for metadata %d title [%s]", len(tgtUnits), tgtMD.ID, title))
-				exists := false
-				for _, tgtUnit := range tgtUnits {
-					tgtImages := extractBondUnitImageList(&tgtUnit)
-					svc.logInfo(js, fmt.Sprintf("first page in existing unit %d [%s]", tgtUnit.ID, tgtImages[0]))
-					if len(tgtImages) == len(images) && tgtImages[0] == images[0] && tgtImages[len(tgtImages)-1] == images[len(images)-1] {
-						exists = true
-						svc.logInfo(js, fmt.Sprintf("matching pages found in %d; nothing more to do", tgtUnit.ID))
-						break
-					}
-				}
-				if exists == false {
-					svc.logInfo(js, fmt.Sprintf("pages not found in existing units; create new unit for %s", ingestFolder))
-					si := fmt.Sprintf("Ingest from: %s\nImages: %s", ingestFolder, strings.Join(images, ","))
-					newUnit := unit{OrderID: tgtOrder.ID, MetadataID: &tgtMD.ID, UnitStatus: "approved", IntendedUseID: &indendedUseID,
-						CompleteScan: true, StaffNotes: title, SpecialInstructions: si}
-					err = svc.GDB.Create(&newUnit).Error
-					if err != nil {
-						svc.logError(js, fmt.Sprintf("unable to create unit for %s: %s", ingestFolder, err.Error()))
-						continue
-					}
-					cnt++
-				}
 			}
 		}
 
