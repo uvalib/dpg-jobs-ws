@@ -94,6 +94,8 @@ func (svc *ServiceContext) createBondLocations(c *gin.Context, js *jobStatus, pa
 //   - orderID: the TS order ID for the destination
 //   - box: (OPTIONAL) which box of images to igest.  If omitted, all boxes will be processed
 //   - folder: (OPTIONAL) folder to ingest. If omitted, the entire box will be ingested
+//
+// EXAMPLE: curl -X POST https://dpg-jobs.lib.virginia.edu/script -H "Content-Type: application/json" --data '{"computeID": "lf6f", "name": "createBondUnits", "params": {"orderID": 12167, "src": "/mnt/work/bondpapers", "fileName": "BondBoxes1-2-3-6-7-8.csv", "box": "1"}}'
 func (svc *ServiceContext) createBondUnits(c *gin.Context, js *jobStatus, params map[string]interface{}) error {
 	svc.logInfo(js, fmt.Sprintf("start script to create units for bond papers"))
 	bondRoot, found := params["src"].(string)
@@ -230,6 +232,8 @@ func (svc *ServiceContext) createBondUnits(c *gin.Context, js *jobStatus, params
 //   - orderID: the TS order ID for the destination
 //   - box: which box of images to igest
 //   - folder: (OPTIONAL) folder to ingest. If omitted, the entire box will be ingested
+//
+// EXAMPLE: curl -X POST https://dpg-jobs.lib.virginia.edu/script -H "Content-Type: application/json" --data '{"computeID": "lf6f", "name": "ingestBondImages", "params": {"orderID": 12167, "src": "/mnt/bondpapers/New from Bond Project", "box": "1", "folder": "27"}}'
 func (svc *ServiceContext) ingestBondImages(c *gin.Context, js *jobStatus, params map[string]interface{}) error {
 	svc.logInfo(js, fmt.Sprintf("start script to ingest bond images"))
 	bondRoot, found := params["src"].(string)
