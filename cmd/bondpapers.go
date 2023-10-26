@@ -302,6 +302,10 @@ func (svc *ServiceContext) ingestBondImages(c *gin.Context, js *jobStatus, param
 				continue
 			}
 			unitIngestFrom := extractBondImageFolder(&tgtUnit)
+			if unitIngestFrom == "" {
+				svc.logInfo(js, fmt.Sprintf("skipping unit %d that does not have source image folder in special instructions", tgtUnit.ID))
+				continue
+			}
 
 			if tgtFolder != "" {
 				tgtIngestFrom := fmt.Sprintf("mss13347-b%s-f%s", tgtBox, tgtFolder)
@@ -477,6 +481,10 @@ func (svc *ServiceContext) generateBondMapping(c *gin.Context, js *jobStatus, pa
 	cnt := 0
 	for _, tgtUnit := range tgtUnits {
 		imgDir := extractBondImageFolder(&tgtUnit)
+		if imgDir == "" {
+			svc.logInfo(js, fmt.Sprintf("skipping unit %d that does not have source image folder in special instructions", tgtUnit.ID))
+			continue
+		}
 		if tgtFolder != "" {
 			bits := strings.Split(imgDir, "-")
 			folder := bits[len(bits)-1]
@@ -519,15 +527,27 @@ func readCSV(filePath string) ([][]string, error) {
 
 func extractBondImageFolder(tgtUnit *unit) string {
 	ingestFrom := strings.Split(tgtUnit.SpecialInstructions, "\n")[0]
-	ingestFrom = strings.Split(ingestFrom, ":")[1]
+	bits := strings.Split(ingestFrom, ":")
+	if len(bits) == 0 {
+		return ""
+	}
+	ingestFrom = bits[1]
 	ingestFrom = strings.TrimSpace(ingestFrom)
 	return ingestFrom
 }
 
 func extractBondUnitImageList(tgtUnit *unit) []string {
-	imagesLine := strings.Split(tgtUnit.SpecialInstructions, "\n")[1]
-	imagesStr := strings.Split(imagesLine, ":")[1]
-	var images []string
+	images := make([]string, 0)
+	bits := strings.Split(tgtUnit.SpecialInstructions, "\n")
+	if len(bits) == 0 {
+		return images
+	}
+	imagesLine := bits[1]
+	bits = strings.Split(imagesLine, ":")
+	if len(bits) == 0 {
+		return images
+	}
+	imagesStr := bits[1]
 	for _, img := range strings.Split(imagesStr, ",") {
 		img = strings.TrimSpace(img)
 		images = append(images, img)
