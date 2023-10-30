@@ -29,6 +29,20 @@ func (svc *ServiceContext) collectionBulkAdd(c *gin.Context) {
 		return
 	}
 
+	svc.logInfo(js, "Check for selected metadata records that are already part of a collection")
+	var inCollectionIDs []int64
+	err = svc.GDB.Raw("select id from metadata where id in ? and parent_metadata_id  != ?", req.MetadataIDs, 0).Scan(&inCollectionIDs).Error
+	if err != nil {
+		svc.logFatal(js, fmt.Sprintf("Unable to find records already in a collection: %s", err.Error()))
+		c.String(http.StatusInternalServerError, err.Error())
+		return
+	}
+	if len(inCollectionIDs) > 0 {
+		svc.logFatal(js, fmt.Sprintf("Metadata records %v are already part of a collection", inCollectionIDs))
+		c.String(http.StatusBadRequest, "Metadata records %v are already part of a collection", inCollectionIDs)
+		return
+	}
+
 	svc.logInfo(js, fmt.Sprintf("Add metadata records %v to collection %d", req.MetadataIDs, collectionMetadataID))
 	go func() {
 		defer func() {
