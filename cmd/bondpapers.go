@@ -480,6 +480,10 @@ func (svc *ServiceContext) generateBondMapping(c *gin.Context, js *jobStatus, pa
 	cw.Write(csvHead)
 	cnt := 0
 	for _, tgtUnit := range tgtUnits {
+		if len(tgtUnit.MasterFiles) == 0 {
+			svc.logInfo(js, fmt.Sprintf("skipping unit %d that does not have master files", tgtUnit.ID))
+			continue
+		}
 		imgDir := extractBondImageFolder(&tgtUnit)
 		if imgDir == "" {
 			svc.logInfo(js, fmt.Sprintf("skipping unit %d that does not have source image folder in special instructions", tgtUnit.ID))
