@@ -502,7 +502,7 @@ func (svc *ServiceContext) generateBondMapping(c *gin.Context, js *jobStatus, pa
 		}
 		cnt++
 	}
-	svc.logInfo(js, fmt.Sprintf("%d units ingested", cnt))
+	svc.logInfo(js, fmt.Sprintf("%d unit mappings exported", cnt))
 	svc.jobDone(js)
 	cw.Flush()
 
