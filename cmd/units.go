@@ -244,7 +244,7 @@ func (svc *ServiceContext) cloneMasterFile(js *jobStatus, srcUnit *unit, srcMF *
 	}
 
 	if newMD5 != srcMF.MD5 {
-		svc.logError(js, fmt.Sprintf("WARNING: Checksum mismatch for clone of source master file %d", srcMF.ID))
+		svc.logError(js, fmt.Sprintf("WARNING: Checksum mismatch for clone of source master file %d: %s vs %s", srcMF.ID, srcMF.MD5, newMD5))
 	}
 
 	newMF := masterFile{
