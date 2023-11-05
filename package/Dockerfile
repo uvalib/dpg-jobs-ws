@@ -1,7 +1,7 @@
 #
 # build the target application
 #
-FROM public.ecr.aws/docker/library/golang:1.21.0-alpine3.18 as builder
+FROM public.ecr.aws/docker/library/golang:1.21.3-alpine3.18 as builder
 RUN apk update && apk upgrade && apk add --no-cache make npm yarn
 
 WORKDIR /build
@@ -27,6 +27,9 @@ COPY distro/etc/ /usr/local/etc
 
 # rclone support
 RUN cd /tmp && wget https://downloads.rclone.org/rclone-current-linux-amd64.zip && unzip rclone-current-linux-amd64.zip && cp rclone-v*-linux-amd64/rclone /usr/local/bin && rm -fr rclone*
+
+# APTrust partner tools
+RUN cd /tmp && wget https://s3.amazonaws.com/aptrust.public.download/apt-cmd/v3.0.0-beta/linux/apt-cmd && chmod +x apt-cmd && cp apt-cmd /usr/local/bin && rm apt-cmd
 
 # Create the run user and group
 RUN addgroup --gid 10708 libr-snlocal && addgroup --gid 16339 lb-digiserv && adduser --uid 118698 libsnlocal -G lb-digiserv -D && addgroup libsnlocal libr-snlocal
