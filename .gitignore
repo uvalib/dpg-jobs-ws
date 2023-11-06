@@ -25,3 +25,5 @@ frontend/yarn_start.sh
 .vscode
 package/scripts/build.ksh
 package/scripts/shell.ksh
+aptrustdev_env.sh
+aptrustprod_env.sh

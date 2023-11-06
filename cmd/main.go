@@ -56,6 +56,7 @@ func main() {
 
 	router.GET("/jstor/lookup", svc.lookupJstorMetadata)
 
+	router.GET("/metadata/:id/aptrust", svc.getAPTrustStatus)
 	router.POST("/metadata/:id/baggit", svc.createBag)
 	router.POST("/metadata/:id/publish", svc.publishToVirgo)
 

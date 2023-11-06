@@ -105,6 +105,23 @@ type invoice struct {
 	UpdatedAt   time.Time
 }
 
+type apTrustStatus struct {
+	ID          int64      `json:"-"`
+	MetadataID  string     `gorm:"column:metadata_id" json:"-"`
+	Etag        string     `json:"etag"`
+	ObjectID    string     `json:"objectID"`
+	Status      string     `json:"status"`
+	Note        string     `json:"note"`
+	SubmittedAt time.Time  `json:"submittedAt"`
+	FinishedAt  *time.Time `json:"finishedAt"`
+}
+
+type preservationTier struct {
+	ID          uint   `json:"id"`
+	Name        string `json:"name"`
+	Description string `json:"description"`
+}
+
 type metadata struct {
 	ID                   int64
 	PID                  string `gorm:"column:pid"`
@@ -123,7 +140,9 @@ type metadata struct {
 	OcrLanguageHint      string
 	Locations            []location        `gorm:"foreignKey:MetadataID"`
 	HathiTrustStatus     *hathitrustStatus `gorm:"foreignKey:MetadataID" json:"hathiTrustStatus,omitempty"`
+	APTrustStatus        *apTrustStatus    `gorm:"foreignKey:MetadataID" json:"apTrustStatus,omitempty"`
 	PreservationTierID   int64
+	PreservationTier     *preservationTier `gorm:"foreignKey:PreservationTierID" json:"preservationTier"`
 	CollectionID         string
 	DateDlIngest         *time.Time      `gorm:"column:date_dl_ingest"`
 	DateDlUpdate         *time.Time      `gorm:"column:date_dl_update"`
