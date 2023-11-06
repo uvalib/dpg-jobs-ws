@@ -15,18 +15,18 @@ type apTrustResult struct {
 	ID               int64  `json:"id"`
 	Name             string `json:"name"`
 	ETag             string `json:"etag"`
-	ObjectIdentifier string `json:"objectID"`
-	AltIdentifier    string `json:"altID"`
+	ObjectIdentifier string `json:"object_identifier"`
+	AltIdentifier    string `json:"alt_identifier"`
 	StorageOption    string `json:"storage"`
 	Note             string `json:"note"`
 	Status           string `json:"status"`
-	QueuedAt         string `json:"queuedAt"`
-	DateProcessed    string `json:"processedAt"`
+	QueuedAt         string `json:"queued_at"`
+	ProcessedAt      string `json:"date_processed"`
 }
 
 type apTrustResponse struct {
 	Count   int64           `json:"count"`
-	Results []apTrustResult `json:"resuts,omitempty"`
+	Results []apTrustResult `json:"results,omitempty"`
 }
 
 func (svc *ServiceContext) getAPTrustStatus(c *gin.Context) {
@@ -36,10 +36,9 @@ func (svc *ServiceContext) getAPTrustStatus(c *gin.Context) {
 		c.String(http.StatusBadRequest, fmt.Sprintf("%s is not a valid metadata id", c.Param("id")))
 		return
 	}
-	remoteStatus, _ := strconv.ParseBool(c.Query("remote"))
 
 	var md metadata
-	err := svc.GDB.Debug().Joins("PreservationTier").Joins("APTrustStatus").Find(&md, mdID).Error
+	err := svc.GDB.Joins("PreservationTier").Find(&md, mdID).Error
 	if err != nil {
 		log.Printf("ERROR: unable to load metadata %d: %s", mdID, err.Error())
 		c.String(http.StatusInternalServerError, err.Error())
@@ -52,13 +51,6 @@ func (svc *ServiceContext) getAPTrustStatus(c *gin.Context) {
 		return
 	}
 
-	if md.APTrustStatus != nil && remoteStatus == false {
-		log.Printf("INFO: metadata %d has aptrust status %+v; returning it", md.ID, *md.APTrustStatus)
-		c.JSON(http.StatusOK, md.APTrustStatus)
-		return
-	}
-
-	log.Printf("INFO: metadata %d is flagged for aptrust, but has no status record; see if it has been submitted", md.ID)
 	objType := "sirsimetadata"
 	if md.Type == "XmlMetadata" {
 		objType = "xmlmetadata"
