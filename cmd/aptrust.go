@@ -72,6 +72,8 @@ func (svc *ServiceContext) getAPTrustStatus(c *gin.Context) {
 		c.String(http.StatusInternalServerError, string(aptOut))
 		return
 	}
+	log.Printf("INFO: raw aptrust response: %s", aptOut)
+
 	var jsonResp apTrustResponse
 	err = json.Unmarshal(aptOut, &jsonResp)
 	if err != nil {
