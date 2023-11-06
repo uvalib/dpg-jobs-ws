@@ -36,6 +36,7 @@ func (svc *ServiceContext) getAPTrustStatus(c *gin.Context) {
 		c.String(http.StatusBadRequest, fmt.Sprintf("%s is not a valid metadata id", c.Param("id")))
 		return
 	}
+	remoteStatus, _ := strconv.ParseBool(c.Query("remote"))
 
 	var md metadata
 	err := svc.GDB.Debug().Joins("PreservationTier").Joins("APTrustStatus").Find(&md, mdID).Error
@@ -51,7 +52,7 @@ func (svc *ServiceContext) getAPTrustStatus(c *gin.Context) {
 		return
 	}
 
-	if md.APTrustStatus != nil {
+	if md.APTrustStatus != nil && remoteStatus == false {
 		log.Printf("INFO: metadata %d has aptrust status %+v; returning it", md.ID, *md.APTrustStatus)
 		c.JSON(http.StatusOK, md.APTrustStatus)
 		return
