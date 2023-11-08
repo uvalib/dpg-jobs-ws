@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"log"
+	"os"
 )
 
 // DBConfig wraps up all of the DB configuration
@@ -193,6 +194,7 @@ func LoadConfiguration() *ServiceConfig {
 	log.Printf("[CONFIG] rccfg         = [%s]", cfg.HathiTrust.RCloneConfig)
 	log.Printf("[CONFIG] rcremote      = [%s]", cfg.HathiTrust.RCloneRemote)
 	log.Printf("[CONFIG] rcdir         = [%s]", cfg.HathiTrust.RemoteDir)
+	log.Printf("[CONFIG] aptrust_url   = [%s]", os.Getenv("APTRUST_REGISTRY_URL"))
 
 	if cfg.SMTP.FakeSMTP {
 		log.Printf("[CONFIG] fakesmtp      = [true]")

@@ -78,6 +78,6 @@ func (svc *ServiceContext) getAPTrustStatus(c *gin.Context) {
 		log.Printf("INFO: metadata %d has no aptrust status", md.ID)
 		c.String(http.StatusNotFound, fmt.Sprintf("%d has no aptrust status", md.ID))
 	} else {
-		c.JSON(http.StatusOK, jsonResp.Results)
+		c.JSON(http.StatusOK, jsonResp.Results[0])
 	}
 }

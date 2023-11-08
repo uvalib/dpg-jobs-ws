@@ -11,7 +11,7 @@ require (
 	github.com/go-xmlfmt/xmlfmt v1.1.2
 	github.com/kardianos/ftps v1.0.3
 	golang.org/x/exp v0.0.0-20231006140011-7918f672742d
-	golang.org/x/image v0.13.0
+	golang.org/x/image v0.14.0
 	golang.org/x/net v0.17.0
 	gopkg.in/gomail.v2 v2.0.0-20160411212932-81ebce5c23df
 	gorm.io/driver/mysql v1.5.2
@@ -32,7 +32,7 @@ require (
 	github.com/jinzhu/inflection v1.0.0 // indirect
 	github.com/jinzhu/now v1.1.5 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
-	github.com/klauspost/cpuid/v2 v2.2.5 // indirect
+	github.com/klauspost/cpuid/v2 v2.2.6 // indirect
 	github.com/leodido/go-urn v1.2.4 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect
