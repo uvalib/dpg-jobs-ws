@@ -107,7 +107,7 @@ type invoice struct {
 
 type apTrustStatus struct {
 	ID          int64      `json:"-"`
-	MetadataID  string     `gorm:"column:metadata_id" json:"-"`
+	MetadataID  int64      `gorm:"column:metadata_id" json:"-"`
 	Etag        string     `json:"etag"`
 	ObjectID    string     `json:"objectID"`
 	Status      string     `json:"status"`

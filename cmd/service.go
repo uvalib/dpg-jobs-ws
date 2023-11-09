@@ -56,6 +56,7 @@ type ServiceContext struct {
 	IIIF          IIIFConfig
 	ProcessingDir string
 	DeliveryDir   string
+	APTrust       APTrustConfig
 	TrackSys      TrackSysConfig
 	ArchivesSpace archivesSpaceContext
 	HathiTrust    HathiTrustConfig
@@ -82,6 +83,7 @@ func InitializeService(version string, cfg *ServiceConfig) *ServiceContext {
 		IIIF:          cfg.IIIF,
 		DeliveryDir:   cfg.DeliveryDir,
 		ProcessingDir: cfg.ProcessingDir,
+		APTrust:       cfg.APTrust,
 		HathiTrust:    cfg.HathiTrust,
 		TrackSys:      cfg.TrackSys,
 		ReindexURL:    cfg.ReindexURL,

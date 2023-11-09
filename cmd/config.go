@@ -54,6 +54,12 @@ type TrackSysConfig struct {
 	Admin string
 }
 
+// APTrustConfig contains the cpmfiguration params for the APTrust S3 bucket
+type APTrustConfig struct {
+	AWSHost   string
+	AWSBucket string
+}
+
 // ServiceConfig defines all of the JRML pool configuration parameters
 type ServiceConfig struct {
 	Port          int
@@ -63,6 +69,7 @@ type ServiceConfig struct {
 	IIIF          IIIFConfig
 	ProcessingDir string
 	DeliveryDir   string
+	APTrust       APTrustConfig
 	HathiTrust    HathiTrustConfig
 	ArchivesSpace ArchivesSpaceConfig
 	TrackSys      TrackSysConfig
@@ -106,6 +113,10 @@ func LoadConfiguration() *ServiceConfig {
 	// TrackSys
 	flag.StringVar(&cfg.TrackSys.API, "tsapi", "https://tracksys-api-ws.internal.lib.virginia.edu", "URL for TrackSys API")
 	flag.StringVar(&cfg.TrackSys.Admin, "tsadmin", "https://tracksys.lib.virginia.edu/admin", "URL for TrackSys ADMIN interface")
+
+	// APTrust
+	flag.StringVar(&cfg.APTrust.AWSHost, "apthost", "s3.amazonaws.com", "APTrust S3 host")
+	flag.StringVar(&cfg.APTrust.AWSBucket, "aptbucket", "", "APTrust S3 bucket")
 
 	// IIIF
 	flag.StringVar(&cfg.IIIF.Dir, "iiif", "", "IIIF directory")
@@ -195,6 +206,8 @@ func LoadConfiguration() *ServiceConfig {
 	log.Printf("[CONFIG] rcremote      = [%s]", cfg.HathiTrust.RCloneRemote)
 	log.Printf("[CONFIG] rcdir         = [%s]", cfg.HathiTrust.RemoteDir)
 	log.Printf("[CONFIG] aptrust_url   = [%s]", os.Getenv("APTRUST_REGISTRY_URL"))
+	log.Printf("[CONFIG] apthost       = [%s]", cfg.APTrust.AWSHost)
+	log.Printf("[CONFIG] aptbucket     = [%s]", cfg.APTrust.AWSBucket)
 
 	if cfg.SMTP.FakeSMTP {
 		log.Printf("[CONFIG] fakesmtp      = [true]")
