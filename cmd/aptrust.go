@@ -160,7 +160,7 @@ func (svc *ServiceContext) getAPTrustStatus(c *gin.Context) {
 		objType = "xmlmetadata"
 	}
 	aptName := fmt.Sprintf("virginia.edu.tracksys-%s-%d.tar", objType, mdID)
-	cmd := exec.Command("apt-cmd", "registry", "list", "workitems", fmt.Sprintf("name=%s", aptName))
+	cmd := exec.Command("apt-cmd", "registry", "list", "workitems", fmt.Sprintf("name=%s", aptName), "sort=date_processed__desc")
 	log.Printf("INFO: aptrust command: %+v", cmd)
 	aptOut, err := cmd.CombinedOutput()
 	if err != nil {
@@ -183,6 +183,6 @@ func (svc *ServiceContext) getAPTrustStatus(c *gin.Context) {
 		c.String(http.StatusNotFound, fmt.Sprintf("%d has no aptrust status", md.ID))
 	} else {
 		// always return the last status as it will be the most recent
-		c.JSON(http.StatusOK, jsonResp.Results[len(jsonResp.Results)-1])
+		c.JSON(http.StatusOK, jsonResp.Results[0])
 	}
 }
