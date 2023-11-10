@@ -57,17 +57,24 @@ func (svc *ServiceContext) bagCreateRequested(c *gin.Context) {
 	c.String(http.StatusOK, fmt.Sprintf("%d", js.ID))
 }
 
+func getBagDirectoryName(md *metadata) string {
+	return fmt.Sprintf("virginia.edu.tracksys-%s-%d", strings.ToLower(md.Type), md.ID)
+}
+func getBagFileName(md *metadata) string {
+	return fmt.Sprintf("%s.tar", getBagDirectoryName(md))
+}
+
 func (svc *ServiceContext) createBag(js *jobStatus, md *metadata) (string, error) {
 	svc.logInfo(js, fmt.Sprintf("Create bag for metadata %s", md.PID))
-	access := "Consortia" // FIXME? in the old code, this was always the setting. Dunno how it should change tho
+	access := "Consortia"
 	storage := "Standard"
 	if md.PreservationTierID == 2 {
 		storage = "Glacier-VA"
 	}
 	svc.logInfo(js, fmt.Sprintf("Create new bag flagged for %s storage", storage))
-	bagName := fmt.Sprintf("virginia.edu.tracksys-%s-%d", strings.ToLower(md.Type), md.ID)
+	bagDirName := getBagDirectoryName(md)
 	bagBaseDir := path.Join(svc.ProcessingDir, "bags")
-	bagDir := path.Join(bagBaseDir, bagName)
+	bagDir := path.Join(bagBaseDir, bagDirName)
 	if pathExists(bagDir) {
 		svc.logInfo(js, fmt.Sprintf("Clean up pre-existing bag directory %s", bagDir))
 		err := os.RemoveAll(bagDir)
@@ -82,7 +89,7 @@ func (svc *ServiceContext) createBag(js *jobStatus, md *metadata) (string, error
 		return "", fmt.Errorf("unable to create bag dir %s: %s", dataDir, err.Error())
 	}
 
-	destTar := path.Join(bagBaseDir, fmt.Sprintf("%s.tar", bagName))
+	destTar := getBagFileName(md)
 	if pathExists(destTar) {
 		svc.logInfo(js, fmt.Sprintf("Clean up pre-existing bag %s", destTar))
 		err := os.Remove(destTar)
@@ -107,7 +114,7 @@ func (svc *ServiceContext) createBag(js *jobStatus, md *metadata) (string, error
 	}
 
 	svc.logInfo(js, "Adding bag-info.txt")
-	timeNow := time.Now() // old ruby code: {DateTime.now.iso8601}
+	timeNow := time.Now()
 	info := fmt.Sprintf("Source-Organization: virginia.edu\nBagging-Date: %s\nBag-Count: 1 of 1\n", timeNow.Format("2006-01-02"))
 	info += fmt.Sprintf("Internal-Sender-Description: \nInternal-Sender-Identifier: %s\nBag-Group-Identifier: %s", md.PID, md.CollectionID)
 	err = os.WriteFile(path.Join(bagDir, "bag-info.txt"), []byte(info), 0744)
@@ -127,9 +134,9 @@ func (svc *ServiceContext) createBag(js *jobStatus, md *metadata) (string, error
 	}
 	bagFiles = append(bagFiles, fmt.Sprintf("%s.xml", md.PID))
 
+	// first try the normal case: units with matching metadata (images in a collection, book-like items)
 	svc.logInfo(js, "Adding master files to bag")
 	var masterFiles []masterFile
-	// first try the normal case: units with matching metadata (images in a collection, book-like items)
 	err = svc.GDB.Joins("Unit").Where("Unit.metadata_id=? and Unit.intended_use_id=?", md.ID, 110).Find(&masterFiles).Error
 	if err != nil {
 		return "", fmt.Errorf("unable to get master files: %s", err.Error())
@@ -137,6 +144,7 @@ func (svc *ServiceContext) createBag(js *jobStatus, md *metadata) (string, error
 	if len(masterFiles) == 0 {
 		// if that fails, see if this is a the special case where an image is assigned different metadata than the unit.
 		// this is the case for individual images described by XML metadata that are generaly part of a larger collection
+		svc.logInfo(js, fmt.Sprintf("no units directly found for metadata %d; searching master files...", md.ID))
 		err = svc.GDB.Joins("Unit").Where("Unit.intended_use_id=?", 110).Where("master_files.metadata_id=?", md.ID).Find(&masterFiles).Error
 		if err != nil {
 			return "", fmt.Errorf("unable to get master files: %s", err.Error())
@@ -148,11 +156,6 @@ func (svc *ServiceContext) createBag(js *jobStatus, md *metadata) (string, error
 
 	svc.logInfo(js, fmt.Sprintf("%d masterfiles found", len(masterFiles)))
 	for _, mf := range masterFiles {
-		// add a failsafe check in case the query above gets master files from non-110 use units. skip them
-		if mf.Unit.IntendedUseID == nil || mf.Unit.IntendedUseID != nil && *mf.Unit.IntendedUseID != 110 {
-			svc.logError(js, fmt.Sprintf("Got masterfile %s from unexpected unit %d; skipping", mf.Filename, mf.UnitID))
-			continue
-		}
 		svc.logInfo(js, fmt.Sprintf("Adding masterfile %s to bag", mf.Filename))
 		archiveFile := path.Join(svc.ArchiveDir, fmt.Sprintf("%09d", mf.UnitID), mf.Filename)
 		destFile := path.Join(dataDir, mf.Filename)
@@ -175,7 +178,7 @@ func (svc *ServiceContext) createBag(js *jobStatus, md *metadata) (string, error
 	}
 
 	svc.logInfo(js, "Generate baggit tar file")
-	cmdArray := []string{"cf", destTar, "-C", bagBaseDir, bagName}
+	cmdArray := []string{"cf", destTar, "-C", bagBaseDir, bagDirName}
 	cmd := exec.Command("tar", cmdArray...)
 	svc.logInfo(js, fmt.Sprintf("%+v", cmd))
 	_, err = cmd.Output()
