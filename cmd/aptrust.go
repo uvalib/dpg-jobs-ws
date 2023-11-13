@@ -37,58 +37,15 @@ func (svc *ServiceContext) submitToAPTrust(c *gin.Context) {
 		return
 	}
 
-	var md metadata
-	err := svc.GDB.Joins("PreservationTier").Find(&md, mdID).Error
+	log.Printf("INFO: prepare metadata %d for aptrust submission", mdID)
+	tgtMD, err := svc.prepareAPTrustSubmission(mdID)
 	if err != nil {
-		log.Printf("ERROR: unable to load metadata %d: %s", mdID, err.Error())
+		log.Printf("ERROR: aptrust submission request failed: %s", err.Error())
 		c.String(http.StatusInternalServerError, err.Error())
 		return
 	}
 
-	if md.PreservationTierID < 2 {
-		log.Printf("INFO: metadata %d has not been flagged for aptrust", md.ID)
-		c.String(http.StatusBadRequest, fmt.Sprintf("metadata %d has not been assigned for aptrust preservation", md.ID))
-		return
-	}
-
-	// See if therre is a submit record. Note: use limit 1 and find to avoid throwing an error for
-	// the normal condition of no record being present for the first submit attempt,
-	var aptSubmission apTrustSubmission
-	err = svc.GDB.Where("metadata_id=?", md.ID).Limit(1).Find(&aptSubmission).Error
-	if err != nil {
-		log.Printf("ERROR: unable to get submission info metadata %d: %s", md.ID, err.Error())
-		c.String(http.StatusInternalServerError, err.Error())
-		return
-	}
-
-	// if ID is zeo, there is no submission record so the item has not yet been submitted, create one now
-	if aptSubmission.ID == 0 {
-		aptSubmission = apTrustSubmission{MetadataID: md.ID, Bag: getBagFileName(&md), RequestedAt: time.Now()}
-		err = svc.GDB.Create(&aptSubmission).Error
-		if err != nil {
-			log.Printf("ERROR: unable to create submission record for metadatata %d: %s", md.ID, err.Error())
-			c.String(http.StatusInternalServerError, fmt.Sprintf("unable to create submission record: %s", err.Error()))
-			return
-		}
-	} else {
-		// a submission record exists. See if it is in a processing state and fail if it is
-		aptStatus, err := svc.getAPTrustStatus(&md)
-		if err != nil {
-			log.Printf("ERROR: unable to check aptstatus  metadatata %d: %s", md.ID, err.Error())
-			c.String(http.StatusInternalServerError, fmt.Sprintf("unable to check staatus: %s", err.Error()))
-			return
-		}
-		if aptStatus.Count > 0 {
-			statusRec := aptStatus.Results[0]
-			if statusRec.Status != "Failed" && statusRec.Status != "Canceled" {
-				log.Printf("ERROR: aptrust submission is already in progress for metadatata %d; status %s", md.ID, statusRec.Status)
-				c.String(http.StatusBadRequest, "aptrust submission is already in progress")
-				return
-			}
-		}
-	}
-
-	js, err := svc.createJobStatus("APTrustSubmit", "Metadata", md.ID)
+	js, err := svc.createJobStatus("APTrustSubmit", "Metadata", tgtMD.ID)
 	if err != nil {
 		log.Printf("ERROR: unable to create aptrust submission job status: %s", err.Error())
 		c.String(http.StatusInternalServerError, err.Error())
@@ -104,55 +61,32 @@ func (svc *ServiceContext) submitToAPTrust(c *gin.Context) {
 			}
 		}()
 
-		bagFile, err := svc.createBag(js, &md)
-		if err != nil {
-			svc.logFatal(js, fmt.Sprintf("APTrust submission failed: %s", err.Error()))
-			return
-		}
-		svc.logInfo(js, fmt.Sprintf("Baggit tar file created here: %s; validate it...", bagFile))
-
-		cmd := exec.Command("apt-cmd", "bag", "validate", "-p", "aptrust", bagFile)
-		svc.logInfo(js, fmt.Sprintf("validate command: %+v", cmd))
-		aptOut, err := cmd.CombinedOutput()
-		if err != nil {
-			svc.logFatal(js, fmt.Sprintf("Validate %s failed: %s", bagFile, aptOut))
-			return
-		}
-
-		svc.logInfo(js, "Submit bag to APTrust S3 bucket...")
-		submitTime := time.Now()
-		aptSubmission.SubmittedAt = &submitTime
-		svc.GDB.Save(&aptSubmission)
-		cmd = exec.Command("apt-cmd", "s3", "upload", fmt.Sprintf("--host=%s", svc.APTrust.AWSHost), fmt.Sprintf("--bucket=%s", svc.APTrust.AWSBucket), bagFile)
-		svc.logInfo(js, fmt.Sprintf("submit command: %+v", cmd))
-		aptOut, err = cmd.CombinedOutput()
-		if err != nil {
-			svc.logFatal(js, fmt.Sprintf("Validate %s failed: %s", bagFile, aptOut))
-			return
-		}
-
-		svc.logInfo(js, fmt.Sprintf("%s has been submitted to APTrust; awaiting completion", bagFile))
-		done := false
-		for done == false {
-			time.Sleep(1 * time.Minute)
-			jsonResp, err := svc.getAPTrustStatus(&md)
+		if tgtMD.IsCollection {
+			svc.logInfo(js, fmt.Sprintf("Metadata %d is a collection; load child record IDs for APTrust submission", tgtMD.ID))
+			var inCollectionIDs []int64
+			err = svc.GDB.Raw("select id from metadata where parent_metadata_id=?", tgtMD.ID).Scan(&inCollectionIDs).Error
 			if err != nil {
-				svc.logFatal(js, fmt.Sprintf("Status check failed: %s", err.Error()))
-				done = true
-			} else {
-				if jsonResp.Count > 0 {
-					itemStatus := jsonResp.Results[0]
-					if itemStatus.Status == "Failed" {
-						svc.logFatal(js, fmt.Sprintf("Submission failed: %s", itemStatus.Note))
-						done = true
-					} else if itemStatus.Status == "Success" {
-						svc.logInfo(js, "Submission successful")
-						done = true
-					} else if itemStatus.Status == "Canceled" || itemStatus.Status == "Suspended" {
-						svc.logFatal(js, fmt.Sprintf("Submission was canceled or suspended: %s", itemStatus.Note))
-						done = true
+				svc.logFatal(js, fmt.Sprintf("Unable to load child metadata records for collection %d: %s", tgtMD.ID, err.Error()))
+				return
+			}
+
+			svc.logInfo(js, fmt.Sprintf("Collection %d has %d items; submit each", tgtMD.ID, len(inCollectionIDs)))
+			for _, tgtID := range inCollectionIDs {
+				log.Printf("INFO: prepare metadata %d for aptrust submission", tgtID)
+				md, err := svc.prepareAPTrustSubmission(tgtID)
+				if err != nil {
+					svc.logError(js, fmt.Sprintf("Prepare metadata %d for APTrust submission failed: %s", tgtID, err.Error()))
+				} else {
+					err = svc.doAPTrustSubmission(js, md)
+					if err != nil {
+						svc.logError(js, fmt.Sprintf("Metadata %d APTrust submission failed: %s", md.ID, err.Error()))
 					}
 				}
+			}
+		} else {
+			err = svc.doAPTrustSubmission(js, tgtMD)
+			if err != nil {
+				svc.logFatal(js, err.Error())
 			}
 		}
 
@@ -160,6 +94,92 @@ func (svc *ServiceContext) submitToAPTrust(c *gin.Context) {
 	}()
 
 	c.String(http.StatusOK, fmt.Sprintf("%d", js.ID))
+}
+
+func (svc *ServiceContext) prepareAPTrustSubmission(mdID int64) (*metadata, error) {
+	var md metadata
+	err := svc.GDB.Joins("APTrustSubmission").Joins("PreservationTier").Find(&md, mdID).Error
+	if err != nil {
+		return nil, fmt.Errorf("unable to load metadata %d: %s", mdID, err.Error())
+	}
+
+	if md.PreservationTierID < 2 {
+		return nil, fmt.Errorf("metadata %d has not been flagged for aptrust", md.ID)
+	}
+
+	if md.APTrustSubmission == nil {
+		aptSubmission := apTrustSubmission{MetadataID: md.ID, Bag: getBagFileName(&md), RequestedAt: time.Now()}
+		err = svc.GDB.Create(&aptSubmission).Error
+		if err != nil {
+			return nil, fmt.Errorf("unable to create submission record for metadatata %d: %s", md.ID, err.Error())
+		}
+		md.APTrustSubmission = &aptSubmission
+	} else {
+		// a submission record exists. See if it is in a processing state and fail if it is
+		aptStatus, err := svc.getAPTrustStatus(&md)
+		if err != nil {
+			return nil, fmt.Errorf("aptrust status check failed for metadatata %d: %s", md.ID, err.Error())
+		}
+		if aptStatus.Count > 0 {
+			statusRec := aptStatus.Results[0]
+			if statusRec.Status != "Failed" && statusRec.Status != "Canceled" {
+				return nil, fmt.Errorf("submission is already in progress for metadata %d; status %s", md.ID, statusRec.Status)
+			}
+		}
+	}
+	return &md, nil
+}
+
+func (svc *ServiceContext) doAPTrustSubmission(js *jobStatus, md *metadata) error {
+	svc.logInfo(js, fmt.Sprintf("Begin APTrust submission for metadata %d", md.ID))
+	bagFile, err := svc.createBag(js, md)
+	if err != nil {
+		return fmt.Errorf("unable to create bag for metadata %d: %s", md.ID, err.Error())
+	}
+	svc.logInfo(js, fmt.Sprintf("Baggit tar file created here: %s; validate it...", bagFile))
+
+	cmd := exec.Command("apt-cmd", "bag", "validate", "-p", "aptrust", bagFile)
+	svc.logInfo(js, fmt.Sprintf("validate command: %+v", cmd))
+	aptOut, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("bag %s validation failed: %s", bagFile, aptOut)
+	}
+
+	svc.logInfo(js, fmt.Sprintf("Submit %s to APTrust S3 bucket...", bagFile))
+	submitTime := time.Now()
+	md.APTrustSubmission.SubmittedAt = &submitTime
+	svc.GDB.Save(&md.APTrustSubmission)
+	cmd = exec.Command("apt-cmd", "s3", "upload", fmt.Sprintf("--host=%s", svc.APTrust.AWSHost), fmt.Sprintf("--bucket=%s", svc.APTrust.AWSBucket), bagFile)
+	svc.logInfo(js, fmt.Sprintf("submit command: %+v", cmd))
+	aptOut, err = cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("submission of %s failed: %s", bagFile, aptOut)
+	}
+
+	svc.logInfo(js, fmt.Sprintf("%s has been submitted to APTrust; awaiting completion", bagFile))
+	done := false
+	for done == false {
+		time.Sleep(15 * time.Second)
+		jsonResp, err := svc.getAPTrustStatus(md)
+		if err != nil {
+			return fmt.Errorf("status check for metadata %d failed: %s", md.ID, err.Error())
+		}
+
+		if jsonResp.Count > 0 {
+			itemStatus := jsonResp.Results[0]
+			if itemStatus.Status == "Failed" {
+				return fmt.Errorf("metadata %d submission failed: %s", md.ID, itemStatus.Note)
+			} else if itemStatus.Status == "Canceled" || itemStatus.Status == "Suspended" {
+				return fmt.Errorf("metadata %d submission was canceled or suspended: %s", md.ID, itemStatus.Note)
+			} else if itemStatus.Status == "Success" {
+				svc.logInfo(js, "Submission successful")
+				done = true
+			}
+		}
+
+		time.Sleep(1 * time.Minute)
+	}
+	return nil
 }
 
 func (svc *ServiceContext) apTrustStatusRequest(c *gin.Context) {
@@ -203,7 +223,6 @@ func (svc *ServiceContext) apTrustStatusRequest(c *gin.Context) {
 
 func (svc *ServiceContext) getAPTrustStatus(md *metadata) (*apTrustResponse, error) {
 	cmd := exec.Command("apt-cmd", "registry", "list", "workitems", fmt.Sprintf("name=%s", getBagFileName(md)), "sort=date_processed__desc")
-	log.Printf("INFO: aptrust command: %+v", cmd)
 	aptOut, err := cmd.CombinedOutput()
 	if err != nil {
 		return nil, fmt.Errorf(string(aptOut))

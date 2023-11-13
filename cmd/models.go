@@ -131,6 +131,8 @@ type metadata struct {
 	DescMetadata         string
 	IsPersonalItem       bool
 	IsManuscript         bool
+	IsCollection         bool
+	ParentMetadataID     int64
 	AvailabilityPolicyID *int64
 	OcrHintID            *int64
 	OcrHint              *ocrHint `gorm:"foreignKey:OcrHintID"`
@@ -138,7 +140,8 @@ type metadata struct {
 	Locations            []location        `gorm:"foreignKey:MetadataID"`
 	HathiTrustStatus     *hathitrustStatus `gorm:"foreignKey:MetadataID" json:"hathiTrustStatus,omitempty"`
 	PreservationTierID   int64
-	PreservationTier     *preservationTier `gorm:"foreignKey:PreservationTierID" json:"preservationTier"`
+	PreservationTier     *preservationTier  `gorm:"foreignKey:PreservationTierID" json:"preservationTier"`
+	APTrustSubmission    *apTrustSubmission `gorm:"foreignKey:MetadataID" json:"apTrustSubmission,omitempty"`
 	CollectionID         string
 	DateDlIngest         *time.Time      `gorm:"column:date_dl_ingest"`
 	DateDlUpdate         *time.Time      `gorm:"column:date_dl_update"`
