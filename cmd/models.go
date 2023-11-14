@@ -105,12 +105,15 @@ type invoice struct {
 	UpdatedAt   time.Time
 }
 
+// apTrustSubmissionis a TrackSys DB record generated when a metadata record is submitted to APTrust
 type apTrustSubmission struct {
 	ID          int64      `json:"-"`
 	MetadataID  int64      `gorm:"column:metadata_id" json:"-"`
 	Bag         string     `json:"etag"`
 	RequestedAt time.Time  `json:"requestedAt"`
 	SubmittedAt *time.Time `json:"submittedAt"`
+	ProcessedAt *time.Time `json:"processedAt"`
+	Success     bool       `json:"success"`
 }
 
 type preservationTier struct {

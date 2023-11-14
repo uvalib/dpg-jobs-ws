@@ -74,22 +74,22 @@ func (svc *ServiceContext) createBag(js *jobStatus, md *metadata) (string, error
 	svc.logInfo(js, fmt.Sprintf("Create new bag flagged for %s storage", storage))
 	bagDirName := getBagDirectoryName(md)
 	bagBaseDir := path.Join(svc.ProcessingDir, "bags")
-	bagDir := path.Join(bagBaseDir, bagDirName)
-	if pathExists(bagDir) {
-		svc.logInfo(js, fmt.Sprintf("Clean up pre-existing bag directory %s", bagDir))
-		err := os.RemoveAll(bagDir)
+	bagAssembleDir := path.Join(bagBaseDir, bagDirName)
+	if pathExists(bagAssembleDir) {
+		svc.logInfo(js, fmt.Sprintf("Clean up pre-existing bag assembly directory %s", bagAssembleDir))
+		err := os.RemoveAll(bagAssembleDir)
 		if err != nil {
-			return "", fmt.Errorf("unable to cleanup prior bag %s: %s", bagDir, err.Error())
+			return "", fmt.Errorf("unable to cleanup prior bag %s: %s", bagAssembleDir, err.Error())
 		}
 	}
-	dataDir := path.Join(bagDir, "data")
+	dataDir := path.Join(bagAssembleDir, "data")
 	svc.logInfo(js, fmt.Sprintf("Create bag data directory %s", dataDir))
 	err := ensureDirExists(dataDir, 0777)
 	if err != nil {
 		return "", fmt.Errorf("unable to create bag dir %s: %s", dataDir, err.Error())
 	}
 
-	destTar := getBagFileName(md)
+	destTar := path.Join(bagBaseDir, getBagFileName(md))
 	if pathExists(destTar) {
 		svc.logInfo(js, fmt.Sprintf("Clean up pre-existing bag %s", destTar))
 		err := os.Remove(destTar)
@@ -101,14 +101,14 @@ func (svc *ServiceContext) createBag(js *jobStatus, md *metadata) (string, error
 	// Add the aptrust-info.txt, bag-info.txt, bagit.txt. NOTE: bagit.txt is not a tag file
 	svc.logInfo(js, "Adding baggit.txt")
 	bagit := []byte("BagIt-Version: 0.97\nTag-File-Character-Encoding: UTF-8")
-	err = os.WriteFile(path.Join(bagDir, "bagit.txt"), bagit, 0744)
+	err = os.WriteFile(path.Join(bagAssembleDir, "bagit.txt"), bagit, 0744)
 	if err != nil {
 		return "", fmt.Errorf("unable to create bagit.txt: %s", err.Error())
 	}
 
 	svc.logInfo(js, "Adding aptrust-info.txt")
 	apt := []byte(fmt.Sprintf("Title: %s\nDescription: \nAccess: %s\nStorage-Option: %s", md.Title, access, storage))
-	err = os.WriteFile(path.Join(bagDir, "aptrust-info.txt"), apt, 0744)
+	err = os.WriteFile(path.Join(bagAssembleDir, "aptrust-info.txt"), apt, 0744)
 	if err != nil {
 		return "", fmt.Errorf("unable to create aptrust-info.txt: %s", err.Error())
 	}
@@ -117,7 +117,7 @@ func (svc *ServiceContext) createBag(js *jobStatus, md *metadata) (string, error
 	timeNow := time.Now()
 	info := fmt.Sprintf("Source-Organization: virginia.edu\nBagging-Date: %s\nBag-Count: 1 of 1\n", timeNow.Format("2006-01-02"))
 	info += fmt.Sprintf("Internal-Sender-Description: \nInternal-Sender-Identifier: %s\nBag-Group-Identifier: %s", md.PID, md.CollectionID)
-	err = os.WriteFile(path.Join(bagDir, "bag-info.txt"), []byte(info), 0744)
+	err = os.WriteFile(path.Join(bagAssembleDir, "bag-info.txt"), []byte(info), 0744)
 	if err != nil {
 		return "", fmt.Errorf("unable to create bag-info.txt: %s", err.Error())
 	}
@@ -162,17 +162,18 @@ func (svc *ServiceContext) createBag(js *jobStatus, md *metadata) (string, error
 		if pathExists(archiveFile) == false {
 			return "", fmt.Errorf("%s not found", archiveFile)
 		}
+		origMD5 := md5Checksum(archiveFile)
 		md5, err := copyFile(archiveFile, destFile, 0744)
 		if err != nil {
 			return "", fmt.Errorf("copy %s to %s failed: %s", archiveFile, destFile, err.Error())
 		}
-		if md5 != mf.MD5 && mf.MD5 != "" {
-			return "", fmt.Errorf("copy %s MD5 checksum %s does not match original %s", destFile, md5, mf.MD5)
+		if md5 != origMD5 {
+			return "", fmt.Errorf("copy %s MD5 checksum %s does not match original %s", destFile, md5, origMD5)
 		}
 		bagFiles = append(bagFiles, mf.Filename)
 	}
 
-	err = svc.generateBaggitManifests(js, bagDir, bagFiles)
+	err = svc.generateBaggitManifests(js, bagAssembleDir, bagFiles)
 	if err != nil {
 		return "", fmt.Errorf("unable to generate manifests: %s", err.Error())
 	}
@@ -186,10 +187,10 @@ func (svc *ServiceContext) createBag(js *jobStatus, md *metadata) (string, error
 		return "", fmt.Errorf("unable to create tar of bag: %s", err.Error())
 	}
 
-	svc.logInfo(js, fmt.Sprintf("Clean up bag working directory %s", bagDir))
-	err = os.RemoveAll(bagDir)
+	svc.logInfo(js, fmt.Sprintf("Clean up bag assembly directory %s", bagAssembleDir))
+	err = os.RemoveAll(bagAssembleDir)
 	if err != nil {
-		svc.logError(js, fmt.Sprintf("Unable to clean up %s: %s", bagDir, err.Error()))
+		svc.logError(js, fmt.Sprintf("Unable to clean up %s: %s", bagAssembleDir, err.Error()))
 	}
 	return destTar, nil
 }
