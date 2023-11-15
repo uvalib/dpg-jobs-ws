@@ -113,6 +113,9 @@ func (svc *ServiceContext) prepareAPTrustSubmission(mdID int64) (*metadata, erro
 
 	if md.APTrustSubmission == nil {
 		aptSubmission := apTrustSubmission{MetadataID: md.ID, Bag: getBagFileName(&md), RequestedAt: time.Now()}
+		if md.IsCollection {
+			aptSubmission.Bag = "collection: no bag"
+		}
 		err = svc.GDB.Create(&aptSubmission).Error
 		if err != nil {
 			return nil, fmt.Errorf("unable to create submission record for metadatata %d: %s", md.ID, err.Error())
