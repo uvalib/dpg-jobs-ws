@@ -149,9 +149,9 @@ func (svc *ServiceContext) doAPTrustSubmission(js *jobStatus, md *metadata) erro
 	var collectionMD *metadata
 	if md.ParentMetadataID > 0 {
 		svc.logInfo(js, fmt.Sprintf("Metadata %d is part of collection %d; load collection record", md.ID, md.ParentMetadataID))
-		err := svc.GDB.Find(&collectionMD, md.ParentMetadataID)
+		err := svc.GDB.Find(&collectionMD, md.ParentMetadataID).Error
 		if err != nil {
-			return fmt.Errorf("unable to load collection record %d:  %s", md.ParentMetadataID, err.Error)
+			return fmt.Errorf("unable to load collection record %d:  %s", md.ParentMetadataID, err.Error())
 		}
 	}
 	bagFile, err := svc.createBag(js, md, collectionMD)
