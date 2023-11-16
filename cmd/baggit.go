@@ -28,12 +28,31 @@ func (svc *ServiceContext) bagCreateRequested(c *gin.Context) {
 	err = svc.GDB.Find(&md, mdID).Error
 	if err != nil {
 		svc.logFatal(js, fmt.Sprintf("Unable to get metadata %d", mdID))
+		c.String(http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	if md.IsCollection {
+		svc.logFatal(js, fmt.Sprintf("Metadata %d is a collection. Cannot create collection level bags", mdID))
+		c.String(http.StatusBadRequest, "cannot create a bag for a collection record")
 		return
 	}
 
 	if md.PreservationTierID < 2 {
 		svc.logFatal(js, "Preservation Tier must be set and greater than 1")
+		c.String(http.StatusBadRequest, "preservtion tier must be greater than 1")
 		return
+	}
+
+	var collectionMD *metadata
+	if md.ParentMetadataID > 0 {
+		svc.logInfo(js, fmt.Sprintf("Metadata %d is part of collection %d; load collection details", md.ID, md.ParentMetadataID))
+		err = svc.GDB.Find(&collectionMD, md.ParentMetadataID).Error
+		if err != nil {
+			svc.logFatal(js, fmt.Sprintf("Unable to load collection %d: %s", md.ParentMetadataID, err.Error()))
+			c.String(http.StatusInternalServerError, fmt.Sprintf("unable to load collection %d: %s", md.ParentMetadataID, err.Error()))
+			return
+		}
 	}
 
 	go func() {
@@ -45,7 +64,7 @@ func (svc *ServiceContext) bagCreateRequested(c *gin.Context) {
 			}
 		}()
 
-		tarFile, err := svc.createBag(js, &md)
+		tarFile, err := svc.createBag(js, &md, collectionMD)
 		if err != nil {
 			svc.logFatal(js, fmt.Sprintf("Baggit failed: %s", err.Error()))
 		} else {
@@ -64,7 +83,7 @@ func getBagFileName(md *metadata) string {
 	return fmt.Sprintf("%s.tar", getBagDirectoryName(md))
 }
 
-func (svc *ServiceContext) createBag(js *jobStatus, md *metadata) (string, error) {
+func (svc *ServiceContext) createBag(js *jobStatus, md *metadata, collectionMD *metadata) (string, error) {
 	svc.logInfo(js, fmt.Sprintf("Create bag for metadata %s", md.PID))
 	access := "Consortia"
 	storage := "Standard"
@@ -100,7 +119,7 @@ func (svc *ServiceContext) createBag(js *jobStatus, md *metadata) (string, error
 
 	// Add the aptrust-info.txt, bag-info.txt, bagit.txt. NOTE: bagit.txt is not a tag file
 	svc.logInfo(js, "Adding baggit.txt")
-	bagit := []byte("BagIt-Version: 0.97\nTag-File-Character-Encoding: UTF-8")
+	bagit := []byte("BagIt-Version: 1.0\nTag-File-Character-Encoding: UTF-8")
 	err = os.WriteFile(path.Join(bagAssembleDir, "bagit.txt"), bagit, 0744)
 	if err != nil {
 		return "", fmt.Errorf("unable to create bagit.txt: %s", err.Error())
@@ -115,8 +134,17 @@ func (svc *ServiceContext) createBag(js *jobStatus, md *metadata) (string, error
 
 	svc.logInfo(js, "Adding bag-info.txt")
 	timeNow := time.Now()
-	info := fmt.Sprintf("Source-Organization: virginia.edu\nBagging-Date: %s\nBag-Count: 1 of 1\n", timeNow.Format("2006-01-02"))
-	info += fmt.Sprintf("Internal-Sender-Description: \nInternal-Sender-Identifier: %s\nBag-Group-Identifier: %s", md.PID, md.CollectionID)
+	info := "Source-Organization: virginia.edu\n"
+	info += fmt.Sprintf("Bagging-Date: %s\n", timeNow.Format("2006-01-02"))
+	info += "Bag-Count: 1 of 1\n"
+	info += "Internal-Sender-Description: \n"
+	info += fmt.Sprintf("Internal-Sender-Identifier: %s\n", md.PID)
+	if collectionMD != nil {
+		info += fmt.Sprintf("Bag-Group-Identifier: %s", collectionMD.Title)
+	} else {
+		info += "Bag-Group-Identifier: "
+	}
+	// Bag-Group-Identifier: %s", md.PID, md.CollectionID)
 	err = os.WriteFile(path.Join(bagAssembleDir, "bag-info.txt"), []byte(info), 0744)
 	if err != nil {
 		return "", fmt.Errorf("unable to create bag-info.txt: %s", err.Error())

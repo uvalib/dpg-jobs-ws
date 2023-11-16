@@ -146,7 +146,15 @@ func (svc *ServiceContext) setAPTrustProcessedStatus(aptSub *apTrustSubmission, 
 
 func (svc *ServiceContext) doAPTrustSubmission(js *jobStatus, md *metadata) error {
 	svc.logInfo(js, fmt.Sprintf("Begin APTrust submission for metadata %d", md.ID))
-	bagFile, err := svc.createBag(js, md)
+	var collectionMD *metadata
+	if md.ParentMetadataID > 0 {
+		svc.logInfo(js, fmt.Sprintf("Metadata %d is part of collection %d; load collection record", md.ID, md.ParentMetadataID))
+		err := svc.GDB.Find(&collectionMD, md.ParentMetadataID)
+		if err != nil {
+			return fmt.Errorf("unable to load collection record %d:  %s", md.ParentMetadataID, err.Error)
+		}
+	}
+	bagFile, err := svc.createBag(js, md, collectionMD)
 	if err != nil {
 		return fmt.Errorf("unable to create bag for metadata %d: %s", md.ID, err.Error())
 	}
@@ -172,32 +180,8 @@ func (svc *ServiceContext) doAPTrustSubmission(js *jobStatus, md *metadata) erro
 		return fmt.Errorf("submission of %s failed: %s", bagFile, aptOut)
 	}
 
-	svc.logInfo(js, fmt.Sprintf("%s has been submitted to APTrust; awaiting completion", bagFile))
-	done := false
-	var processingError error
-	for done == false {
-		time.Sleep(1 * time.Minute)
-		jsonResp, err := svc.getAPTrustStatus(md)
-		if err != nil {
-			return fmt.Errorf("status check for metadata %d failed: %s", md.ID, err.Error())
-		}
-
-		if jsonResp.Count > 0 {
-			itemStatus := jsonResp.Results[0]
-			if itemStatus.Status == "Failed" {
-				processingError = fmt.Errorf("metadata %d submission failed: %s", md.ID, itemStatus.Note)
-				done = true
-			} else if itemStatus.Status == "Canceled" || itemStatus.Status == "Suspended" {
-				processingError = fmt.Errorf("metadata %d submission was canceled or suspended: %s", md.ID, itemStatus.Note)
-				done = true
-			} else if itemStatus.Status == "Success" {
-				svc.setAPTrustProcessedStatus(md.APTrustSubmission, true)
-				svc.logInfo(js, "Submission successful")
-				done = true
-			}
-		}
-	}
-	return processingError
+	svc.logInfo(js, fmt.Sprintf("%s has been submitted to APTrust; check APTrust or the TrackSys metadata details page for ingest status", bagFile))
+	return nil
 }
 
 func (svc *ServiceContext) apTrustStatusRequest(c *gin.Context) {
