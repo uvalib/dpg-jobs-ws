@@ -140,11 +140,12 @@ func (svc *ServiceContext) createBag(js *jobStatus, md *metadata, collectionMD *
 	info += "Internal-Sender-Description: \n"
 	info += fmt.Sprintf("Internal-Sender-Identifier: %s\n", md.PID)
 	if collectionMD != nil {
-		info += fmt.Sprintf("Bag-Group-Identifier: %s", collectionMD.Title)
+		svc.logInfo(js, fmt.Sprintf("Add collection info [%s] to bag-info.txt", collectionMD.PID))
+		info += fmt.Sprintf("Bag-Group-Identifier: %s", collectionMD.PID)
 	} else {
 		info += "Bag-Group-Identifier: "
 	}
-	// Bag-Group-Identifier: %s", md.PID, md.CollectionID)
+
 	err = os.WriteFile(path.Join(bagAssembleDir, "bag-info.txt"), []byte(info), 0744)
 	if err != nil {
 		return "", fmt.Errorf("unable to create bag-info.txt: %s", err.Error())

@@ -206,21 +206,64 @@ func (svc *ServiceContext) apTrustStatusRequest(c *gin.Context) {
 		return
 	}
 
-	jsonResp, err := svc.getAPTrustStatus(&md)
-	if err != nil {
-		log.Printf("ERROR: aptrust status request for metadata %d failed: %s", md.ID, err.Error())
-		c.String(http.StatusInternalServerError, err.Error())
-		return
-	}
-	log.Printf("INFO: raw aptrust response: %+v", jsonResp)
-
-	if jsonResp.Count == 0 {
-		log.Printf("INFO: metadata %d has no aptrust status", md.ID)
-		c.String(http.StatusNotFound, fmt.Sprintf("%d has no aptrust status", md.ID))
+	if md.IsCollection {
+		log.Printf("INFO: metadata %d as a collection; request collection status instead of item", md.ID)
+		collectionResp, err := svc.getAPTrustGroupStatus(md.PID)
+		if err != nil {
+			log.Printf("ERROR: aptrust status request for colection metadata %d failed: %s", md.ID, err.Error())
+			c.String(http.StatusInternalServerError, err.Error())
+			return
+		}
+		c.JSON(http.StatusOK, collectionResp)
 	} else {
-		// always return the last status as it will be the most recent
-		c.JSON(http.StatusOK, jsonResp.Results[0])
+		jsonResp, err := svc.getAPTrustStatus(&md)
+		if err != nil {
+			log.Printf("ERROR: aptrust status request for metadata %d failed: %s", md.ID, err.Error())
+			c.String(http.StatusInternalServerError, err.Error())
+			return
+		}
+		log.Printf("INFO: raw aptrust response: %+v", jsonResp)
+
+		if jsonResp.Count == 0 {
+			log.Printf("INFO: metadata %d has no aptrust status", md.ID)
+			c.String(http.StatusNotFound, fmt.Sprintf("%d has no aptrust status", md.ID))
+		} else {
+			// always return the last status as it will be the most recent
+			c.JSON(http.StatusOK, jsonResp.Results[0])
+		}
 	}
+}
+
+func (svc *ServiceContext) getAPTrustGroupStatus(collecionPID string) ([]apTrustResult, error) {
+	cmd := exec.Command("apt-cmd", "registry", "list", "workitems", fmt.Sprintf("bag_group_identifier=%s", collecionPID), "sort=date_processed__desc")
+	aptOut, err := cmd.CombinedOutput()
+	if err != nil {
+		return nil, fmt.Errorf(string(aptOut))
+	}
+
+	var jsonResp apTrustResponse
+	err = json.Unmarshal(aptOut, &jsonResp)
+	if err != nil {
+		return nil, fmt.Errorf("malformed response: %s", err.Error())
+	}
+
+	// walk the list if respnses and include the first instance of each
+	// unique name (bag filename) in the response as this will be the latest status
+	statusResp := make([]apTrustResult, 0)
+	for _, resp := range jsonResp.Results {
+		alreadyIncluded := false
+		for _, r := range statusResp {
+			if r.Name == resp.Name {
+				alreadyIncluded = true
+				break
+			}
+		}
+		if alreadyIncluded == false {
+			statusResp = append(statusResp, resp)
+		}
+	}
+
+	return statusResp, nil
 }
 
 func (svc *ServiceContext) getAPTrustStatus(md *metadata) (*apTrustResponse, error) {
