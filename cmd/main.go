@@ -38,6 +38,8 @@ func main() {
 
 	router.POST("/script", svc.runScript)
 
+	router.POST("/aptrust", svc.batchAPTrustSubmission)
+
 	router.POST("/audit", svc.auditMasterFiles)
 	router.POST("/phash", svc.generateMasterFilesPHash)
 

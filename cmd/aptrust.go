@@ -29,6 +29,52 @@ type apTrustResponse struct {
 	Results []apTrustResult `json:"results,omitempty"`
 }
 
+func (svc *ServiceContext) batchAPTrustSubmission(c *gin.Context) {
+	var req struct {
+		CollectionID    int64   `json:"collectionID"`
+		MetadataRecords []int64 `json:"metadataRecords"`
+	}
+	err := c.BindJSON(&req)
+	if err != nil {
+		log.Printf("ERROR: invalid batch aptrust submit request: %s", err.Error())
+		c.String(http.StatusBadRequest, err.Error())
+		return
+	}
+
+	js, err := svc.createJobStatus("APTrustBatchSubmit", "Metadata", req.CollectionID)
+	if err != nil {
+		log.Printf("ERROR: unable to create aptrust submission job status: %s", err.Error())
+		c.String(http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				log.Printf("ERROR: Panic recovered: %v", r)
+				debug.PrintStack()
+				svc.logFatal(js, fmt.Sprintf("Panic recovered during APTrust bulk submission: %v", r))
+			}
+		}()
+		svc.logInfo(js, fmt.Sprintf("Batch submit records %v from collection %d to APTRust", req.MetadataRecords, req.CollectionID))
+		for _, mdID := range req.MetadataRecords {
+			svc.logInfo(js, fmt.Sprintf("Prepare metadata %d for aptrust submission", mdID))
+			md, err := svc.prepareAPTrustSubmission(mdID)
+			if err != nil {
+				svc.logError(js, fmt.Sprintf("Prepare metadata %d for APTrust submission failed: %s", mdID, err.Error()))
+			} else {
+				err = svc.doAPTrustSubmission(js, md)
+				if err != nil {
+					svc.setAPTrustProcessedStatus(md.APTrustSubmission, false)
+					svc.logError(js, fmt.Sprintf("Metadata %d APTrust submission failed: %s", md.ID, err.Error()))
+				}
+			}
+		}
+		svc.jobDone(js)
+	}()
+	c.String(http.StatusOK, fmt.Sprintf("%d", js.ID))
+}
+
 func (svc *ServiceContext) submitToAPTrust(c *gin.Context) {
 	mdID, _ := strconv.ParseInt(c.Param("id"), 10, 64)
 	if mdID == 0 {
