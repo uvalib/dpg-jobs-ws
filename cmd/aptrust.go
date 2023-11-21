@@ -18,6 +18,7 @@ type apTrustResult struct {
 	Name             string `json:"name"`
 	ETag             string `json:"etag"`
 	ObjectIdentifier string `json:"object_identifier"`
+	GroupIdentifier  string `json:"bag_group_identifier"`
 	StorageOption    string `json:"storage_option"`
 	Note             string `json:"note"`
 	Status           string `json:"status"`
