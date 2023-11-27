@@ -60,7 +60,7 @@ func (svc *ServiceContext) batchAPTrustSubmission(c *gin.Context) {
 		svc.logInfo(js, fmt.Sprintf("Batch submit records %v from collection %d to APTRust", req.MetadataRecords, req.CollectionID))
 		for _, mdID := range req.MetadataRecords {
 			svc.logInfo(js, fmt.Sprintf("Prepare metadata %d for aptrust submission", mdID))
-			md, err := svc.prepareAPTrustSubmission(mdID)
+			md, err := svc.prepareAPTrustSubmission(mdID, false)
 			if err != nil {
 				svc.logError(js, fmt.Sprintf("Prepare metadata %d for APTrust submission failed: %s", mdID, err.Error()))
 			} else {
@@ -83,9 +83,14 @@ func (svc *ServiceContext) submitToAPTrust(c *gin.Context) {
 		c.String(http.StatusBadRequest, fmt.Sprintf("%s is not a valid metadata id", c.Param("id")))
 		return
 	}
+	resubmit, _ := strconv.ParseBool(c.Query("resubmit"))
 
-	log.Printf("INFO: prepare metadata %d for aptrust submission", mdID)
-	tgtMD, err := svc.prepareAPTrustSubmission(mdID)
+	if resubmit {
+		log.Printf("INFO: prepare metadata %d for aptrust resubmission", mdID)
+	} else {
+		log.Printf("INFO: prepare metadata %d for aptrust submission", mdID)
+	}
+	tgtMD, err := svc.prepareAPTrustSubmission(mdID, resubmit)
 	if err != nil {
 		log.Printf("ERROR: aptrust submission request failed: %s", err.Error())
 		c.String(http.StatusInternalServerError, err.Error())
@@ -109,6 +114,10 @@ func (svc *ServiceContext) submitToAPTrust(c *gin.Context) {
 		}()
 
 		if tgtMD.IsCollection {
+			if resubmit {
+				svc.logFatal(js, "Collections cannot be resubmitted")
+				return
+			}
 			svc.logInfo(js, fmt.Sprintf("Metadata %d is a collection; load child record IDs for APTrust submission", tgtMD.ID))
 			var inCollectionIDs []int64
 			err = svc.GDB.Raw("select id from metadata where parent_metadata_id=?", tgtMD.ID).Scan(&inCollectionIDs).Error
@@ -121,7 +130,7 @@ func (svc *ServiceContext) submitToAPTrust(c *gin.Context) {
 			svc.logInfo(js, fmt.Sprintf("Collection %d has %d items; submit each", tgtMD.ID, len(inCollectionIDs)))
 			for _, tgtID := range inCollectionIDs {
 				log.Printf("INFO: prepare metadata %d for aptrust submission", tgtID)
-				md, err := svc.prepareAPTrustSubmission(tgtID)
+				md, err := svc.prepareAPTrustSubmission(tgtID, false)
 				if err != nil {
 					svc.logError(js, fmt.Sprintf("Prepare metadata %d for APTrust submission failed: %s", tgtID, err.Error()))
 				} else {
@@ -147,7 +156,7 @@ func (svc *ServiceContext) submitToAPTrust(c *gin.Context) {
 	c.String(http.StatusOK, fmt.Sprintf("%d", js.ID))
 }
 
-func (svc *ServiceContext) prepareAPTrustSubmission(mdID int64) (*metadata, error) {
+func (svc *ServiceContext) prepareAPTrustSubmission(mdID int64, resubmit bool) (*metadata, error) {
 	var md metadata
 	err := svc.GDB.Joins("APTrustSubmission").Joins("PreservationTier").Find(&md, mdID).Error
 	if err != nil {
@@ -169,15 +178,19 @@ func (svc *ServiceContext) prepareAPTrustSubmission(mdID int64) (*metadata, erro
 		}
 		md.APTrustSubmission = &aptSubmission
 	} else {
-		// a submission record exists. See if it is in a processing state and fail if it is
-		aptStatus, err := svc.getAPTrustStatus(&md)
-		if err != nil {
-			return nil, fmt.Errorf("aptrust status check failed for metadatata %d: %s", md.ID, err.Error())
-		}
-		if aptStatus.Count > 0 {
-			statusRec := aptStatus.Results[0]
-			if statusRec.Status != "Failed" && statusRec.Status != "Canceled" {
-				return nil, fmt.Errorf("submission is already in progress for metadata %d; status %s", md.ID, statusRec.Status)
+		// resubmit is used when there has been a successful submission, but the bag needs to change.
+		// in this case, do not check status as it wil be Success and fail the checks below
+		if resubmit == false {
+			// a submission record exists. See if it is in a processing state and fail if it is
+			aptStatus, err := svc.getAPTrustStatus(&md)
+			if err != nil {
+				return nil, fmt.Errorf("aptrust status check failed for metadatata %d: %s", md.ID, err.Error())
+			}
+			if aptStatus.Count > 0 {
+				statusRec := aptStatus.Results[0]
+				if statusRec.Status != "Failed" && statusRec.Status != "Canceled" {
+					return nil, fmt.Errorf("submission is already in progress for metadata %d; status %s", md.ID, statusRec.Status)
+				}
 			}
 		}
 	}
