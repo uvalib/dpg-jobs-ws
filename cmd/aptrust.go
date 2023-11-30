@@ -267,7 +267,7 @@ func (svc *ServiceContext) apTrustStatusRequest(c *gin.Context) {
 	}
 
 	if md.IsCollection {
-		log.Printf("INFO: metadata %d as a collection; request collection status instead of item", md.ID)
+		log.Printf("INFO: metadata %d is a collection; request collection status instead of item", md.ID)
 		collectionResp, err := svc.getAPTrustGroupStatus(md.PID)
 		if err != nil {
 			log.Printf("ERROR: aptrust status request for colection metadata %d failed: %s", md.ID, err.Error())
@@ -295,34 +295,59 @@ func (svc *ServiceContext) apTrustStatusRequest(c *gin.Context) {
 }
 
 func (svc *ServiceContext) getAPTrustGroupStatus(collecionPID string) ([]apTrustResult, error) {
-	cmd := exec.Command("apt-cmd", "registry", "list", "workitems", fmt.Sprintf("bag_group_identifier=%s", collecionPID), "sort=date_processed__desc")
-	aptOut, err := cmd.CombinedOutput()
-	if err != nil {
-		return nil, fmt.Errorf(string(aptOut))
-	}
-
-	var jsonResp apTrustResponse
-	err = json.Unmarshal(aptOut, &jsonResp)
-	if err != nil {
-		return nil, fmt.Errorf("malformed response: %s", err.Error())
-	}
-
-	// walk the list if respnses and include the first instance of each
-	// unique name (bag filename) in the response as this will be the latest status
+	page := 1
+	done := false
+	responseCount := 0
 	statusResp := make([]apTrustResult, 0)
-	for _, resp := range jsonResp.Results {
-		alreadyIncluded := false
-		for _, r := range statusResp {
-			if r.Name == resp.Name {
-				alreadyIncluded = true
-				break
+	var err error
+	for done == false {
+		log.Printf("INFO: request page %d of results for group %s", page, collecionPID)
+		cmd := exec.Command("apt-cmd", "registry", "list", "workitems", fmt.Sprintf("bag_group_identifier=%s", collecionPID),
+			"sort=date_processed__desc", "per_page=1000", fmt.Sprintf("page=%d", page))
+		aptOut, err := cmd.CombinedOutput()
+		if err != nil {
+			done = true
+			err = fmt.Errorf(string(aptOut))
+		}
+
+		var jsonResp apTrustResponse
+		err = json.Unmarshal(aptOut, &jsonResp)
+		if err != nil {
+			done = true
+			err = fmt.Errorf("malformed response: %s", err.Error())
+		}
+
+		log.Printf("INFO: %d results from a total of %d received", len(jsonResp.Results), jsonResp.Count)
+		responseCount += len(jsonResp.Results)
+		if responseCount == int(jsonResp.Count) {
+			log.Printf("INFO: all %d responses received for group %s", jsonResp.Count, collecionPID)
+			done = true
+		} else {
+			log.Printf("INFO: more results remain; increase page number")
+			page++
+		}
+
+		// walk the list if respnses and include the first instance of each
+		// unique name (bag filename) in the response as this will be the latest status
+		for _, resp := range jsonResp.Results {
+			alreadyIncluded := false
+			for _, r := range statusResp {
+				if r.Name == resp.Name {
+					alreadyIncluded = true
+					break
+				}
+			}
+			if alreadyIncluded == false {
+				statusResp = append(statusResp, resp)
 			}
 		}
-		if alreadyIncluded == false {
-			statusResp = append(statusResp, resp)
-		}
 	}
 
+	if err != nil {
+		return nil, err
+	}
+
+	log.Printf("INFO: group %s status complete; %d unique items found", collecionPID, len(statusResp))
 	return statusResp, nil
 }
 
