@@ -41,6 +41,15 @@ type asRepository struct {
 	URI  string
 }
 
+type asOrderedRecordsResp struct {
+	URIS []struct {
+		Ref     string `json:"ref"`
+		Display string `json:"display_string"`
+		Depth   int64  `json:"depth"`
+		Level   string `json:"levet"`
+	} `json:"uris"`
+}
+
 func (r *asRepository) ID() string {
 	parts := strings.Split(r.URI, "/")
 	return parts[len(parts)-1]
@@ -76,6 +85,33 @@ func (svc *ServiceContext) archivesSpaceMiddleware(c *gin.Context) {
 	}
 
 	c.Next()
+}
+
+func (svc *ServiceContext) getArchivesSpaceCollectionURIs(c *gin.Context) {
+	collectionID := c.Param("id")
+	log.Printf("INFO: get archivesspace collection %s record uris", collectionID)
+	url2 := fmt.Sprintf("/repositories/3/resources/%s/ordered_records", collectionID)
+	ao, err := svc.sendASGetRequest(url2)
+	if err != nil {
+		log.Printf("ERROR: as collection %s records request failed: %s", collectionID, err.Message)
+		c.String(http.StatusInternalServerError, err.Message)
+		return
+	}
+	var objRecs asOrderedRecordsResp
+	jsonErr := json.Unmarshal(ao, &objRecs)
+	if jsonErr != nil {
+		log.Printf("ERROR: unable to parse as response: %s", jsonErr.Error())
+		c.String(http.StatusInternalServerError, jsonErr.Error())
+		return
+	}
+
+	out := ""
+	for _, item := range objRecs.URIS {
+		if strings.Contains(item.Ref, collectionID) == false {
+			out += fmt.Sprintf("%s\n", item.Ref)
+		}
+	}
+	c.String(http.StatusOK, out)
 }
 
 func (svc *ServiceContext) lookupArchivesSpaceURL(c *gin.Context) {
