@@ -231,7 +231,7 @@ func (svc *ServiceContext) qaUnit(js *jobStatus, tgtUnit *unit) error {
 
 	hasFailures := false
 	svc.logInfo(js, "Verify availability policy")
-	if tgtUnit.IncludeInDL && tgtUnit.Metadata.AvailabilityPolicyID == nil && tgtUnit.Metadata.Type != "ExternalMetadata" {
+	if tgtUnit.IncludeInDL && tgtUnit.Metadata.AvailabilityPolicyID == 0 && tgtUnit.Metadata.Type != "ExternalMetadata" {
 		svc.logError(js, "Availability policy must be set for all units flagged for inclusion in the DL")
 		hasFailures = true
 	}
@@ -244,7 +244,7 @@ func (svc *ServiceContext) qaUnit(js *jobStatus, tgtUnit *unit) error {
 
 	// fail for no ocr hint or incompatible hint / ocr Settings
 	svc.logInfo(js, "Verify OCR settings")
-	if tgtUnit.Metadata.OcrHintID == nil {
+	if tgtUnit.Metadata.OcrHintID == 0 {
 		svc.logError(js, fmt.Sprintf("Unit metadata %d has no OCR Hint. This is a required setting.", *tgtUnit.MetadataID))
 		hasFailures = true
 	} else {
@@ -307,9 +307,8 @@ func (svc *ServiceContext) autoPublish(js *jobStatus, tgtUnit *unit) {
 	pubYear := svc.getMarcPublicationYear(tgtUnit.Metadata)
 	if pubYear != 0 && pubYear < 1923 {
 		svc.logInfo(js, "Unit is a candidate for auto-publishing")
-		if tgtUnit.Metadata.AvailabilityPolicyID == nil {
-			one := int64(1)
-			tgtUnit.Metadata.AvailabilityPolicyID = &one
+		if tgtUnit.Metadata.AvailabilityPolicyID == 0 {
+			tgtUnit.Metadata.AvailabilityPolicyID = 1
 			svc.GDB.Model(tgtUnit.Metadata).Select("AvailabilityPolicyID").Updates(*tgtUnit.Metadata)
 		}
 		tgtUnit.IncludeInDL = true

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
@@ -117,6 +118,21 @@ func (svc *ServiceContext) createBag(js *jobStatus, md *metadata, collectionMD *
 		}
 	}
 
+	// Request archivesSpace metadata if necessary;ExternalSystemID 1 is ArchivesSpace
+	var asMetadata *asMetadataResponse
+	if md.ExternalSystemID == 1 {
+		svc.logInfo(js, "Metadata is linked to ArchivesSpace; request JSON metadata")
+		asURL := parsePublicASURL(md.ExternalURI)
+		if asURL == nil {
+			return "", fmt.Errorf("%s is not a valid archivespoace url", md.ExternalURI)
+		}
+
+		asMetadata, err = svc.getArchivesSpaceMetadata(asURL, md.PID)
+		if err != nil {
+			return "", fmt.Errorf("unable to get archivesspace metadata: %s", err.Error())
+		}
+	}
+
 	// Add the aptrust-info.txt, bag-info.txt, bagit.txt. NOTE: bagit.txt is not a tag file
 	svc.logInfo(js, "Adding baggit.txt")
 	bagit := []byte("BagIt-Version: 1.0\nTag-File-Character-Encoding: UTF-8")
@@ -139,7 +155,10 @@ func (svc *ServiceContext) createBag(js *jobStatus, md *metadata, collectionMD *
 	info += "Bag-Count: 1 of 1\n"
 	info += "Internal-Sender-Description: \n"
 	info += fmt.Sprintf("Internal-Sender-Identifier: %s\n", md.PID)
-	if collectionMD != nil {
+	if asMetadata != nil {
+		svc.logInfo(js, "Set group identifer for ArchivesSpace metadata to the collection MSS identifier")
+		info += fmt.Sprintf("Bag-Group-Identifier: %s", asMetadata.CollectionID)
+	} else if collectionMD != nil {
 		svc.logInfo(js, fmt.Sprintf("Add collection info [%s] to bag-info.txt", collectionMD.PID))
 		info += fmt.Sprintf("Bag-Group-Identifier: %s", collectionMD.PID)
 	} else {
@@ -151,17 +170,32 @@ func (svc *ServiceContext) createBag(js *jobStatus, md *metadata, collectionMD *
 		return "", fmt.Errorf("unable to create bag-info.txt: %s", err.Error())
 	}
 
-	svc.logInfo(js, "Add XML metadata")
 	var bagFiles []string
-	mods, err := svc.getModsMetadata(md)
-	if err != nil {
-		return "", fmt.Errorf("unable to get mods metadata: %s", err.Error())
+	if asMetadata != nil {
+		svc.logInfo(js, "Add ArchivesSpace JSON metadata")
+		jsonStr, err := json.MarshalIndent(asMetadata, "", "   ")
+		if err != nil {
+			return "", fmt.Errorf("unable to stringify as metadata: %s", err.Error())
+		}
+
+		err = os.WriteFile(path.Join(dataDir, "metadata.json"), jsonStr, 0744)
+		if err != nil {
+			return "", fmt.Errorf("unable to create %s.xml: %s", md.PID, err.Error())
+		}
+
+		bagFiles = append(bagFiles, "metadata.json")
+	} else {
+		svc.logInfo(js, "Add MODS XML metadata")
+		mods, err := svc.getModsMetadata(md)
+		if err != nil {
+			return "", fmt.Errorf("unable to get mods metadata: %s", err.Error())
+		}
+		err = os.WriteFile(path.Join(dataDir, fmt.Sprintf("%s.xml", md.PID)), mods, 0744)
+		if err != nil {
+			return "", fmt.Errorf("unable to create %s.xml: %s", md.PID, err.Error())
+		}
+		bagFiles = append(bagFiles, fmt.Sprintf("%s.xml", md.PID))
 	}
-	err = os.WriteFile(path.Join(dataDir, fmt.Sprintf("%s.xml", md.PID)), mods, 0744)
-	if err != nil {
-		return "", fmt.Errorf("unable to create %s.xml: %s", md.PID, err.Error())
-	}
-	bagFiles = append(bagFiles, fmt.Sprintf("%s.xml", md.PID))
 
 	// first try the normal case: units with matching metadata (images in a collection, book-like items)
 	svc.logInfo(js, "Adding master files to bag")

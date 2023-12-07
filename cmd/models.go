@@ -136,8 +136,8 @@ type metadata struct {
 	IsManuscript         bool
 	IsCollection         bool
 	ParentMetadataID     int64
-	AvailabilityPolicyID *int64
-	OcrHintID            *int64
+	AvailabilityPolicyID int64
+	OcrHintID            int64
 	OcrHint              *ocrHint `gorm:"foreignKey:OcrHintID"`
 	OcrLanguageHint      string
 	Locations            []location        `gorm:"foreignKey:MetadataID"`
@@ -148,7 +148,7 @@ type metadata struct {
 	CollectionID         string
 	DateDlIngest         *time.Time      `gorm:"column:date_dl_ingest"`
 	DateDlUpdate         *time.Time      `gorm:"column:date_dl_update"`
-	ExternalSystemID     *int64          `gorm:"column:external_system_id"`
+	ExternalSystemID     int64           `gorm:"column:external_system_id"`
 	ExternalSystem       *externalSystem `gorm:"foreignKey:ExternalSystemID"`
 	ExternalURI          string          `gorm:"column:external_uri"`
 	CreatedAt            time.Time

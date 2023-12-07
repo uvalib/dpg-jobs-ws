@@ -22,6 +22,20 @@ type externalSystem struct {
 
 type asObjectDetails map[string]interface{}
 
+type asMetadataResponse struct {
+	Title           string `json:"title"`
+	CreatedBy       string `json:"created_by"`
+	CreateTime      string `json:"create_time"`
+	Level           string `json:"level"`
+	URL             string `json:"url"`
+	Dates           string `json:"dates,omitempty"`
+	PublishedAt     string `json:"published_at,omitempty"`
+	Repo            string `json:"repo"`
+	CollectionID    string `json:"collection_id"`
+	CollectionTitle string `json:"collection_title"`
+	Language        string `json:"language,omitempty"`
+}
+
 type asDigitalObject struct {
 	PID     string `json:"pid"`
 	Title   string `json:"title"`
@@ -119,13 +133,6 @@ func (svc *ServiceContext) lookupArchivesSpaceURL(c *gin.Context) {
 	tgtPID := c.Query("pid")
 	log.Printf("INFO: lookup details for aSpace uri %s", tgtURI)
 
-	var es externalSystem
-	err := svc.GDB.Where("name=?", "ArchivesSpace").Find(&es).Error
-	if err != nil {
-		c.String(http.StatusInternalServerError, fmt.Sprintf("unable to get external system data: %s", err.Error()))
-		return
-	}
-
 	asURL := parsePublicASURL(tgtURI)
 	if asURL == nil {
 		log.Printf("INFO: %s is not a valid aSpace URL", tgtURI)
@@ -133,39 +140,45 @@ func (svc *ServiceContext) lookupArchivesSpaceURL(c *gin.Context) {
 		return
 	}
 
-	tgtASObj, err := svc.getASDetails(nil, asURL)
+	out, err := svc.getArchivesSpaceMetadata(asURL, tgtPID)
 	if err != nil {
-		log.Printf("INFO: %s:%s not found in repo %s", asURL.ParentType, asURL.ParentID, asURL.RepositoryID)
-		c.String(http.StatusBadRequest, fmt.Sprintf("%s was not found in aSpace", tgtURI))
+		log.Printf("ERROR: %s", err.Error())
+		c.String(http.StatusInternalServerError, err.Error())
 		return
 	}
 
-	type detailResp struct {
-		ID              string `json:"id"`
-		Title           string `json:"title"`
-		CreatedBy       string `json:"created_by"`
-		CreateTime      string `json:"create_time"`
-		Level           string `json:"level"`
-		URL             string `json:"url"`
-		Dates           string `json:"dates,omitempty"`
-		PublishedAt     string `json:"published_at,omitempty"`
-		Repo            string `json:"repo"`
-		CollectionTitle string `json:"collection_title"`
-		Language        string `json:"language,omitempty"`
+	c.JSON(http.StatusOK, out)
+}
+
+func (svc *ServiceContext) getArchivesSpaceMetadata(asURL *asURLInfo, tgtPID string) (*asMetadataResponse, error) {
+	var es externalSystem
+	err := svc.GDB.Where("name=?", "ArchivesSpace").Find(&es).Error
+	if err != nil {
+		return nil, fmt.Errorf("unable to get external system data: %s", err.Error())
 	}
-	out := detailResp{
-		ID:         fmt.Sprintf("%v", tgtASObj["id_0"]),
-		URL:        fmt.Sprintf("%s/%s", es.PublicURL, tgtURI),
+
+	tgtASObj, err := svc.getASDetails(nil, asURL)
+	if err != nil {
+		return nil, fmt.Errorf("%s:%s not found in repo %s", asURL.ParentType, asURL.ParentID, asURL.RepositoryID)
+	}
+
+	out := asMetadataResponse{
+		URL:        fmt.Sprintf("%s/repositories/%s/%s/%s", es.PublicURL, asURL.RepositoryID, asURL.ParentType, asURL.ParentID),
 		CreatedBy:  fmt.Sprintf("%v", tgtASObj["created_by"]),
 		CreateTime: fmt.Sprintf("%v", tgtASObj["create_time"]),
 		Level:      fmt.Sprintf("%v", tgtASObj["level"]),
 	}
-	if tgtASObj["id_1"] != nil {
-		out.ID += fmt.Sprintf(" %v", tgtASObj["id_1"])
+
+	if out.Level == "collection" || tgtASObj["resource_type"] == "collection" {
+		out.CollectionID = fmt.Sprintf("%v", tgtASObj["id_0"])
+		if tgtASObj["id_1"] != nil {
+			out.CollectionID += fmt.Sprintf(" %v", tgtASObj["id_1"])
+		}
+		if tgtASObj["id_2"] != nil {
+			out.CollectionID += fmt.Sprintf("-%v", tgtASObj["id_2"])
+		}
 	}
-	if tgtASObj["id_2"] != nil {
-		out.ID += fmt.Sprintf("-%v", tgtASObj["id_2"])
-	}
+
 	if tgtASObj["title"] != nil {
 		out.Title = fmt.Sprintf("%v", tgtASObj["title"])
 	} else {
@@ -176,7 +189,6 @@ func (svc *ServiceContext) lookupArchivesSpaceURL(c *gin.Context) {
 	}
 
 	if tgtASObj["dates"] != nil {
-		log.Printf("INFO: Extract date info")
 		dates := tgtASObj["dates"].([]interface{})
 		if len(dates) > 0 {
 			tgtDate := dates[0].(map[string]interface{})
@@ -191,9 +203,7 @@ func (svc *ServiceContext) lookupArchivesSpaceURL(c *gin.Context) {
 	log.Printf("INFO: Lookup repository name")
 	resp, asErr := svc.sendASGetRequest(fmt.Sprintf("/repositories/%s", asURL.RepositoryID))
 	if err != nil {
-		log.Printf("ERROR: Unable to get repoisitory %s info: %s", asURL.RepositoryID, asErr.Message)
-		c.String(http.StatusInternalServerError, asErr.Message)
-		return
+		return nil, fmt.Errorf("unable to get repoisitory %s info: %s", asURL.RepositoryID, asErr.Message)
 	}
 	var repo map[string]interface{}
 	json.Unmarshal(resp, &repo)
@@ -222,12 +232,12 @@ func (svc *ServiceContext) lookupArchivesSpaceURL(c *gin.Context) {
 		} else {
 			var coll asObjectDetails
 			json.Unmarshal(colBytes, &coll)
-			out.ID = fmt.Sprintf("%v", coll["id_0"])
+			out.CollectionID = fmt.Sprintf("%v", coll["id_0"])
 			if coll["id_1"] != nil {
-				out.ID += fmt.Sprintf(" %v", coll["id_1"])
+				out.CollectionID += fmt.Sprintf(" %v", coll["id_1"])
 			}
 			if coll["id_2"] != nil {
-				out.ID += fmt.Sprintf("-%v", coll["id_2"])
+				out.CollectionID += fmt.Sprintf("-%v", coll["id_2"])
 			}
 			if coll["finding_aid_title"] != nil {
 				ft := fmt.Sprintf("%v", coll["finding_aid_title"])
@@ -238,14 +248,14 @@ func (svc *ServiceContext) lookupArchivesSpaceURL(c *gin.Context) {
 		}
 	}
 
-	c.JSON(http.StatusOK, out)
+	return &out, nil
 }
 
 func (svc *ServiceContext) validateArchivesSpaceURL(c *gin.Context) {
 	asURL := c.Query("url")
 	log.Printf("INFO: validate archivesspace url %s", asURL)
 
-	// format is: (https://archives/lib.virginia.edu)/repositories/[repo_id]/[archival_objects|accessions|resources]/[object_id]
+	// format is: (https://archives/lib.virginia.edu)/repositories/[repo_id]/[archival_objects|resources]/[object_id]
 	// the part up to repositories is optional
 	repoIdx := strings.Index(asURL, "/repositories")
 	if repoIdx > 0 {
@@ -289,7 +299,7 @@ func (svc *ServiceContext) validateArchivesSpaceURL(c *gin.Context) {
 
 	// make sure only supported object types are listed
 	log.Printf("INFO: Validate object type")
-	supported := []string{"archival_objects", "accessions", "resources"}
+	supported := []string{"archival_objects", "resources"}
 	match := false
 	for _, o := range supported {
 		if o == parts[2] {
@@ -299,7 +309,7 @@ func (svc *ServiceContext) validateArchivesSpaceURL(c *gin.Context) {
 	}
 	if match == false {
 		log.Printf("INFO: invalid object type %s", parts[1])
-		c.String(http.StatusBadRequest, "only archival_objects, accessions and resources are supported")
+		c.String(http.StatusBadRequest, "only archival_objects and resources are supported")
 		return
 	}
 
@@ -552,17 +562,10 @@ func (svc *ServiceContext) getASDetails(js *jobStatus, asURL *asURLInfo) (asObje
 			return nil, fmt.Errorf("%d:%s", err.StatusCode, err.Message)
 		}
 		respBytes = resp
-	} else if asURL.ParentType == "accessions" {
-		svc.logInfo(js, fmt.Sprintf("Looking up parent accession %s in repo %s...", asURL.ParentID, asURL.RepositoryID))
-		url := fmt.Sprintf("/repositories/%s/accessions/%s", asURL.RepositoryID, asURL.ParentID)
-		resp, err := svc.sendASGetRequest(url)
-		if err != nil {
-			return nil, fmt.Errorf("%d:%s", err.StatusCode, err.Message)
-		}
-		respBytes = resp
 	} else {
 		return nil, fmt.Errorf("Unsupported parent type: %s", asURL.ParentType)
 	}
+	log.Printf("%s", respBytes)
 
 	var out asObjectDetails
 	err := json.Unmarshal(respBytes, &out)

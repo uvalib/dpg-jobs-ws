@@ -10,7 +10,7 @@ require (
 	github.com/go-sql-driver/mysql v1.7.1
 	github.com/go-xmlfmt/xmlfmt v1.1.2
 	github.com/kardianos/ftps v1.0.3
-	golang.org/x/exp v0.0.0-20231127185646-65229373498e
+	golang.org/x/exp v0.0.0-20231206192017-f3f8817b8deb
 	golang.org/x/image v0.14.0
 	golang.org/x/net v0.19.0
 	gopkg.in/gomail.v2 v2.0.0-20160411212932-81ebce5c23df

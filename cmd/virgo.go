@@ -192,7 +192,7 @@ func (svc *ServiceContext) publishSirsiToVirgo(js *jobStatus, sirsiMetadata *met
 		svc.logError(js, fmt.Sprintf("Publish to Virgo failed: metadata %d is missing a catalog key.", sirsiMetadata.ID))
 		return fmt.Errorf("metadata %d is missing a catalog key", sirsiMetadata.ID)
 	}
-	if sirsiMetadata.AvailabilityPolicyID == nil {
+	if sirsiMetadata.AvailabilityPolicyID == 0 {
 		svc.logError(js, fmt.Sprintf("Publish to Virgo failed: metadata %d is missing the required availability policy.", sirsiMetadata.ID))
 		return fmt.Errorf("metadata %d is missing availability policy", sirsiMetadata.ID)
 	}

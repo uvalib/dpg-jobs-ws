@@ -143,7 +143,7 @@ func (svc *ServiceContext) assignMasterFileMetadata(c *gin.Context) {
 		return
 	}
 
-	if md.Type == "ExternalMetadata" && (md.ExternalSystemID == nil || (md.ExternalSystemID != nil && *md.ExternalSystemID == 0)) {
+	if md.Type == "ExternalMetadata" && md.ExternalSystemID == 0 {
 		svc.logFatal(js, fmt.Sprintf("External metadata %d is missinng the external system ID.", req.MetadataID))
 		c.String(http.StatusInternalServerError, err.Error())
 	}
