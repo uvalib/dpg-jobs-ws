@@ -114,6 +114,7 @@ func (svc *ServiceContext) submitToAPTrust(c *gin.Context) {
 		}()
 
 		if tgtMD.IsCollection {
+			// TODO... REMOVE THIS?
 			if resubmit {
 				svc.logFatal(js, "Collections cannot be resubmitted")
 				return
@@ -130,7 +131,7 @@ func (svc *ServiceContext) submitToAPTrust(c *gin.Context) {
 			svc.logInfo(js, fmt.Sprintf("Collection %d has %d items; submit each", tgtMD.ID, len(inCollectionIDs)))
 			for _, tgtID := range inCollectionIDs {
 				log.Printf("INFO: prepare metadata %d for aptrust submission", tgtID)
-				md, err := svc.prepareAPTrustSubmission(tgtID, false)
+				md, err := svc.prepareAPTrustSubmission(tgtID, false) // always leave this false. don't want to resubmit everything
 				if err != nil {
 					svc.logError(js, fmt.Sprintf("Prepare metadata %d for APTrust submission failed: %s", tgtID, err.Error()))
 				} else {

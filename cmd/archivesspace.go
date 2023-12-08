@@ -71,6 +71,17 @@ func (r *asRepository) ID() string {
 
 func (svc *ServiceContext) archivesSpaceMiddleware(c *gin.Context) {
 	log.Printf("INFO: ensure archivesspace auth token exists for %s", c.Request.URL)
+	err := svc.validateArchivesSpaceAccessToken()
+	if err != nil {
+		log.Printf("ERROR: %s", err.Error())
+		c.AbortWithError(http.StatusInternalServerError, err)
+		return
+	}
+
+	c.Next()
+}
+
+func (svc *ServiceContext) validateArchivesSpaceAccessToken() error {
 	now := time.Now()
 	exp := time.Now()
 	exp = exp.Add(30 * time.Minute)
@@ -81,24 +92,19 @@ func (svc *ServiceContext) archivesSpaceMiddleware(c *gin.Context) {
 		payload.Add("password", svc.ArchivesSpace.Pass)
 		resp, authErr := svc.postFormRequest(authURL, &payload)
 		if authErr != nil {
-			log.Printf("ERROR: auth post failed: %d:%s", authErr.StatusCode, authErr.Message)
-			c.AbortWithError(http.StatusInternalServerError, fmt.Errorf("%d:%s", authErr.StatusCode, authErr.Message))
-			return
+			return fmt.Errorf("archivesspace auth post failed: %d:%s", authErr.StatusCode, authErr.Message)
 		}
 		jsonResp := struct {
 			Session string `json:"session"`
 		}{}
 		err := json.Unmarshal(resp, &jsonResp)
 		if err != nil {
-			log.Printf("ERROR: unable to parse auth response:%s", err.Error())
-			c.AbortWithError(http.StatusInternalServerError, err)
-			return
+			return fmt.Errorf("invalid auth response: %s", err.Error())
 		}
 		svc.ArchivesSpace.AuthToken = jsonResp.Session
 		svc.ArchivesSpace.ExpiresAt = exp
 	}
-
-	c.Next()
+	return nil
 }
 
 func (svc *ServiceContext) getArchivesSpaceCollectionURIs(c *gin.Context) {

@@ -127,6 +127,11 @@ func (svc *ServiceContext) createBag(js *jobStatus, md *metadata, collectionMD *
 			return "", fmt.Errorf("%s is not a valid archivespoace url", md.ExternalURI)
 		}
 
+		err := svc.validateArchivesSpaceAccessToken()
+		if err != nil {
+			return "", fmt.Errorf("unable to get archivesspace auth token: %s", err.Error())
+		}
+
 		asMetadata, err = svc.getArchivesSpaceMetadata(asURL, md.PID)
 		if err != nil {
 			return "", fmt.Errorf("unable to get archivesspace metadata: %s", err.Error())
