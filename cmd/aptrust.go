@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"runtime/debug"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -114,7 +115,6 @@ func (svc *ServiceContext) submitToAPTrust(c *gin.Context) {
 		}()
 
 		if tgtMD.IsCollection {
-			// TODO... REMOVE THIS?
 			if resubmit {
 				svc.logFatal(js, "Collections cannot be resubmitted")
 				return
@@ -269,7 +269,7 @@ func (svc *ServiceContext) apTrustStatusRequest(c *gin.Context) {
 
 	if md.IsCollection {
 		log.Printf("INFO: metadata %d is a collection; request collection status instead of item", md.ID)
-		collectionResp, err := svc.getAPTrustGroupStatus(md.PID)
+		collectionResp, err := svc.getAPTrustGroupStatus(&md)
 		if err != nil {
 			log.Printf("ERROR: aptrust status request for colection metadata %d failed: %s", md.ID, err.Error())
 			c.String(http.StatusInternalServerError, err.Error())
@@ -295,15 +295,27 @@ func (svc *ServiceContext) apTrustStatusRequest(c *gin.Context) {
 	}
 }
 
-func (svc *ServiceContext) getAPTrustGroupStatus(collecionPID string) ([]apTrustResult, error) {
+func (svc *ServiceContext) getAPTrustGroupStatus(collectionMD *metadata) ([]apTrustResult, error) {
+	// collections are generally grouped by the collection PID. Exception is a collection comprised of ArchivesSpace items.
+	// In this case, the group ID is the MSS identifer of the AS group, which is contained in the title. Format  [MSS ##: title]
+	// Look for this pattern and extract the MSS number.
+	groupID := collectionMD.PID
+	if strings.Index(collectionMD.Title, "MSS") == 0 {
+		mssNum := strings.Split(collectionMD.Title, ":")[0]
+		mssNum = strings.TrimSpace(mssNum)
+		if mssNum != "" {
+			groupID = mssNum
+		}
+	}
+
 	page := 1
 	done := false
 	responseCount := 0
 	statusResp := make([]apTrustResult, 0)
 	var err error
 	for done == false {
-		log.Printf("INFO: request page %d of results for group %s", page, collecionPID)
-		cmd := exec.Command("apt-cmd", "registry", "list", "workitems", fmt.Sprintf("bag_group_identifier=%s", collecionPID),
+		log.Printf("INFO: request page %d of results for group %s - %s", page, collectionMD.PID, collectionMD.Title)
+		cmd := exec.Command("apt-cmd", "registry", "list", "workitems", fmt.Sprintf("bag_group_identifier=%s", groupID),
 			"sort=date_processed__desc", "per_page=1000", fmt.Sprintf("page=%d", page))
 		aptOut, err := cmd.CombinedOutput()
 		if err != nil {
@@ -321,7 +333,7 @@ func (svc *ServiceContext) getAPTrustGroupStatus(collecionPID string) ([]apTrust
 		log.Printf("INFO: %d results from a total of %d received", len(jsonResp.Results), jsonResp.Count)
 		responseCount += len(jsonResp.Results)
 		if responseCount == int(jsonResp.Count) {
-			log.Printf("INFO: all %d responses received for group %s", jsonResp.Count, collecionPID)
+			log.Printf("INFO: all %d responses received for group %s", jsonResp.Count, groupID)
 			done = true
 		} else {
 			log.Printf("INFO: more results remain; increase page number")
@@ -348,7 +360,7 @@ func (svc *ServiceContext) getAPTrustGroupStatus(collecionPID string) ([]apTrust
 		return nil, err
 	}
 
-	log.Printf("INFO: group %s status complete; %d unique items found", collecionPID, len(statusResp))
+	log.Printf("INFO: group %s status complete; %d unique items found", groupID, len(statusResp))
 	return statusResp, nil
 }
 
