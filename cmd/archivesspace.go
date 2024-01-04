@@ -340,10 +340,9 @@ func (svc *ServiceContext) validateArchivesSpaceURL(c *gin.Context) {
 }
 
 func (svc *ServiceContext) publishToArchivesSpace(c *gin.Context) {
-	publishImmediate, _ := strconv.ParseBool(c.Query("immediate"))
 	type pubReqData struct {
-		UserID     string `json:"userID"`
-		MetadataID string `json:"metadataID"`
+		UserID     int64 `json:"userID"`
+		MetadataID int64 `json:"metadataID"`
 	}
 	var req pubReqData
 	err := c.ShouldBindJSON(&req)
@@ -353,18 +352,17 @@ func (svc *ServiceContext) publishToArchivesSpace(c *gin.Context) {
 		return
 	}
 
-	metadataID, _ := strconv.ParseInt(req.MetadataID, 10, 64)
-	js, err := svc.createJobStatus("PublishToAS", "Metadata", metadataID)
+	js, err := svc.createJobStatus("PublishToAS", "Metadata", req.MetadataID)
 	if err != nil {
 		log.Printf("ERROR: unable to create PublishToAS job status: %s", err.Error())
 		c.String(http.StatusInternalServerError, err.Error())
 		return
 	}
-	svc.logInfo(js, fmt.Sprintf("Publish TrackSys metadata %s to ArchivesSpace by staff member %s", req.MetadataID, req.UserID))
+	svc.logInfo(js, fmt.Sprintf("Publish TrackSys metadata %d to ArchivesSpace by staff member %d", req.MetadataID, req.UserID))
 	var tgtMetadata metadata
 	err = svc.GDB.Find(&tgtMetadata, req.MetadataID).Error
 	if err != nil {
-		svc.logFatal(js, fmt.Sprintf("Unable to get metadata %s", req.MetadataID))
+		svc.logFatal(js, fmt.Sprintf("Unable to get metadata %d", req.MetadataID))
 		return
 	}
 
@@ -387,7 +385,7 @@ func (svc *ServiceContext) publishToArchivesSpace(c *gin.Context) {
 		svc.logInfo(js, fmt.Sprintf("%s:%s already has digital object. Nothing more to do.", asURL.ParentType, asURL.ParentID))
 	} else {
 		svc.logInfo(js, fmt.Sprintf("Creating aSpace digital object for  %s", tgtMetadata.PID))
-		err = svc.createDigitalObject(js, asURL.RepositoryID, tgtASObj, &tgtMetadata, publishImmediate)
+		err = svc.createDigitalObject(js, asURL.RepositoryID, tgtASObj, &tgtMetadata)
 		if err != nil {
 			svc.logFatal(js, fmt.Sprintf("Unable to create digital object %s", err.Error()))
 			c.String(http.StatusBadRequest, fmt.Sprintf("Unable to create digital object %s", err.Error()))
@@ -473,7 +471,7 @@ func (svc *ServiceContext) getDigitalObject(js *jobStatus, tgtObj asObjectDetail
 	return nil
 }
 
-func (svc *ServiceContext) createDigitalObject(js *jobStatus, repoID string, tgtObj asObjectDetails, tgtMetadata *metadata, immediatePublish bool) error {
+func (svc *ServiceContext) createDigitalObject(js *jobStatus, repoID string, tgtObj asObjectDetails, tgtMetadata *metadata) error {
 	svc.logInfo(js, fmt.Sprintf("Generate IIIF manifest for metadata %s", tgtMetadata.PID))
 	iiifURL := fmt.Sprintf("%s/pid/%s?refresh=true", svc.IIIF.URL, tgtMetadata.PID)
 	_, errResp := svc.getRequest(iiifURL)
@@ -510,7 +508,7 @@ func (svc *ServiceContext) createDigitalObject(js *jobStatus, repoID string, tgt
 		FileVersions    []doFileVersion `json:"file_versions"`
 	}
 	uri := fmt.Sprintf("%s/pid/%s", svc.IIIF.URL, tgtMetadata.PID)
-	payload := doPayload{DigitalObjectID: tgtMetadata.PID, Title: tgtMetadata.Title, Publish: immediatePublish, FileVersions: make([]doFileVersion, 0)}
+	payload := doPayload{DigitalObjectID: tgtMetadata.PID, Title: tgtMetadata.Title, Publish: true, FileVersions: make([]doFileVersion, 0)}
 	payload.FileVersions = append(payload.FileVersions, doFileVersion{UseStatement: "image-service-manifest", FileURI: uri, Publish: true})
 	resp, asErr := svc.sendASPostRequest(fmt.Sprintf("/repositories/%s/digital_objects", repoID), payload)
 	if asErr != nil {
