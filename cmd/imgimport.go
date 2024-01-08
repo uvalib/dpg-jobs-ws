@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io/ioutil"
 	"log"
 	"math"
 	"net/http"
@@ -12,6 +11,7 @@ import (
 	"os/exec"
 	"path"
 	"path/filepath"
+	"runtime/debug"
 	"strconv"
 	"strings"
 	"sync"
@@ -36,6 +36,9 @@ type jp2Source struct {
 	Path       string
 }
 
+// curl -X POST https://dpg-jobs.lib.virginia.edu/units/799/import -H "Content-Type: application/json" --data '{"from": "archive", "target": "000000799"}'
+// curl -X POST http://localhost:8180/units/799/import -H "Content-Type: application/json" --data '{"from": "archive", "target": "000000799"}'
+
 func (svc *ServiceContext) importGuestImages(c *gin.Context) {
 	unitID, _ := strconv.ParseInt(c.Param("id"), 10, 64)
 	type importReq struct {
@@ -56,7 +59,6 @@ func (svc *ServiceContext) importGuestImages(c *gin.Context) {
 		overwrite = true
 	}
 
-	log.Printf("INFO: import %s from %s to unit %09d", req.Target, req.From, unitID)
 	srcDir := path.Join(svc.ProcessingDir, "guest_dropoff", req.From, req.Target)
 	if req.From == "archive" {
 		srcDir = path.Join(svc.ArchiveDir, req.Target)
@@ -79,133 +81,154 @@ func (svc *ServiceContext) importGuestImages(c *gin.Context) {
 		return
 	}
 
-	cnt := 0
-	badSequenceNum := false
-	err = filepath.Walk(srcDir, func(fullPath string, entry os.FileInfo, err error) error {
-		if err != nil || entry.IsDir() {
-			return nil
-		}
-		ext := filepath.Ext(entry.Name())
-		if ext != ".tif" {
-			return nil
-		}
-		if strings.Index(entry.Name(), "._") == 0 {
-			// some guest directories have macOS temp files that start with ._
-			// the need to be skipped
-			return nil
-		}
-
-		tifFile := tifInfo{path: fullPath, filename: entry.Name(), size: entry.Size()}
-		log.Printf("INFO: import %s", tifFile.path)
-
-		// be sure the filename is xxxx_sequence.tif.
-		if req.From != "download" {
-			test := strings.Split(strings.TrimSuffix(entry.Name(), ".tif"), "_")
-			if len(test) == 1 {
-				log.Printf("INFO: %s is missing sequence number, import and add staff note to unit", fullPath)
-				badSequenceNum = true
-			}
-			seqStr := test[len(test)-1]
-			seq, _ := strconv.Atoi(seqStr)
-			if seq == 0 {
-				log.Printf("INFO: %s has invalid sequence number %s, import and add staff note to unit", fullPath, seqStr)
-				badSequenceNum = true
-			}
-		}
-
-		newMF, err := svc.loadMasterFile(entry.Name())
-		if err != nil {
-			log.Printf("ERROR: unable to load masterfile %s: %s", entry.Name(), err.Error())
-			return err
-		}
-
-		if newMF.ID == 0 {
-			log.Printf("INFO: create guest masterfile %s", entry.Name())
-			newMD5 := md5Checksum(tifFile.path)
-			newMF = &masterFile{UnitID: unitID, Filename: tifFile.filename, Filesize: tifFile.size, MD5: newMD5}
-			err = svc.GDB.Create(&newMF).Error
-			if err != nil {
-				log.Printf("ERROR: unable to create masterfile %s: %s", entry.Name(), err.Error())
-				return err
-			}
-		} else {
-			log.Printf("INFO: master file %s already exists", tifFile.filename)
-			if newMF.PID == "" {
-				newMF.PID = fmt.Sprintf("tsm:%d", newMF.ID)
-				svc.GDB.Model(&newMF).Select("PID").Updates(newMF)
-			}
-		}
-
-		if newMF.ImageTechMeta.ID == 0 || overwrite {
-			if newMF.ImageTechMeta.ID != 0 {
-				log.Printf("INFO: overwite existing image tech metadata")
-				err = svc.GDB.Delete(&newMF.ImageTechMeta).Error
-				if err != nil {
-					log.Printf("WARNING: unable to delete existing tech metadata record %d: %s", newMF.ImageTechMeta.ID, err.Error())
-				}
-			}
-			err = svc.createImageTechMetadata(newMF, tifFile.path)
-			if err != nil {
-				log.Printf("ERROR: unable to create image tech metadata: %s", err.Error())
-			}
-		}
-
-		if newMF.ImageTechMeta.Width == 0 || newMF.ImageTechMeta.Height == 0 {
-			log.Printf("ERROR: %s has invalid tech metdata and is likely corrupt; skipping further processing", newMF.PID)
-			return nil
-		}
-
-		colorTest := strings.TrimSpace(newMF.ImageTechMeta.ColorSpace)
-		if colorTest == "CMYK" {
-			log.Printf("ERROR: %s has unsupported colorspace %s; skipping further processing", newMF.PID, colorTest)
-			return nil
-		}
-
-		err = svc.publishToIIIF(nil, newMF, tifFile.path, overwrite)
-		if err != nil {
-			return fmt.Errorf("IIIF publish failed: %s", err.Error())
-		}
-
-		if req.From == "archive" {
-			if newMF.DateArchived == nil {
-				log.Printf("INFO: update date archived for %s", newMF.Filename)
-				newMF.DateArchived = tgtUnit.DateArchived
-				if newMF.DateArchived == nil {
-					now := time.Now()
-					newMF.DateArchived = &now
-				}
-				err = svc.GDB.Model(newMF).Select("DateArchived").Updates(*newMF).Error
-				if err != nil {
-					log.Printf("WARNING: unable to set date archived for master file %d:%s", newMF.ID, err.Error())
-				}
-			}
-		} else if newMF.DateArchived == nil {
-			archiveMD5, err := svc.archiveFineArtsFile(tifFile.path, req.Target, newMF)
-			if err != nil {
-				return fmt.Errorf("Archive failed: %s", err.Error())
-			}
-			if archiveMD5 != newMF.MD5 {
-				log.Printf("WARNING: archived MD5 does not match source MD5 for %s", newMF.Filename)
-			}
-		}
-		cnt++
-
-		return nil
-	})
-
+	js, err := svc.createJobStatus("IngestUnitImages", "Unit", unitID)
 	if err != nil {
-		c.String(http.StatusBadRequest, err.Error())
+		log.Printf("ERROR: unable to create IngestUnitImages job status: %s", err.Error())
+		c.String(http.StatusInternalServerError, err.Error())
 		return
 	}
+	svc.logInfo(js, fmt.Sprintf("import images for unit %d from %s directory %s", unitID, req.From, srcDir))
 
-	log.Printf("INFO: %d masterfiles processed", cnt)
-	tgtUnit.UnitStatus = "done"
-	if badSequenceNum {
-		tgtUnit.StaffNotes += fmt.Sprintf("Archive: %s", req.Target)
-	}
-	svc.GDB.Model(&tgtUnit).Select("UnitStatus", "StaffNotes").Updates(tgtUnit)
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				svc.logFatal(js, fmt.Sprintf("fatal error while ingesting images: %v", r))
+				log.Printf("ERROR: Panic recovered during guest image ingest: %v", r)
+				debug.PrintStack()
+			}
+		}()
 
-	c.String(http.StatusOK, fmt.Sprintf("%d masterfiles processed", cnt))
+		cnt := 0
+		badSequenceNum := false
+		err = filepath.Walk(srcDir, func(fullPath string, entry os.FileInfo, err error) error {
+			if err != nil || entry.IsDir() {
+				return nil
+			}
+			ext := filepath.Ext(entry.Name())
+			if ext != ".tif" {
+				return nil
+			}
+			if strings.Index(entry.Name(), "._") == 0 {
+				// some guest directories have macOS temp files that start with ._
+				// the need to be skipped
+				return nil
+			}
+
+			tifFile := tifInfo{path: fullPath, filename: entry.Name(), size: entry.Size()}
+			svc.logInfo(js, fmt.Sprintf("ingest %s", tifFile.path))
+
+			// be sure the filename is xxxx_sequence.tif.
+			if req.From != "download" {
+				test := strings.Split(strings.TrimSuffix(entry.Name(), ".tif"), "_")
+				if len(test) == 1 {
+					svc.logInfo(js, fmt.Sprintf("%s is missing sequence number, import and add staff note to unit", fullPath))
+					badSequenceNum = true
+				}
+				seqStr := test[len(test)-1]
+				seq, _ := strconv.Atoi(seqStr)
+				if seq == 0 {
+					svc.logInfo(js, fmt.Sprintf("%s has invalid sequence number %s, import and add staff note to unit", fullPath, seqStr))
+					badSequenceNum = true
+				}
+			}
+
+			newMF, err := svc.loadMasterFile(entry.Name())
+			if err != nil {
+				svc.logError(js, fmt.Sprintf("unable to load masterfile %s: %s", entry.Name(), err.Error()))
+				return err
+			}
+
+			if newMF.ID == 0 {
+				svc.logInfo(js, fmt.Sprintf("create guest masterfile %s", entry.Name()))
+				newMD5 := md5Checksum(tifFile.path)
+				newMF = &masterFile{UnitID: unitID, Filename: tifFile.filename, Filesize: tifFile.size, MD5: newMD5}
+				err = svc.GDB.Create(&newMF).Error
+				if err != nil {
+					svc.logError(js, fmt.Sprintf("unable to create masterfile %s: %s", entry.Name(), err.Error()))
+					return err
+				}
+			} else {
+				svc.logInfo(js, fmt.Sprintf("master file %s already exists", tifFile.filename))
+				if newMF.PID == "" {
+					newMF.PID = fmt.Sprintf("tsm:%d", newMF.ID)
+					svc.GDB.Model(&newMF).Select("PID").Updates(newMF)
+				}
+			}
+
+			if newMF.ImageTechMeta.ID == 0 || overwrite {
+				if newMF.ImageTechMeta.ID != 0 {
+					svc.logInfo(js, fmt.Sprintf("overwite existing image tech metadata"))
+					err = svc.GDB.Delete(&newMF.ImageTechMeta).Error
+					if err != nil {
+						svc.logError(js, fmt.Sprintf("unable to delete existing tech metadata record %d: %s", newMF.ImageTechMeta.ID, err.Error()))
+					}
+				}
+				err = svc.createImageTechMetadata(newMF, tifFile.path)
+				if err != nil {
+					svc.logError(js, fmt.Sprintf("unable to create image tech metadata: %s", err.Error()))
+				}
+			}
+
+			if newMF.ImageTechMeta.Width == 0 || newMF.ImageTechMeta.Height == 0 {
+				svc.logError(js, fmt.Sprintf("%s has invalid tech metdata and is likely corrupt; skipping further processing", newMF.PID))
+				return nil
+			}
+
+			colorTest := strings.TrimSpace(newMF.ImageTechMeta.ColorSpace)
+			if colorTest == "CMYK" {
+				svc.logError(js, fmt.Sprintf("%s has unsupported colorspace %s; skipping further processing", newMF.PID, colorTest))
+				return nil
+			}
+
+			err = svc.publishToIIIF(nil, newMF, tifFile.path, overwrite)
+			if err != nil {
+				svc.logError(js, fmt.Sprintf("IIIF publish failed: %s", err.Error()))
+				return nil
+			}
+
+			if req.From == "archive" {
+				if newMF.DateArchived == nil {
+					svc.logInfo(js, fmt.Sprintf("update date archived for %s", newMF.Filename))
+					newMF.DateArchived = tgtUnit.DateArchived
+					if newMF.DateArchived == nil {
+						now := time.Now()
+						newMF.DateArchived = &now
+					}
+					err = svc.GDB.Model(newMF).Select("DateArchived").Updates(*newMF).Error
+					if err != nil {
+						svc.logError(js, fmt.Sprintf("unable to set date archived for master file %d:%s", newMF.ID, err.Error()))
+					}
+				}
+			} else if newMF.DateArchived == nil {
+				archiveMD5, err := svc.archiveFineArtsFile(tifFile.path, req.Target, newMF)
+				if err != nil {
+					svc.logError(js, fmt.Sprintf("archive failed: %s", err.Error()))
+					return nil
+				}
+				if archiveMD5 != newMF.MD5 {
+					svc.logError(js, fmt.Sprintf("archived MD5 does not match source MD5 for %s", newMF.Filename))
+				}
+			}
+			cnt++
+
+			return nil
+		})
+
+		if err != nil {
+			svc.logFatal(js, err.Error())
+		} else {
+			svc.logInfo(js, fmt.Sprintf("%d masterfiles processed", cnt))
+			tgtUnit.UnitStatus = "done"
+			if badSequenceNum {
+				tgtUnit.StaffNotes += fmt.Sprintf("Archive: %s", req.Target)
+			}
+			svc.GDB.Model(&tgtUnit).Select("UnitStatus", "StaffNotes").Updates(tgtUnit)
+
+			svc.jobDone(js)
+		}
+	}()
+
+	c.String(http.StatusOK, "ingest has started")
 }
 
 func (svc *ServiceContext) importImages(js *jobStatus, tgtUnit *unit, srcDir string) error {
@@ -481,7 +504,7 @@ func (svc *ServiceContext) findOrCreateLocation(js *jobStatus, mdID int64, ctID 
 			ContainerID: box, FolderID: folder}
 		notesFile := path.Join(baseDir, "notes.txt")
 		if pathExists(notesFile) {
-			bytes, err := ioutil.ReadFile(notesFile)
+			bytes, err := os.ReadFile(notesFile)
 			if err != nil {
 				svc.logError(js, fmt.Sprintf("Unable to read location notes file: %s", err.Error()))
 			} else {
