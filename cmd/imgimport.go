@@ -141,7 +141,7 @@ func (svc *ServiceContext) importGuestImages(c *gin.Context) {
 			if newMF.ID == 0 {
 				svc.logInfo(js, fmt.Sprintf("create guest masterfile %s", entry.Name()))
 				newMD5 := md5Checksum(tifFile.path)
-				newMF = &masterFile{UnitID: unitID, Filename: tifFile.filename, Filesize: tifFile.size, MD5: newMD5}
+				newMF = &masterFile{UnitID: unitID, Filename: tifFile.filename, Filesize: tifFile.size, MD5: newMD5, MetadataID: tgtUnit.MetadataID}
 				err = svc.GDB.Create(&newMF).Error
 				if err != nil {
 					svc.logError(js, fmt.Sprintf("unable to create masterfile %s: %s", entry.Name(), err.Error()))
