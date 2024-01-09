@@ -104,8 +104,10 @@ func (svc *ServiceContext) importGuestImages(c *gin.Context) {
 			if err != nil || entry.IsDir() {
 				return nil
 			}
+
+			// Grab the file extension - including the dot
 			ext := filepath.Ext(entry.Name())
-			if ext != ".tif" {
+			if strings.ToLower(ext) != ".tif" {
 				return nil
 			}
 			if strings.Index(entry.Name(), "._") == 0 {
@@ -119,7 +121,7 @@ func (svc *ServiceContext) importGuestImages(c *gin.Context) {
 
 			// be sure the filename is xxxx_sequence.tif.
 			if req.From != "download" {
-				test := strings.Split(strings.TrimSuffix(entry.Name(), ".tif"), "_")
+				test := strings.Split(strings.TrimSuffix(entry.Name(), ext), "_")
 				if len(test) == 1 {
 					svc.logInfo(js, fmt.Sprintf("%s is missing sequence number, import and add staff note to unit", fullPath))
 					badSequenceNum = true
