@@ -40,7 +40,7 @@ func (svc *ServiceContext) publishToIIIF(js *jobStatus, mf *masterFile, srcPath 
 	}
 
 	if overwrite == false && iiifExist {
-		svc.logInfo(js, fmt.Sprintf("MasterFile %s already has JP2k file at S3:%s; skipping creation", mf.PID, svc.IIIF.Bucket, jp2kInfo.S3Key()))
+		svc.logInfo(js, fmt.Sprintf("MasterFile %s already has JP2k file at S3: %s; skipping creation", mf.PID, jp2kInfo.S3Key()))
 		return nil
 	}
 
@@ -48,7 +48,7 @@ func (svc *ServiceContext) publishToIIIF(js *jobStatus, mf *masterFile, srcPath 
 		svc.logInfo(js, fmt.Sprintf("Master file %s is already jp2; send directly to IIIF staging: %s", mf.PID, jp2kInfo.StagePath))
 		copyFile(srcPath, jp2kInfo.StagePath, 0664)
 	} else if fileType == "tiff" {
-		svc.logInfo(js, fmt.Sprintf("Compressing %s to %s using imagemagick...", srcPath))
+		svc.logInfo(js, fmt.Sprintf("Compressing %s to %s using imagemagick...", srcPath, jp2kInfo.StagePath))
 		rawFileInfo, _ := os.Stat(srcPath)
 		firstPage := fmt.Sprintf("%s[0]", srcPath) // need the [0] as some tifs have multiple pages. only want the first.
 		cmdArray := []string{firstPage, "-define", "jp2:rate=50 jp2:progression-order=RPCL jp2:number-resolutions=7", jp2kInfo.StagePath}
