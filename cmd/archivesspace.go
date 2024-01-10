@@ -473,14 +473,14 @@ func (svc *ServiceContext) getDigitalObject(js *jobStatus, tgtObj asObjectDetail
 
 func (svc *ServiceContext) createDigitalObject(js *jobStatus, repoID string, tgtObj asObjectDetails, tgtMetadata *metadata) error {
 	svc.logInfo(js, fmt.Sprintf("Generate IIIF manifest for metadata %s", tgtMetadata.PID))
-	iiifURL := fmt.Sprintf("%s/pid/%s?refresh=true", svc.IIIF.URL, tgtMetadata.PID)
+	iiifURL := fmt.Sprintf("%s/pid/%s?refresh=true", svc.IIIF.ManifestURL, tgtMetadata.PID)
 	_, errResp := svc.getRequest(iiifURL)
 	if errResp != nil {
 		return fmt.Errorf("Unable to generate IIIF manifest: %d: %s", errResp.StatusCode, errResp.Message)
 	}
 
 	svc.logInfo(js, "IIIF manifest successfully generated, get cached manifest URL")
-	iiifURL = fmt.Sprintf("%s/pid/%s/exist", svc.IIIF.URL, tgtMetadata.PID)
+	iiifURL = fmt.Sprintf("%s/pid/%s/exist", svc.IIIF.ManifestURL, tgtMetadata.PID)
 	bytes, iiifErr := svc.getRequest(iiifURL)
 	if iiifErr != nil {
 		return fmt.Errorf("Unable to get IIIF manifest for %s: %d%s", tgtMetadata.PID, iiifErr.StatusCode, iiifErr.Message)
@@ -507,7 +507,7 @@ func (svc *ServiceContext) createDigitalObject(js *jobStatus, repoID string, tgt
 		Publish         bool            `json:"publish"`
 		FileVersions    []doFileVersion `json:"file_versions"`
 	}
-	uri := fmt.Sprintf("%s/pid/%s", svc.IIIF.URL, tgtMetadata.PID)
+	uri := fmt.Sprintf("%s/pid/%s", svc.IIIF.ManifestURL, tgtMetadata.PID)
 	payload := doPayload{DigitalObjectID: tgtMetadata.PID, Title: tgtMetadata.Title, Publish: true, FileVersions: make([]doFileVersion, 0)}
 	payload.FileVersions = append(payload.FileVersions, doFileVersion{UseStatement: "image-service-manifest", FileURI: uri, Publish: true})
 	resp, asErr := svc.sendASPostRequest(fmt.Sprintf("/repositories/%s/digital_objects", repoID), payload)

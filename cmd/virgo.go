@@ -120,7 +120,7 @@ func (svc *ServiceContext) publishXMLToVirgo(js *jobStatus, xmlMetadata *metadat
 	svc.logInfo(js, fmt.Sprintf("%d masterfiles from unit %d will be published to DL", len(tgtMasterFiles), tgtUnit.ID))
 
 	// be sure there is a current IIIF manifest by forcing a regenerate
-	iiifURL := fmt.Sprintf("%s/pid/%s?refresh=true", svc.IIIF.URL, xmlMetadata.PID)
+	iiifURL := fmt.Sprintf("%s/pid/%s?refresh=true", svc.IIIF.ManifestURL, xmlMetadata.PID)
 	svc.logInfo(js, fmt.Sprintf("Generating IIIF manifest with %s", iiifURL))
 	_, errResp := svc.getRequest(iiifURL)
 	if errResp != nil {
@@ -219,7 +219,7 @@ func (svc *ServiceContext) publishSirsiToVirgo(js *jobStatus, sirsiMetadata *met
 	svc.logInfo(js, fmt.Sprintf("Unit %d will be published to DL", tgtUnit.ID))
 
 	// be sure there is a current IIIF manifest by forcing a regenerate
-	iiifURL := fmt.Sprintf("%s/pid/%s?refresh=true", svc.IIIF.URL, tgtUnit.Metadata.PID)
+	iiifURL := fmt.Sprintf("%s/pid/%s?refresh=true", svc.IIIF.ManifestURL, tgtUnit.Metadata.PID)
 	svc.logInfo(js, fmt.Sprintf("Generating IIIF manifest with %s", iiifURL))
 	_, errResp := svc.getRequest(iiifURL)
 	if errResp != nil {
