@@ -273,13 +273,17 @@ func (svc *ServiceContext) performAudit(mf *auditItem) (*masterFileAudit, error)
 		}
 	}
 
-	// FIXME
-	// jp2kInfo := svc.iiifPath(mf.PID)
+	jp2kInfo := svc.iiifPath(mf.PID)
 	auditRec.IIIFExists = true
-	// if pathExists(jp2kInfo.absolutePath) == false {
-	// 	auditRec.IIIFExists = false
-	// 	// log.Printf("WARNING: master file %d audit finds no iiif file", mf.ID)
-	// }
+	iiifExist, err := svc.iiifExists(jp2kInfo)
+	if err != nil {
+		log.Printf("ERROR: call to check for iiif file failed: %s", err.Error())
+	} else {
+		if iiifExist == false {
+			auditRec.IIIFExists = false
+			// log.Printf("WARNING: master file %d audit finds no iiif file", mf.ID)
+		}
+	}
 
 	// if the ID is zero, no record was found and this is the first audit. Create a rec
 	if auditRec.ID == 0 {
