@@ -86,6 +86,7 @@ func main() {
 
 	router.POST("/masterfiles/:id/deaccession", svc.deaccessionMasterFile)
 	router.POST("/masterfiles/:id/iiif", svc.updateMasterFileIIIF)
+	router.DELETE("/masterfiles/:id/iiif", svc.deleteMasterFileIIIF)
 	router.POST("/masterfiles/:id/sensitive", svc.setMasterFileSensitive)
 	router.DELETE("/masterfiles/:id/sensitive", svc.clearMasterFileSensitive)
 	router.GET("/masterfiles/:id/full_resolution", svc.getFullResolutionJP2)

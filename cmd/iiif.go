@@ -39,9 +39,13 @@ func (svc *ServiceContext) publishToIIIF(js *jobStatus, mf *masterFile, srcPath 
 		return fmt.Errorf("unable to check for existance of for %s: %s", mf.PID, err.Error())
 	}
 
-	if overwrite == false && iiifExist {
-		svc.logInfo(js, fmt.Sprintf("MasterFile %s already has JP2k file at S3: %s; skipping creation", mf.PID, jp2kInfo.S3Key()))
-		return nil
+	if iiifExist {
+		svc.logInfo(js, fmt.Sprintf("MasterFile %s already has a JP2k file on S3: %s/%s", mf.PID, svc.IIIF.Bucket, jp2kInfo.S3Key()))
+		if overwrite == false {
+			svc.logInfo(js, "Overwrite not requested; nothing more to do")
+			return nil
+		}
+		svc.logInfo(js, "Existing file will be overwritten")
 	}
 
 	if fileType == "jp2" {
@@ -63,7 +67,7 @@ func (svc *ServiceContext) publishToIIIF(js *jobStatus, mf *masterFile, srcPath 
 		svc.logInfo(js, fmt.Sprintf("...compression complete; tif size %.2fM, elapsed time %.2f seconds", float64(rawFileInfo.Size())/1000000.0, elapsed.Seconds()))
 	}
 
-	svc.logInfo(js, fmt.Sprintf("Upload staged  jp2 file %s to S3 IIIF bucket %s", jp2kInfo.StagePath, svc.IIIF.Bucket))
+	svc.logInfo(js, fmt.Sprintf("Upload staged  jp2 file %s to S3 IIIF bucket %s:%s", jp2kInfo.StagePath, svc.IIIF.Bucket, jp2kInfo.S3Key()))
 	err = svc.uploadToS3(jp2kInfo)
 
 	svc.logInfo(js, fmt.Sprintf("%s has been published to IIIF", mf.PID))

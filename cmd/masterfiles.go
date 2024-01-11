@@ -540,6 +540,27 @@ func (svc *ServiceContext) updateMasterFileTechMetadata(c *gin.Context) {
 	c.String(http.StatusOK, "updated")
 }
 
+func (svc *ServiceContext) deleteMasterFileIIIF(c *gin.Context) {
+	mfID, _ := strconv.ParseInt(c.Param("id"), 10, 64)
+	js, err := svc.createJobStatus("DeleteIIIF", "MasterFile", mfID)
+	if err != nil {
+		log.Printf("ERROR: unable to create DeleteIIIF job status: %s", err.Error())
+		c.String(http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	var tgtMF masterFile
+	err = svc.GDB.Preload("ImageTechMeta").First(&tgtMF, mfID).Error
+	if err != nil {
+		svc.logFatal(js, fmt.Sprintf("Unable to load master file %d: %s", mfID, err.Error()))
+		c.String(http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	svc.unpublishIIIF(js, &tgtMF)
+	svc.jobDone(js)
+}
+
 func (svc *ServiceContext) updateMasterFileIIIF(c *gin.Context) {
 	mfID, _ := strconv.ParseInt(c.Param("id"), 10, 64)
 	js, err := svc.createJobStatus("UpdateIIIF", "MasterFile", mfID)
