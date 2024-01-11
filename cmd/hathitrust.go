@@ -512,52 +512,44 @@ func (svc *ServiceContext) createHathiTrustPackage(c *gin.Context) {
 			checksumFile.WriteString(fmt.Sprintf("%s  meta.yml\n", ymlMD5))
 
 			masterFileError := false
-			// FIXME
-			// for idx, mf := range masterFiles {
-			// // copy jp2 to assembly directory, then add it to the zip
-			// destFN := fmt.Sprintf("%08d.jp2", (idx + 1))
-			// jp2kInfo := svc.iiifPath(mf.PID)
-			// if pathExists(jp2kInfo.absolutePath) == false {
-			// 	svc.logFatal(js, fmt.Sprintf("MasterFile %s:%s is missing JP2 derivative %s", mf.PID, mf.Filename, jp2kInfo.absolutePath))
-			// 	masterFileError = true
-			// 	break
-			// }
+			for idx, mf := range masterFiles {
+				// download jp2 from iiif to assembly directory, then add it to the zip
+				destFN := fmt.Sprintf("%08d.jp2", (idx + 1))
+				destPath := path.Join(assembleDir, destFN)
+				err = svc.downlodFromIIIF(js, &mf, destPath)
+				if err != nil {
+					svc.logFatal(js, fmt.Sprintf("Unable to downlaod masterFile %s:%s from IIIF: %s", mf.PID, mf.Filename, err.Error()))
+					masterFileError = true
+					break
+				}
 
-			// destPath := path.Join(assembleDir, destFN)
-			// err = copyJP2(jp2kInfo.absolutePath, destPath)
-			// if err != nil {
-			// 	svc.logError(js, fmt.Sprintf("Unable to copy %s to %s %s", jp2kInfo.absolutePath, destPath, err.Error()))
-			// 	masterFileError = true
-			// 	break
-			// }
+				_, err := addFileToZip(packageFilename, zipWriter, assembleDir, destFN)
+				if err != nil {
+					svc.logError(js, fmt.Sprintf("Unable to add %s to zip file: %s", destPath, err.Error()))
+					masterFileError = true
+					break
+				}
+				checksumFile.WriteString(fmt.Sprintf("%s  %s\n", md5Checksum(destPath), destFN))
 
-			// _, err := addFileToZip(packageFilename, zipWriter, assembleDir, destFN)
-			// if err != nil {
-			// 	svc.logError(js, fmt.Sprintf("Unable to add %s to zip file: %s", destPath, err.Error()))
-			// 	masterFileError = true
-			// 	break
-			// }
-			// checksumFile.WriteString(fmt.Sprintf("%s  %s\n", md5Checksum(destPath), destFN))
-
-			// // if applicable, copy ocr text to the package dir. make the name match the image name
-			// if md.OcrHint.OcrCandidate {
-			// 	txtFileName := fmt.Sprintf("%08d.txt", (idx + 1))
-			// 	destTxtPath := path.Join(assembleDir, txtFileName)
-			// 	err = os.WriteFile(destTxtPath, []byte(mf.TranscriptionText), 0666)
-			// 	if err != nil {
-			// 		svc.logError(js, fmt.Sprintf("Unable to write OCR text to %s %s", destTxtPath, err.Error()))
-			// 		masterFileError = true
-			// 		break
-			// 	}
-			// 	_, err := addFileToZip(packageFilename, zipWriter, assembleDir, txtFileName)
-			// 	if err != nil {
-			// 		svc.logError(js, fmt.Sprintf("Unable to add %s to zip file: %s", destTxtPath, err.Error()))
-			// 		masterFileError = true
-			// 		break
-			// 	}
-			// 	checksumFile.WriteString(fmt.Sprintf("%s  %s\n", md5Checksum(destTxtPath), txtFileName))
-			// }
-			// }
+				// if applicable, copy ocr text to the package dir. make the name match the image name
+				if md.OcrHint.OcrCandidate {
+					txtFileName := fmt.Sprintf("%08d.txt", (idx + 1))
+					destTxtPath := path.Join(assembleDir, txtFileName)
+					err = os.WriteFile(destTxtPath, []byte(mf.TranscriptionText), 0666)
+					if err != nil {
+						svc.logError(js, fmt.Sprintf("Unable to write OCR text to %s %s", destTxtPath, err.Error()))
+						masterFileError = true
+						break
+					}
+					_, err := addFileToZip(packageFilename, zipWriter, assembleDir, txtFileName)
+					if err != nil {
+						svc.logError(js, fmt.Sprintf("Unable to add %s to zip file: %s", destTxtPath, err.Error()))
+						masterFileError = true
+						break
+					}
+					checksumFile.WriteString(fmt.Sprintf("%s  %s\n", md5Checksum(destTxtPath), txtFileName))
+				}
+			}
 
 			if masterFileError {
 				continue

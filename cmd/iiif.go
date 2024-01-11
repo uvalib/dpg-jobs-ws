@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path"
@@ -103,6 +104,34 @@ func (svc *ServiceContext) iiifExists(iiifInfo iiifPathInfo) (bool, error) {
 		return false, nil
 	}
 	return true, nil
+}
+
+func (svc *ServiceContext) downlodFromIIIF(js *jobStatus, mf *masterFile, destFileName string) error {
+	iiifInfo := svc.iiifPath(mf.PID)
+	svc.logInfo(js, fmt.Sprintf("Download masterfile %s from IIIF %s", mf.PID, iiifInfo.S3Key()))
+	resp, err := svc.IIIF.S3Client.GetObject(context.TODO(), &s3.GetObjectInput{
+		Bucket: aws.String(svc.IIIF.Bucket),
+		Key:    aws.String(iiifInfo.S3Key()),
+	})
+	if err != nil {
+		return fmt.Errorf("unable to get %s from iiif: %s", iiifInfo.S3Key(), err.Error())
+	}
+
+	defer resp.Body.Close()
+	destFile, err := os.Create(destFileName)
+	if err != nil {
+		return fmt.Errorf("unable to create destination %s for iiif download: %s", destFileName, err.Error())
+	}
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("unable to read image data from %s: %s", iiifInfo.S3Key(), err.Error())
+	}
+	_, err = destFile.Write(body)
+	if err != nil {
+		return fmt.Errorf("unable to write image data from %s to %s: %s", iiifInfo.S3Key(), destFileName, err.Error())
+	}
+	svc.logInfo(js, fmt.Sprintf("Masterfile %s downloaded from IIIF %s to %s", mf.PID, iiifInfo.S3Key(), destFileName))
+	return nil
 }
 
 func (svc *ServiceContext) unpublishIIIF(js *jobStatus, mf *masterFile) {
