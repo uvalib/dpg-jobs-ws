@@ -69,22 +69,24 @@ func (svc *ServiceContext) publishToIIIF(js *jobStatus, mf *masterFile, srcPath 
 	}
 
 	svc.logInfo(js, fmt.Sprintf("Upload staged  jp2 file %s to S3 IIIF bucket %s:%s", jp2kInfo.StagePath, svc.IIIF.Bucket, jp2kInfo.S3Key()))
-	err = svc.uploadToS3(jp2kInfo)
+	err = svc.uploadToIIIF(jp2kInfo.StagePath, jp2kInfo.S3Key())
 
 	svc.logInfo(js, fmt.Sprintf("%s has been published to IIIF", mf.PID))
 	return nil
 }
-func (svc *ServiceContext) uploadToS3(iiifInfo iiifPathInfo) error {
-	// NOTE: the JP2 files are small so no need to use the large object put options
-	jp2File, err := os.Open(iiifInfo.StagePath)
+
+func (svc *ServiceContext) uploadToIIIF(srcPath string, s3Key string) error {
+	jp2File, err := os.Open(srcPath)
 	if err != nil {
 		return err
 	}
+
 	_, err = svc.IIIF.S3Client.PutObject(context.TODO(), &s3.PutObjectInput{
 		Bucket: aws.String(svc.IIIF.Bucket),
-		Key:    aws.String(iiifInfo.S3Key()),
+		Key:    aws.String(s3Key),
 		Body:   jp2File,
 	})
+
 	if err != nil {
 		return err
 	}
@@ -106,15 +108,14 @@ func (svc *ServiceContext) iiifExists(iiifInfo iiifPathInfo) (bool, error) {
 	return true, nil
 }
 
-func (svc *ServiceContext) downlodFromIIIF(js *jobStatus, mf *masterFile, destFileName string) error {
-	iiifInfo := svc.iiifPath(mf.PID)
-	svc.logInfo(js, fmt.Sprintf("Download masterfile %s from IIIF %s", mf.PID, iiifInfo.S3Key()))
+func (svc *ServiceContext) downlodFromIIIF(js *jobStatus, s3Key string, destFileName string) error {
+	svc.logInfo(js, fmt.Sprintf("Download masterfile %s from IIIF to %s", s3Key, destFileName))
 	resp, err := svc.IIIF.S3Client.GetObject(context.TODO(), &s3.GetObjectInput{
 		Bucket: aws.String(svc.IIIF.Bucket),
-		Key:    aws.String(iiifInfo.S3Key()),
+		Key:    aws.String(s3Key),
 	})
 	if err != nil {
-		return fmt.Errorf("unable to get %s from iiif: %s", iiifInfo.S3Key(), err.Error())
+		return err
 	}
 
 	defer resp.Body.Close()
@@ -124,28 +125,28 @@ func (svc *ServiceContext) downlodFromIIIF(js *jobStatus, mf *masterFile, destFi
 	}
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return fmt.Errorf("unable to read image data from %s: %s", iiifInfo.S3Key(), err.Error())
+		return fmt.Errorf("unable to read image data from %s: %s", s3Key, err.Error())
 	}
 	_, err = destFile.Write(body)
 	if err != nil {
-		return fmt.Errorf("unable to write image data from %s to %s: %s", iiifInfo.S3Key(), destFileName, err.Error())
+		return fmt.Errorf("unable to write image data from %s to %s: %s", s3Key, destFileName, err.Error())
 	}
-	svc.logInfo(js, fmt.Sprintf("Masterfile %s downloaded from IIIF %s to %s", mf.PID, iiifInfo.S3Key(), destFileName))
+	svc.logInfo(js, fmt.Sprintf("Masterfile %s downloaded from IIIF to %s", s3Key, destFileName))
 	return nil
 }
 
-func (svc *ServiceContext) unpublishIIIF(js *jobStatus, mf *masterFile) {
-	iiifInfo := svc.iiifPath(mf.PID)
-	svc.logInfo(js, fmt.Sprintf("Removing masterfile %s published to IIIF %s", mf.PID, iiifInfo.S3Key()))
+func (svc *ServiceContext) unpublishIIIF(js *jobStatus, s3Key string) error {
+	svc.logInfo(js, fmt.Sprintf("Removing masterfile published to IIIF as %s", s3Key))
 	var objectIds []types.ObjectIdentifier
-	objectIds = append(objectIds, types.ObjectIdentifier{Key: aws.String(iiifInfo.S3Key())})
+	objectIds = append(objectIds, types.ObjectIdentifier{Key: aws.String(s3Key)})
 	_, err := svc.IIIF.S3Client.DeleteObjects(context.TODO(), &s3.DeleteObjectsInput{
 		Bucket: aws.String(svc.IIIF.Bucket),
 		Delete: &types.Delete{Objects: objectIds},
 	})
 	if err != nil {
-		svc.logError(js, fmt.Sprintf("unable to delete %s: %s", mf.PID, err.Error()))
+		return err
 	}
+	return nil
 }
 
 func (svc *ServiceContext) iiifPath(mfPID string) iiifPathInfo {

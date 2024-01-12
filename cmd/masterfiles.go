@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"os/exec"
 	"path"
 	"sort"
 	"strconv"
@@ -284,7 +285,12 @@ func (svc *ServiceContext) deleteMasterFiles(c *gin.Context) {
 			svc.logInfo(js, fmt.Sprintf("Delete %s", mf.Filename))
 			if mf.OriginalMfID == nil && mf.DeaccessionedAt == nil {
 				svc.removeArchive(js, unitID, mf.Filename)
-				svc.unpublishIIIF(js, &mf)
+
+				iiifInfo := svc.iiifPath(mf.PID)
+				err = svc.unpublishIIIF(js, iiifInfo.S3Key())
+				if err != nil {
+					svc.logError(js, fmt.Sprintf("Unable to unpublish IIIF resource for master file %d: %s", mf.ID, err.Error()))
+				}
 			} else {
 				// clone
 				clonedFile := path.Join(svc.ProcessingDir, "finalization", unitDir, mf.Filename)
@@ -557,8 +563,15 @@ func (svc *ServiceContext) deleteMasterFileIIIF(c *gin.Context) {
 		return
 	}
 
-	svc.unpublishIIIF(js, &tgtMF)
+	iiifInfo := svc.iiifPath(tgtMF.PID)
+	err = svc.unpublishIIIF(js, iiifInfo.S3Key())
+	if err != nil {
+		svc.logFatal(js, fmt.Sprintf("Unable to unpublish IIIF resource: %s", err.Error()))
+		c.String(http.StatusInternalServerError, err.Error())
+		return
+	}
 	svc.jobDone(js)
+	c.String(http.StatusOK, "ok")
 }
 
 func (svc *ServiceContext) updateMasterFileIIIF(c *gin.Context) {
@@ -676,7 +689,11 @@ func (svc *ServiceContext) deaccessionMasterFile(c *gin.Context) {
 	}
 
 	svc.removeArchive(js, mf.UnitID, mf.Filename)
-	svc.unpublishIIIF(js, &mf)
+	iiifInfo := svc.iiifPath(mf.PID)
+	err = svc.unpublishIIIF(js, iiifInfo.S3Key())
+	if err != nil {
+		svc.logError(js, fmt.Sprintf("Unable to unpublish IIIF resource for master file %d: %s", mf.ID, err.Error()))
+	}
 
 	// If necessary, flag for publish to DL
 	if mf.DateDlIngest != nil {
@@ -738,60 +755,90 @@ func (svc *ServiceContext) makeGapForInsertion(js *jobStatus, tgtUnit *unit, tif
 }
 
 func (svc *ServiceContext) setMasterFileSensitive(c *gin.Context) {
-	// FIXME
-	// mfID, _ := strconv.ParseInt(c.Param("id"), 10, 64)
-	// js, err := svc.createJobStatus("UpdateSensitivity", "MasterFile", mfID)
-	// if err != nil {
-	// 	log.Printf("ERROR: unable to create UpdateSensitivity job status: %s", err.Error())
-	// 	c.String(http.StatusInternalServerError, err.Error())
-	// 	return
-	// }
-	// svc.logInfo(js, fmt.Sprintf("Flag sensitive content in master file %d", mfID))
+	mfID, _ := strconv.ParseInt(c.Param("id"), 10, 64)
+	js, err := svc.createJobStatus("UpdateSensitivity", "MasterFile", mfID)
+	if err != nil {
+		log.Printf("ERROR: unable to create UpdateSensitivity job status: %s", err.Error())
+		c.String(http.StatusInternalServerError, err.Error())
+		return
+	}
+	svc.logInfo(js, fmt.Sprintf("Flag sensitive content in master file %d", mfID))
 
-	// var mf masterFile
-	// err = svc.GDB.Find(&mf, mfID).Error
-	// if err != nil {
-	// 	svc.logFatal(js, fmt.Sprintf("Unable to load masterfile %d: %s", mfID, err.Error()))
-	// 	c.String(http.StatusBadRequest, err.Error())
-	// 	return
-	// }
+	var mf masterFile
+	err = svc.GDB.Find(&mf, mfID).Error
+	if err != nil {
+		svc.logFatal(js, fmt.Sprintf("Unable to load masterfile %d: %s", mfID, err.Error()))
+		c.String(http.StatusBadRequest, err.Error())
+		return
+	}
 
-	// err = svc.updateMasterFileSensitivity(&mf, true)
-	// if err != nil {
-	// 	svc.logFatal(js, err.Error())
-	// 	c.String(http.StatusInternalServerError, err.Error())
-	// 	return
-	// }
+	if mf.Sensitive == true {
+		svc.logFatal(js, fmt.Sprintf("Masterfile %d is already flagged sensitive", mfID))
+		c.String(http.StatusBadRequest, fmt.Sprintf("master file %d is already flagged sensitive", mfID))
+		return
+	}
 
-	// jp2PathInfo := svc.iiifPath(mf.PID)
-	// origFileName := strings.Replace(jp2PathInfo.fileName, ".jp2", "-original.jp2", 1)
-	// origPath := path.Join(jp2PathInfo.basePath, origFileName)
-	// svc.logInfo(js, fmt.Sprintf("Copy full resolution image to %s", origPath))
-	// err = os.Rename(jp2PathInfo.absolutePath, origPath)
-	// if err != nil {
-	// 	svc.logFatal(js, fmt.Sprintf("Unable to copy %s to %s: %s", jp2PathInfo.absolutePath, origPath, err.Error()))
-	// 	c.String(http.StatusInternalServerError, err.Error())
-	// 	return
-	// }
+	svc.logInfo(js, "Download a copy of the master file jp2")
+	jp2PathInfo := svc.iiifPath(mf.PID)
+	origFileName := strings.Replace(jp2PathInfo.FileName, ".jp2", "-original.jp2", 1)
+	origFilepath := path.Join(svc.IIIF.StagingDir, origFileName)
+	err = svc.downlodFromIIIF(js, jp2PathInfo.S3Key(), origFilepath)
+	if err != nil {
+		svc.logFatal(js, fmt.Sprintf("Unable to download masterFile %s:%s from IIIF: %s", mf.PID, mf.Filename, err.Error()))
+		c.String(http.StatusInternalServerError, err.Error())
+		return
+	}
 
-	// svc.logInfo(js, "Reduce resolution of image")
-	// cmdArray := []string{origPath, "-resize", "100x100", jp2PathInfo.absolutePath}
-	// cmd := exec.Command("magick", cmdArray...)
-	// svc.logInfo(js, fmt.Sprintf("%+v", cmd))
-	// _, err = cmd.Output()
-	// if err != nil {
-	// 	svc.logFatal(js, err.Error())
-	// 	c.String(http.StatusInternalServerError, err.Error())
-	// 	return
-	// }
+	svc.logInfo(js, "Remove full resolution image from IIIF")
+	err = svc.unpublishIIIF(js, jp2PathInfo.S3Key())
+	if err != nil {
+		svc.logFatal(js, fmt.Sprintf("Unable to remove full resolution masterFile %s from IIIF: %s", jp2PathInfo.S3Key(), err.Error()))
+		c.String(http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	origKey := fmt.Sprintf("%s/%s", jp2PathInfo.BucketPrefix, origFileName)
+	svc.logInfo(js, fmt.Sprintf("Send renamed full resolution %s image to IIIF %s", origFileName, origKey))
+	err = svc.uploadToIIIF(origFilepath, origKey)
+	if err != nil {
+		svc.logFatal(js, fmt.Sprintf("Unable to upload renamed full resolution masterFile %s to IIIF: %s", origKey, err.Error()))
+		c.String(http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	svc.logInfo(js, fmt.Sprintf("Reduce resolution of image to new version here: %s", jp2PathInfo.StagePath))
+	cmdArray := []string{origFilepath, "-resize", "100x100", jp2PathInfo.StagePath}
+	cmd := exec.Command("magick", cmdArray...)
+	_, err = cmd.Output()
+	if err != nil {
+		svc.logFatal(js, err.Error())
+		c.String(http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	svc.logInfo(js, fmt.Sprintf("Upload reduced resolution image to IIIF %s", jp2PathInfo.S3Key()))
+	err = svc.uploadToIIIF(jp2PathInfo.StagePath, jp2PathInfo.S3Key())
+	if err != nil {
+		svc.logFatal(js, fmt.Sprintf("Unable to upload reduced resolution masterFile %s to IIIF: %s", jp2PathInfo.S3Key(), err.Error()))
+		c.String(http.StatusInternalServerError, err.Error())
+		return
+	}
 
 	// gifPath := path.Join(jp2PathInfo.basePath, "full.jpg")
 	// cmdArray = []string{origPath, gifPath}
 	// cmd = exec.Command("magick", cmdArray...)
 	// _, err = cmd.Output()
 
-	// svc.jobDone(js)
-	c.String(http.StatusNotImplemented, "NOPE")
+	svc.logInfo(js, "Update sensitivity flag on masterfile")
+	err = svc.updateMasterFileSensitivity(&mf, true)
+	if err != nil {
+		svc.logFatal(js, err.Error())
+		c.String(http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	svc.jobDone(js)
+	c.String(http.StatusOK, "done")
 }
 
 func (svc *ServiceContext) updateMasterFileSensitivity(mf *masterFile, sensitive bool) error {
@@ -808,48 +855,65 @@ func (svc *ServiceContext) updateMasterFileSensitivity(mf *masterFile, sensitive
 }
 
 func (svc *ServiceContext) clearMasterFileSensitive(c *gin.Context) {
-	// FIXME
-	// mfID, _ := strconv.ParseInt(c.Param("id"), 10, 64)
-	// js, err := svc.createJobStatus("UpdateSensitivity", "MasterFile", mfID)
-	// if err != nil {
-	// 	log.Printf("ERROR: unable to create UpdateSensitivity job status: %s", err.Error())
-	// 	c.String(http.StatusInternalServerError, err.Error())
-	// 	return
-	// }
-	// svc.logInfo(js, fmt.Sprintf("Remove sensitive content flag for master file %d", mfID))
+	mfID, _ := strconv.ParseInt(c.Param("id"), 10, 64)
+	js, err := svc.createJobStatus("UpdateSensitivity", "MasterFile", mfID)
+	if err != nil {
+		log.Printf("ERROR: unable to create UpdateSensitivity job status: %s", err.Error())
+		c.String(http.StatusInternalServerError, err.Error())
+		return
+	}
+	svc.logInfo(js, fmt.Sprintf("Remove sensitive content flag for master file %d", mfID))
 
-	// var mf masterFile
-	// err = svc.GDB.Find(&mf, mfID).Error
-	// if err != nil {
-	// 	svc.logFatal(js, fmt.Sprintf("Unable to load masterfile %d: %s", mfID, err.Error()))
-	// 	c.String(http.StatusBadRequest, err.Error())
-	// 	return
-	// }
+	var mf masterFile
+	err = svc.GDB.Find(&mf, mfID).Error
+	if err != nil {
+		svc.logFatal(js, fmt.Sprintf("Unable to load masterfile %d: %s", mfID, err.Error()))
+		c.String(http.StatusBadRequest, err.Error())
+		return
+	}
 
-	// err = svc.updateMasterFileSensitivity(&mf, false)
-	// if err != nil {
-	// 	svc.logFatal(js, err.Error())
-	// 	c.String(http.StatusInternalServerError, err.Error())
-	// 	return
-	// }
+	jp2PathInfo := svc.iiifPath(mf.PID)
+	err = svc.unpublishIIIF(js, jp2PathInfo.S3Key())
+	if err != nil {
+		svc.logFatal(js, fmt.Sprintf("Unable to remove reduced resolution masterfile %s from IIIF: %s", jp2PathInfo.S3Key(), err.Error()))
+		c.String(http.StatusInternalServerError, err.Error())
+		return
+	}
 
-	// jp2PathInfo := svc.iiifPath(mf.PID)
-	// origFileName := strings.Replace(jp2PathInfo.fileName, ".jp2", "-original.jp2", 1)
-	// origPath := path.Join(jp2PathInfo.basePath, origFileName)
-	// svc.logInfo(js, fmt.Sprintf("Restore resolution image to %s", jp2PathInfo.absolutePath))
+	origFileName := strings.Replace(jp2PathInfo.FileName, ".jp2", "-original.jp2", 1)
+	origS3Key := fmt.Sprintf("%s/%s", jp2PathInfo.BucketPrefix, origFileName)
+	err = svc.downlodFromIIIF(js, origS3Key, jp2PathInfo.StagePath)
+	if err != nil {
+		svc.logFatal(js, fmt.Sprintf("Unable to download masterFile %s from IIIF: %s", origS3Key, err.Error()))
+		c.String(http.StatusInternalServerError, err.Error())
+		return
+	}
 
-	// // the usual JP2 path holds the reduced resolution images. remove it ad rename XXX-original.jp2
-	// os.Remove(jp2PathInfo.absolutePath)
-	// os.Remove(path.Join(jp2PathInfo.basePath, "full.jpg"))
-	// err = os.Rename(origPath, jp2PathInfo.absolutePath)
-	// if err != nil {
-	// 	svc.logFatal(js, fmt.Sprintf("Unable to rename %s to %s: %s", origPath, jp2PathInfo.absolutePath, err.Error()))
-	// 	c.String(http.StatusInternalServerError, err.Error())
-	// 	return
-	// }
+	svc.logInfo(js, fmt.Sprintf("Remove original image %s from IIIF", origS3Key))
+	err = svc.unpublishIIIF(js, origS3Key)
+	if err != nil {
+		svc.logFatal(js, fmt.Sprintf("Unable to remove reduced resolution masterfile %s from IIIF: %s", jp2PathInfo.S3Key(), err.Error()))
+		c.String(http.StatusInternalServerError, err.Error())
+		return
+	}
 
-	// svc.jobDone(js)
-	c.String(http.StatusNotImplemented, "NO")
+	err = svc.uploadToIIIF(jp2PathInfo.StagePath, jp2PathInfo.S3Key())
+	if err != nil {
+		svc.logFatal(js, fmt.Sprintf("Unable to upload full resolution masterfile %s to IIIF %s: %s", origFileName, jp2PathInfo.S3Key(), err.Error()))
+		c.String(http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	svc.logInfo(js, "Clear sensitivity flag on masterfile")
+	err = svc.updateMasterFileSensitivity(&mf, false)
+	if err != nil {
+		svc.logFatal(js, err.Error())
+		c.String(http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	svc.jobDone(js)
+	c.String(http.StatusOK, "ok")
 }
 
 func (svc *ServiceContext) getFullResolutionJP2(c *gin.Context) {

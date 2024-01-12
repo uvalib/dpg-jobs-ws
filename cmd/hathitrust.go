@@ -516,7 +516,8 @@ func (svc *ServiceContext) createHathiTrustPackage(c *gin.Context) {
 				// download jp2 from iiif to assembly directory, then add it to the zip
 				destFN := fmt.Sprintf("%08d.jp2", (idx + 1))
 				destPath := path.Join(assembleDir, destFN)
-				err = svc.downlodFromIIIF(js, &mf, destPath)
+				iiifInfo := svc.iiifPath(mf.PID)
+				err = svc.downlodFromIIIF(js, iiifInfo.S3Key(), destPath)
 				if err != nil {
 					svc.logFatal(js, fmt.Sprintf("Unable to downlaod masterFile %s:%s from IIIF: %s", mf.PID, mf.Filename, err.Error()))
 					masterFileError = true
