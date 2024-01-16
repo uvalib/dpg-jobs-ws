@@ -27,7 +27,6 @@ type SMTPConfig struct {
 
 // IIIFConfig contains the all config for IIIF; manifest, staging and S3
 type IIIFConfig struct {
-	S3Disabled  bool
 	StagingDir  string
 	Bucket      string
 	ManifestURL string
@@ -124,7 +123,6 @@ func LoadConfiguration() *ServiceConfig {
 	flag.StringVar(&cfg.IIIF.ManifestURL, "iiifman", "https://iiifman.lib.virginia.edu", "IIIF manifest URL")
 	flag.StringVar(&cfg.IIIF.StagingDir, "iiifstage", "", "IIIF JP2 image statging directory")
 	flag.StringVar(&cfg.IIIF.Bucket, "iiifbucket", "iiif-assets", "S3 bucket for IIIF asset storage")
-	flag.BoolVar(&cfg.IIIF.S3Disabled, "stubs3", false, "Disable S3 storage for IIIF images (local dev mode only)")
 
 	// SMTP
 	flag.BoolVar(&cfg.SMTP.FakeSMTP, "stubsmtp", false, "Log email insted of sending (dev mode)")
@@ -199,11 +197,7 @@ func LoadConfiguration() *ServiceConfig {
 	log.Printf("[CONFIG] delivery      = [%s]", cfg.DeliveryDir)
 	log.Printf("[CONFIG] iiifman       = [%s]", cfg.IIIF.ManifestURL)
 	log.Printf("[CONFIG] iiifstaging   = [%s]", cfg.IIIF.StagingDir)
-	if cfg.IIIF.S3Disabled {
-		log.Printf("[CONFIG] stubs3        = [true]")
-	} else {
-		log.Printf("[CONFIG] iiifbucket    = [%s]", cfg.IIIF.Bucket)
-	}
+	log.Printf("[CONFIG] iiifbucket    = [%s]", cfg.IIIF.Bucket)
 	log.Printf("[CONFIG] work          = [%s]", cfg.ProcessingDir)
 	log.Printf("[CONFIG] reindex       = [%s]", cfg.ReindexURL)
 	log.Printf("[CONFIG] xmlreindex    = [%s]", cfg.XMLReindexURL)

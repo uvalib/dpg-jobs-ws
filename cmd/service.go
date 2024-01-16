@@ -10,7 +10,6 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
-	"io/ioutil"
 	"log"
 	"net"
 	"net/http"
@@ -54,7 +53,6 @@ type archivesSpaceContext struct {
 type IIIFContext struct {
 	ManifestURL string
 	StagingDir  string
-	S3Disabled  bool
 	Bucket      string
 	S3Context   context.Context
 	S3Client    *s3.Client
@@ -106,19 +104,17 @@ func InitializeService(version string, cfg *ServiceConfig) *ServiceContext {
 		OcrRequests:   make([]int64, 0),
 	}
 
-	ctx.IIIF.S3Disabled = cfg.IIIF.S3Disabled
 	ctx.IIIF.StagingDir = cfg.IIIF.StagingDir
 	ctx.IIIF.ManifestURL = cfg.IIIF.ManifestURL
-	if ctx.IIIF.S3Disabled == false {
-		log.Printf("INFO: initialize s3 session...")
-		ctx.IIIF.Bucket = cfg.IIIF.Bucket
-		cfg, err := config.LoadDefaultConfig(context.TODO())
-		if err != nil {
-			log.Fatal(fmt.Sprintf("unable to load s3 config: %s", err.Error()))
-		}
-		ctx.IIIF.S3Client = s3.NewFromConfig(cfg)
-		log.Printf("INFO: s3 session established")
+
+	log.Printf("INFO: initialize s3 session...")
+	ctx.IIIF.Bucket = cfg.IIIF.Bucket
+	awsCfg, err := config.LoadDefaultConfig(context.TODO())
+	if err != nil {
+		log.Fatal(fmt.Sprintf("unable to load s3 config: %s", err.Error()))
 	}
+	ctx.IIIF.S3Client = s3.NewFromConfig(awsCfg)
+	log.Printf("INFO: s3 session established")
 
 	log.Printf("INFO: connecting to DB...")
 	connectStr := fmt.Sprintf("%s:%s@tcp(%s)/%s?parseTime=true",
@@ -328,7 +324,7 @@ func handleAPIResponse(logURL string, resp *http.Response, err error) ([]byte, *
 	}
 
 	defer resp.Body.Close()
-	bodyBytes, _ := ioutil.ReadAll(resp.Body)
+	bodyBytes, _ := io.ReadAll(resp.Body)
 	return bodyBytes, nil
 }
 
@@ -425,7 +421,7 @@ func copyAll(srcDir string, destDir string) error {
 	if _, err := os.Stat(srcDir); os.IsNotExist(err) {
 		return err
 	}
-	files, err := ioutil.ReadDir(srcDir)
+	files, err := os.ReadDir(srcDir)
 	if err != nil {
 		return err
 	}
