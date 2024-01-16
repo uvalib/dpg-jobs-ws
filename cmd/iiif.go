@@ -15,13 +15,13 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 )
 
-type iiifPathInfo struct {
+type iiifContext struct {
 	FileName     string
 	BucketPrefix string
 	StagePath    string
 }
 
-func (iifp *iiifPathInfo) S3Key() string {
+func (iifp *iiifContext) S3Key() string {
 	return fmt.Sprintf("%s/%s", iifp.BucketPrefix, iifp.FileName)
 }
 
@@ -34,14 +34,14 @@ func (svc *ServiceContext) publishToIIIF(js *jobStatus, mf *masterFile, srcPath 
 		return fmt.Errorf("unsupported image format for %s: %s", mf.PID, mf.ImageTechMeta.ImageFormat)
 	}
 
-	jp2kInfo := svc.iiifPath(mf.PID)
-	iiifExist, err := svc.iiifExists(jp2kInfo)
+	iiifInfo := svc.getIIIFContext(mf.PID)
+	iiifExist, err := svc.iiifExists(iiifInfo)
 	if err != nil {
 		return fmt.Errorf("unable to check for existance of for %s: %s", mf.PID, err.Error())
 	}
 
 	if iiifExist {
-		svc.logInfo(js, fmt.Sprintf("MasterFile %s already has a JP2k file on S3: %s/%s", mf.PID, svc.IIIF.Bucket, jp2kInfo.S3Key()))
+		svc.logInfo(js, fmt.Sprintf("MasterFile %s already has a JP2k file on S3: %s/%s", mf.PID, svc.IIIF.Bucket, iiifInfo.S3Key()))
 		if overwrite == false {
 			svc.logInfo(js, "Overwrite not requested; nothing more to do")
 			return nil
@@ -50,13 +50,13 @@ func (svc *ServiceContext) publishToIIIF(js *jobStatus, mf *masterFile, srcPath 
 	}
 
 	if fileType == "jp2" {
-		svc.logInfo(js, fmt.Sprintf("Master file %s is already jp2; send directly to IIIF staging: %s", mf.PID, jp2kInfo.StagePath))
-		copyFile(srcPath, jp2kInfo.StagePath, 0664)
+		svc.logInfo(js, fmt.Sprintf("Master file %s is already jp2; send directly to IIIF staging: %s", mf.PID, iiifInfo.StagePath))
+		copyFile(srcPath, iiifInfo.StagePath, 0664)
 	} else if fileType == "tiff" {
-		svc.logInfo(js, fmt.Sprintf("Compressing %s to %s using imagemagick...", srcPath, jp2kInfo.StagePath))
+		svc.logInfo(js, fmt.Sprintf("Compressing %s to %s using imagemagick...", srcPath, iiifInfo.StagePath))
 		rawFileInfo, _ := os.Stat(srcPath)
 		firstPage := fmt.Sprintf("%s[0]", srcPath) // need the [0] as some tifs have multiple pages. only want the first.
-		cmdArray := []string{firstPage, "-define", "jp2:rate=50 jp2:progression-order=RPCL jp2:number-resolutions=7", jp2kInfo.StagePath}
+		cmdArray := []string{firstPage, "-define", "jp2:rate=50 jp2:progression-order=RPCL jp2:number-resolutions=7", iiifInfo.StagePath}
 		startTime := time.Now()
 		cmd := exec.Command("magick", cmdArray...)
 		svc.logInfo(js, fmt.Sprintf("%+v", cmd))
@@ -68,8 +68,8 @@ func (svc *ServiceContext) publishToIIIF(js *jobStatus, mf *masterFile, srcPath 
 		svc.logInfo(js, fmt.Sprintf("...compression complete; tif size %.2fM, elapsed time %.2f seconds", float64(rawFileInfo.Size())/1000000.0, elapsed.Seconds()))
 	}
 
-	svc.logInfo(js, fmt.Sprintf("Upload staged  jp2 file %s to S3 IIIF bucket %s:%s", jp2kInfo.StagePath, svc.IIIF.Bucket, jp2kInfo.S3Key()))
-	err = svc.uploadToIIIF(jp2kInfo.StagePath, jp2kInfo.S3Key())
+	svc.logInfo(js, fmt.Sprintf("Upload staged  jp2 file %s to S3 IIIF bucket %s:%s", iiifInfo.StagePath, svc.IIIF.Bucket, iiifInfo.S3Key()))
+	err = svc.uploadToIIIF(iiifInfo.StagePath, iiifInfo.S3Key())
 
 	svc.logInfo(js, fmt.Sprintf("%s has been published to IIIF", mf.PID))
 	return nil
@@ -93,7 +93,7 @@ func (svc *ServiceContext) uploadToIIIF(srcPath string, s3Key string) error {
 	return nil
 }
 
-func (svc *ServiceContext) iiifExists(iiifInfo iiifPathInfo) (bool, error) {
+func (svc *ServiceContext) iiifExists(iiifInfo iiifContext) (bool, error) {
 	out, err := svc.IIIF.S3Client.ListObjectsV2(context.TODO(), &s3.ListObjectsV2Input{
 		Bucket:  aws.String(svc.IIIF.Bucket),
 		Prefix:  aws.String(iiifInfo.BucketPrefix),
@@ -149,7 +149,7 @@ func (svc *ServiceContext) unpublishIIIF(js *jobStatus, s3Key string) error {
 	return nil
 }
 
-func (svc *ServiceContext) iiifPath(mfPID string) iiifPathInfo {
+func (svc *ServiceContext) getIIIFContext(mfPID string) iiifContext {
 	pidParts := strings.Split(mfPID, ":")
 	base := pidParts[1]
 	jp2kFilename := fmt.Sprintf("%s.jp2", base)
@@ -164,7 +164,7 @@ func (svc *ServiceContext) iiifPath(mfPID string) iiifPathInfo {
 	}
 
 	pidDirs := strings.Join(parts, "/")
-	return iiifPathInfo{
+	return iiifContext{
 		FileName:     jp2kFilename,
 		BucketPrefix: path.Join(pidParts[0], pidDirs),
 		StagePath:    path.Join(svc.IIIF.StagingDir, jp2kFilename),

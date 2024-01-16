@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -286,7 +287,7 @@ func (svc *ServiceContext) deleteMasterFiles(c *gin.Context) {
 			if mf.OriginalMfID == nil && mf.DeaccessionedAt == nil {
 				svc.removeArchive(js, unitID, mf.Filename)
 
-				iiifInfo := svc.iiifPath(mf.PID)
+				iiifInfo := svc.getIIIFContext(mf.PID)
 				err = svc.unpublishIIIF(js, iiifInfo.S3Key())
 				if err != nil {
 					svc.logError(js, fmt.Sprintf("Unable to unpublish IIIF resource for master file %d: %s", mf.ID, err.Error()))
@@ -563,7 +564,7 @@ func (svc *ServiceContext) deleteMasterFileIIIF(c *gin.Context) {
 		return
 	}
 
-	iiifInfo := svc.iiifPath(tgtMF.PID)
+	iiifInfo := svc.getIIIFContext(tgtMF.PID)
 	err = svc.unpublishIIIF(js, iiifInfo.S3Key())
 	if err != nil {
 		svc.logFatal(js, fmt.Sprintf("Unable to unpublish IIIF resource: %s", err.Error()))
@@ -689,7 +690,7 @@ func (svc *ServiceContext) deaccessionMasterFile(c *gin.Context) {
 	}
 
 	svc.removeArchive(js, mf.UnitID, mf.Filename)
-	iiifInfo := svc.iiifPath(mf.PID)
+	iiifInfo := svc.getIIIFContext(mf.PID)
 	err = svc.unpublishIIIF(js, iiifInfo.S3Key())
 	if err != nil {
 		svc.logError(js, fmt.Sprintf("Unable to unpublish IIIF resource for master file %d: %s", mf.ID, err.Error()))
@@ -779,10 +780,10 @@ func (svc *ServiceContext) setMasterFileSensitive(c *gin.Context) {
 	}
 
 	svc.logInfo(js, "Download a copy of the master file jp2")
-	jp2PathInfo := svc.iiifPath(mf.PID)
-	origFileName := strings.Replace(jp2PathInfo.FileName, ".jp2", "-original.jp2", 1)
+	iiifInfo := svc.getIIIFContext(mf.PID)
+	origFileName := strings.Replace(iiifInfo.FileName, ".jp2", "-original.jp2", 1)
 	origFilepath := path.Join(svc.IIIF.StagingDir, origFileName)
-	err = svc.downlodFromIIIF(js, jp2PathInfo.S3Key(), origFilepath)
+	err = svc.downlodFromIIIF(js, iiifInfo.S3Key(), origFilepath)
 	if err != nil {
 		svc.logFatal(js, fmt.Sprintf("Unable to download masterFile %s:%s from IIIF: %s", mf.PID, mf.Filename, err.Error()))
 		c.String(http.StatusInternalServerError, err.Error())
@@ -790,14 +791,14 @@ func (svc *ServiceContext) setMasterFileSensitive(c *gin.Context) {
 	}
 
 	svc.logInfo(js, "Remove full resolution image from IIIF")
-	err = svc.unpublishIIIF(js, jp2PathInfo.S3Key())
+	err = svc.unpublishIIIF(js, iiifInfo.S3Key())
 	if err != nil {
-		svc.logFatal(js, fmt.Sprintf("Unable to remove full resolution masterFile %s from IIIF: %s", jp2PathInfo.S3Key(), err.Error()))
+		svc.logFatal(js, fmt.Sprintf("Unable to remove full resolution masterFile %s from IIIF: %s", iiifInfo.S3Key(), err.Error()))
 		c.String(http.StatusInternalServerError, err.Error())
 		return
 	}
 
-	origKey := fmt.Sprintf("%s/%s", jp2PathInfo.BucketPrefix, origFileName)
+	origKey := fmt.Sprintf("%s/%s", iiifInfo.BucketPrefix, origFileName)
 	svc.logInfo(js, fmt.Sprintf("Send renamed full resolution %s image to IIIF %s", origFileName, origKey))
 	err = svc.uploadToIIIF(origFilepath, origKey)
 	if err != nil {
@@ -806,8 +807,8 @@ func (svc *ServiceContext) setMasterFileSensitive(c *gin.Context) {
 		return
 	}
 
-	svc.logInfo(js, fmt.Sprintf("Reduce resolution of image to new version here: %s", jp2PathInfo.StagePath))
-	cmdArray := []string{origFilepath, "-resize", "100x100", jp2PathInfo.StagePath}
+	svc.logInfo(js, fmt.Sprintf("Reduce resolution of image to new version here: %s", iiifInfo.StagePath))
+	cmdArray := []string{origFilepath, "-resize", "100x100", iiifInfo.StagePath}
 	cmd := exec.Command("magick", cmdArray...)
 	_, err = cmd.Output()
 	if err != nil {
@@ -816,18 +817,13 @@ func (svc *ServiceContext) setMasterFileSensitive(c *gin.Context) {
 		return
 	}
 
-	svc.logInfo(js, fmt.Sprintf("Upload reduced resolution image to IIIF %s", jp2PathInfo.S3Key()))
-	err = svc.uploadToIIIF(jp2PathInfo.StagePath, jp2PathInfo.S3Key())
+	svc.logInfo(js, fmt.Sprintf("Upload reduced resolution image to IIIF %s", iiifInfo.S3Key()))
+	err = svc.uploadToIIIF(iiifInfo.StagePath, iiifInfo.S3Key())
 	if err != nil {
-		svc.logFatal(js, fmt.Sprintf("Unable to upload reduced resolution masterFile %s to IIIF: %s", jp2PathInfo.S3Key(), err.Error()))
+		svc.logFatal(js, fmt.Sprintf("Unable to upload reduced resolution masterFile %s to IIIF: %s", iiifInfo.S3Key(), err.Error()))
 		c.String(http.StatusInternalServerError, err.Error())
 		return
 	}
-
-	// gifPath := path.Join(jp2PathInfo.basePath, "full.jpg")
-	// cmdArray = []string{origPath, gifPath}
-	// cmd = exec.Command("magick", cmdArray...)
-	// _, err = cmd.Output()
 
 	svc.logInfo(js, "Update sensitivity flag on masterfile")
 	err = svc.updateMasterFileSensitivity(&mf, true)
@@ -836,6 +832,10 @@ func (svc *ServiceContext) setMasterFileSensitive(c *gin.Context) {
 		c.String(http.StatusInternalServerError, err.Error())
 		return
 	}
+
+	svc.logInfo(js, "cleanup working files")
+	os.Remove(iiifInfo.StagePath)
+	os.Remove(origFilepath)
 
 	svc.jobDone(js)
 	c.String(http.StatusOK, "done")
@@ -872,17 +872,17 @@ func (svc *ServiceContext) clearMasterFileSensitive(c *gin.Context) {
 		return
 	}
 
-	jp2PathInfo := svc.iiifPath(mf.PID)
-	err = svc.unpublishIIIF(js, jp2PathInfo.S3Key())
+	iiifInfo := svc.getIIIFContext(mf.PID)
+	err = svc.unpublishIIIF(js, iiifInfo.S3Key())
 	if err != nil {
-		svc.logFatal(js, fmt.Sprintf("Unable to remove reduced resolution masterfile %s from IIIF: %s", jp2PathInfo.S3Key(), err.Error()))
+		svc.logFatal(js, fmt.Sprintf("Unable to remove reduced resolution masterfile %s from IIIF: %s", iiifInfo.S3Key(), err.Error()))
 		c.String(http.StatusInternalServerError, err.Error())
 		return
 	}
 
-	origFileName := strings.Replace(jp2PathInfo.FileName, ".jp2", "-original.jp2", 1)
-	origS3Key := fmt.Sprintf("%s/%s", jp2PathInfo.BucketPrefix, origFileName)
-	err = svc.downlodFromIIIF(js, origS3Key, jp2PathInfo.StagePath)
+	origFileName := strings.Replace(iiifInfo.FileName, ".jp2", "-original.jp2", 1)
+	origS3Key := fmt.Sprintf("%s/%s", iiifInfo.BucketPrefix, origFileName)
+	err = svc.downlodFromIIIF(js, origS3Key, iiifInfo.StagePath)
 	if err != nil {
 		svc.logFatal(js, fmt.Sprintf("Unable to download masterFile %s from IIIF: %s", origS3Key, err.Error()))
 		c.String(http.StatusInternalServerError, err.Error())
@@ -892,14 +892,14 @@ func (svc *ServiceContext) clearMasterFileSensitive(c *gin.Context) {
 	svc.logInfo(js, fmt.Sprintf("Remove original image %s from IIIF", origS3Key))
 	err = svc.unpublishIIIF(js, origS3Key)
 	if err != nil {
-		svc.logFatal(js, fmt.Sprintf("Unable to remove reduced resolution masterfile %s from IIIF: %s", jp2PathInfo.S3Key(), err.Error()))
+		svc.logFatal(js, fmt.Sprintf("Unable to remove reduced resolution masterfile %s from IIIF: %s", iiifInfo.S3Key(), err.Error()))
 		c.String(http.StatusInternalServerError, err.Error())
 		return
 	}
 
-	err = svc.uploadToIIIF(jp2PathInfo.StagePath, jp2PathInfo.S3Key())
+	err = svc.uploadToIIIF(iiifInfo.StagePath, iiifInfo.S3Key())
 	if err != nil {
-		svc.logFatal(js, fmt.Sprintf("Unable to upload full resolution masterfile %s to IIIF %s: %s", origFileName, jp2PathInfo.S3Key(), err.Error()))
+		svc.logFatal(js, fmt.Sprintf("Unable to upload full resolution masterfile %s to IIIF %s: %s", origFileName, iiifInfo.S3Key(), err.Error()))
 		c.String(http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -917,28 +917,52 @@ func (svc *ServiceContext) clearMasterFileSensitive(c *gin.Context) {
 }
 
 func (svc *ServiceContext) getFullResolutionJP2(c *gin.Context) {
-	// FIXME
-	// mfID := c.Param("id")
-	// log.Printf("INFO: get full full resolution jp2 for sensitive master file %s", mfID)
-	// var mf masterFile
-	// err := svc.GDB.Find(&mf, mfID).Error
-	// if err != nil {
-	// 	log.Printf("ERROR: unable to load masterfile %s: %s", mfID, err.Error())
-	// 	c.String(http.StatusBadRequest, err.Error())
-	// 	return
-	// }
+	mfID, _ := strconv.ParseInt(c.Param("id"), 10, 64)
+	js, err := svc.createJobStatus("FullResolutionImage", "MasterFile", mfID)
+	if err != nil {
+		log.Printf("ERROR: unable to create FullResolutionImage job status: %s", err.Error())
+		c.String(http.StatusInternalServerError, err.Error())
+		return
+	}
 
-	// if mf.Sensitive == false {
-	// 	log.Printf("INFO: invalid request for original resolution master file %s that is not sensitive", mfID)
-	// 	c.String(http.StatusNotFound, "image is not sensitive")
-	// 	return
-	// }
+	svc.logInfo(js, fmt.Sprintf("get full resolution jp2 for sensitive master file %d", mfID))
+	var mf masterFile
+	err = svc.GDB.Find(&mf, mfID).Error
+	if err != nil {
+		svc.logError(js, fmt.Sprintf("Unable to load masterfile %d: %s", mfID, err.Error()))
+		c.String(http.StatusBadRequest, err.Error())
+		return
+	}
 
-	// jp2PathInfo := svc.iiifPath(mf.PID)
-	// origPath := path.Join(jp2PathInfo.basePath, "full.jpg")
-	// log.Printf("INFO: get full respolution image from %s", origPath)
-	// c.Header("Content-Type", "image/jpg")
-	// c.File(origPath)
-	// c.Status(http.StatusOK)
-	c.String(http.StatusNotImplemented, "NO")
+	if mf.Sensitive == false {
+		svc.logInfo(js, fmt.Sprintf("Invalid request for original resolution master file %d that is not sensitive", mfID))
+		c.String(http.StatusNotFound, "image is not sensitive")
+		return
+	}
+
+	// the reduced resolution image is srored as the S3key and the original is stored at the same
+	// path, but with -original appended to the filename
+	iiifInfo := svc.getIIIFContext(mf.PID)
+	origFileName := strings.Replace(iiifInfo.FileName, ".jp2", "-original.jp2", 1)
+	origS3Key := fmt.Sprintf("%s/%s", iiifInfo.BucketPrefix, origFileName)
+	err = svc.downlodFromIIIF(js, origS3Key, iiifInfo.StagePath)
+	if err != nil {
+		svc.logError(js, fmt.Sprintf("Unable to download JP2 file %s: %s", origS3Key, err.Error()))
+		c.String(http.StatusBadRequest, err.Error())
+		return
+	}
+
+	jpgFileName := strings.Replace(iiifInfo.FileName, ".jp2", ".jpg", 1)
+	jpgPath := path.Join(filepath.Dir(iiifInfo.StagePath), jpgFileName)
+	svc.logInfo(js, fmt.Sprintf("Convert downloaded jp2 %s to jpg %s", iiifInfo.StagePath, jpgPath))
+	cmdArray := []string{iiifInfo.StagePath, jpgPath}
+	cmd := exec.Command("magick", cmdArray...)
+	cmd.Output()
+	os.Remove(iiifInfo.StagePath)
+
+	c.Header("Content-Type", "image/jpg")
+	c.File(jpgPath)
+	c.Status(http.StatusOK)
+	svc.jobDone(js)
+	defer os.Remove(jpgPath)
 }

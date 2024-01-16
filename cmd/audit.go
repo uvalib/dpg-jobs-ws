@@ -273,9 +273,9 @@ func (svc *ServiceContext) performAudit(mf *auditItem) (*masterFileAudit, error)
 		}
 	}
 
-	jp2kInfo := svc.iiifPath(mf.PID)
+	iiifInfo := svc.getIIIFContext(mf.PID)
 	auditRec.IIIFExists = true
-	iiifExist, err := svc.iiifExists(jp2kInfo)
+	iiifExist, err := svc.iiifExists(iiifInfo)
 	if err != nil {
 		log.Printf("ERROR: call to check for iiif file failed: %s", err.Error())
 	} else {
