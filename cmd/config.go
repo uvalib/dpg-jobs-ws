@@ -25,10 +25,12 @@ type SMTPConfig struct {
 	FakeSMTP bool
 }
 
-// IIIFConfig contains the configuration data for the IIIF server
+// IIIFConfig contains the all config for IIIF; manifest, staging and S3
 type IIIFConfig struct {
-	Dir string
-	URL string
+	S3Disabled  bool
+	StagingDir  string
+	Bucket      string
+	ManifestURL string
 }
 
 // ArchivesSpaceConfig contains the configuration data for AS
@@ -118,9 +120,11 @@ func LoadConfiguration() *ServiceConfig {
 	flag.StringVar(&cfg.APTrust.AWSHost, "apthost", "s3.amazonaws.com", "APTrust S3 host")
 	flag.StringVar(&cfg.APTrust.AWSBucket, "aptbucket", "", "APTrust S3 bucket")
 
-	// IIIF
-	flag.StringVar(&cfg.IIIF.Dir, "iiif", "", "IIIF directory")
-	flag.StringVar(&cfg.IIIF.URL, "iiifman", "https://iiifman.lib.virginia.edu", "IIIF manifest URL")
+	// IIIF (buckets:  iiif-assets iiif-assets-staging)
+	flag.StringVar(&cfg.IIIF.ManifestURL, "iiifman", "https://iiifman.lib.virginia.edu", "IIIF manifest URL")
+	flag.StringVar(&cfg.IIIF.StagingDir, "iiifstage", "", "IIIF JP2 image statging directory")
+	flag.StringVar(&cfg.IIIF.Bucket, "iiifbucket", "iiif-assets", "S3 bucket for IIIF asset storage")
+	flag.BoolVar(&cfg.IIIF.S3Disabled, "stubs3", false, "Disable S3 storage for IIIF images (local dev mode only)")
 
 	// SMTP
 	flag.BoolVar(&cfg.SMTP.FakeSMTP, "stubsmtp", false, "Log email insted of sending (dev mode)")
@@ -157,8 +161,8 @@ func LoadConfiguration() *ServiceConfig {
 	if cfg.DeliveryDir == "" {
 		log.Fatal("Parameter delivery is required")
 	}
-	if cfg.IIIF.Dir == "" {
-		log.Fatal("Parameter iiif is required")
+	if cfg.IIIF.ManifestURL == "" {
+		log.Fatal("Parameter iiifman is required")
 	}
 	if cfg.ProcessingDir == "" {
 		log.Fatal("Parameter work is required")
@@ -181,6 +185,9 @@ func LoadConfiguration() *ServiceConfig {
 	if cfg.HathiTrust.Pass == "" {
 		log.Fatal("Parameter htpass is required")
 	}
+	if cfg.IIIF.StagingDir == "" {
+		log.Fatal("Parameter iiifstaging is required")
+	}
 
 	log.Printf("[CONFIG] port          = [%d]", cfg.Port)
 	log.Printf("[CONFIG] service       = [%s]", cfg.ServiceURL)
@@ -190,8 +197,13 @@ func LoadConfiguration() *ServiceConfig {
 	log.Printf("[CONFIG] dbuser        = [%s]", cfg.DB.User)
 	log.Printf("[CONFIG] archive       = [%s]", cfg.ArchiveDir)
 	log.Printf("[CONFIG] delivery      = [%s]", cfg.DeliveryDir)
-	log.Printf("[CONFIG] iiif          = [%s]", cfg.IIIF.Dir)
-	log.Printf("[CONFIG] iiifman       = [%s]", cfg.IIIF.URL)
+	log.Printf("[CONFIG] iiifman       = [%s]", cfg.IIIF.ManifestURL)
+	log.Printf("[CONFIG] iiifstaging   = [%s]", cfg.IIIF.StagingDir)
+	if cfg.IIIF.S3Disabled {
+		log.Printf("[CONFIG] stubs3        = [true]")
+	} else {
+		log.Printf("[CONFIG] iiifbucket    = [%s]", cfg.IIIF.Bucket)
+	}
 	log.Printf("[CONFIG] work          = [%s]", cfg.ProcessingDir)
 	log.Printf("[CONFIG] reindex       = [%s]", cfg.ReindexURL)
 	log.Printf("[CONFIG] xmlreindex    = [%s]", cfg.XMLReindexURL)

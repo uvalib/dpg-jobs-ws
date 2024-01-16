@@ -3,6 +3,7 @@ package main
 import (
 	"archive/zip"
 	"bytes"
+	"context"
 	"crypto/md5"
 	"crypto/sha256"
 	"encoding/json"
@@ -23,6 +24,9 @@ import (
 	"time"
 
 	"html/template"
+
+	"github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/service/s3"
 
 	"github.com/gin-gonic/gin"
 	_ "github.com/go-sql-driver/mysql"
@@ -46,6 +50,16 @@ type archivesSpaceContext struct {
 	APIURL    string
 }
 
+// IIIFContext contains service info for all IIIF related requests
+type IIIFContext struct {
+	ManifestURL string
+	StagingDir  string
+	S3Disabled  bool
+	Bucket      string
+	S3Context   context.Context
+	S3Client    *s3.Client
+}
+
 // ServiceContext contains common data used by all handlers
 type ServiceContext struct {
 	Version       string
@@ -53,7 +67,7 @@ type ServiceContext struct {
 	SMTP          SMTPConfig
 	GDB           *gorm.DB
 	ArchiveDir    string
-	IIIF          IIIFConfig
+	IIIF          IIIFContext
 	ProcessingDir string
 	DeliveryDir   string
 	APTrust       APTrustConfig
@@ -80,7 +94,6 @@ func InitializeService(version string, cfg *ServiceConfig) *ServiceContext {
 	ctx := ServiceContext{Version: version,
 		SMTP:          cfg.SMTP,
 		ArchiveDir:    cfg.ArchiveDir,
-		IIIF:          cfg.IIIF,
 		DeliveryDir:   cfg.DeliveryDir,
 		ProcessingDir: cfg.ProcessingDir,
 		APTrust:       cfg.APTrust,
@@ -91,6 +104,20 @@ func InitializeService(version string, cfg *ServiceConfig) *ServiceContext {
 		OcrURL:        cfg.OcrURL,
 		ServiceURL:    cfg.ServiceURL,
 		OcrRequests:   make([]int64, 0),
+	}
+
+	ctx.IIIF.S3Disabled = cfg.IIIF.S3Disabled
+	ctx.IIIF.StagingDir = cfg.IIIF.StagingDir
+	ctx.IIIF.ManifestURL = cfg.IIIF.ManifestURL
+	if ctx.IIIF.S3Disabled == false {
+		log.Printf("INFO: initialize s3 session...")
+		ctx.IIIF.Bucket = cfg.IIIF.Bucket
+		cfg, err := config.LoadDefaultConfig(context.TODO())
+		if err != nil {
+			log.Fatal(fmt.Sprintf("unable to load s3 config: %s", err.Error()))
+		}
+		ctx.IIIF.S3Client = s3.NewFromConfig(cfg)
+		log.Printf("INFO: s3 session established")
 	}
 
 	log.Printf("INFO: connecting to DB...")
@@ -294,7 +321,7 @@ func handleAPIResponse(logURL string, resp *http.Response, err error) ([]byte, *
 		return nil, &RequestError{StatusCode: status, Message: errMsg}
 	} else if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
 		defer resp.Body.Close()
-		bodyBytes, _ := ioutil.ReadAll(resp.Body)
+		bodyBytes, _ := io.ReadAll(resp.Body)
 		status := resp.StatusCode
 		errMsg := string(bodyBytes)
 		return nil, &RequestError{StatusCode: status, Message: errMsg}

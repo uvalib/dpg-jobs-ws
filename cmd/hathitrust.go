@@ -513,19 +513,13 @@ func (svc *ServiceContext) createHathiTrustPackage(c *gin.Context) {
 
 			masterFileError := false
 			for idx, mf := range masterFiles {
-				// copy jp2 to assembly directory, then add it to the zip
+				// download jp2 from iiif to assembly directory, then add it to the zip
 				destFN := fmt.Sprintf("%08d.jp2", (idx + 1))
-				jp2kInfo := svc.iiifPath(mf.PID)
-				if pathExists(jp2kInfo.absolutePath) == false {
-					svc.logFatal(js, fmt.Sprintf("MasterFile %s:%s is missing JP2 derivative %s", mf.PID, mf.Filename, jp2kInfo.absolutePath))
-					masterFileError = true
-					break
-				}
-
 				destPath := path.Join(assembleDir, destFN)
-				err = copyJP2(jp2kInfo.absolutePath, destPath)
+				iiifInfo := svc.getIIIFContext(mf.PID)
+				err = svc.downlodFromIIIF(js, iiifInfo.S3Key(), destPath)
 				if err != nil {
-					svc.logError(js, fmt.Sprintf("Unable to copy %s to %s %s", jp2kInfo.absolutePath, destPath, err.Error()))
+					svc.logFatal(js, fmt.Sprintf("Unable to downlaod masterFile %s:%s from IIIF: %s", mf.PID, mf.Filename, err.Error()))
 					masterFileError = true
 					break
 				}
