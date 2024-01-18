@@ -41,7 +41,7 @@ func (svc *ServiceContext) publishToIIIF(js *jobStatus, mf *masterFile, srcPath 
 	}
 
 	if iiifExist {
-		svc.logInfo(js, fmt.Sprintf("MasterFile %s already has a JP2k file on S3: %s/%s", mf.PID, svc.IIIF.Bucket, iiifInfo.S3Key()))
+		svc.logInfo(js, fmt.Sprintf("MasterFile %s already has a JP2 file on S3: %s/%s", mf.PID, svc.IIIF.Bucket, iiifInfo.S3Key()))
 		if overwrite == false {
 			svc.logInfo(js, "Overwrite not requested; nothing more to do")
 			return nil
@@ -50,7 +50,7 @@ func (svc *ServiceContext) publishToIIIF(js *jobStatus, mf *masterFile, srcPath 
 	}
 
 	if fileType == "jp2" {
-		svc.logInfo(js, fmt.Sprintf("Master file %s is already jp2; send directly to IIIF staging: %s", mf.PID, iiifInfo.StagePath))
+		svc.logInfo(js, fmt.Sprintf("MasterFile %s is already jp2; send directly to IIIF staging: %s", mf.PID, iiifInfo.StagePath))
 		copyFile(srcPath, iiifInfo.StagePath, 0664)
 	} else if fileType == "tiff" {
 		svc.logInfo(js, fmt.Sprintf("Compressing %s to %s using imagemagick...", srcPath, iiifInfo.StagePath))
@@ -72,6 +72,7 @@ func (svc *ServiceContext) publishToIIIF(js *jobStatus, mf *masterFile, srcPath 
 	err = svc.uploadToIIIF(iiifInfo.StagePath, iiifInfo.S3Key())
 
 	svc.logInfo(js, fmt.Sprintf("%s has been published to IIIF", mf.PID))
+	defer os.Remove(iiifInfo.StagePath)
 	return nil
 }
 

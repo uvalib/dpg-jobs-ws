@@ -102,6 +102,60 @@ func (svc *ServiceContext) cloneMasterFiles(c *gin.Context) {
 	c.String(http.StatusOK, fmt.Sprintf("%d", js.ID))
 }
 
+func (svc *ServiceContext) publishUnitImagesToIIIF(c *gin.Context) {
+	unitID, _ := strconv.ParseInt(c.Param("id"), 10, 64)
+	js, err := svc.createJobStatus("UnitIIIF", "Unit", unitID)
+	if err != nil {
+		log.Printf("ERROR: unable to create UnitIIIF job status: %s", err.Error())
+		c.String(http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	overwrite, _ := strconv.ParseBool(c.Query("overwrite"))
+
+	svc.logInfo(js, fmt.Sprintf("Loading target unit %d", unitID))
+	var tgtUnit unit
+	err = svc.GDB.
+		Preload("MasterFiles", func(db *gorm.DB) *gorm.DB {
+			return db.Order("master_files.filename ASC")
+		}).Preload("MasterFiles.ImageTechMeta").First(&tgtUnit, unitID).Error
+	if err != nil {
+		svc.logFatal(js, fmt.Sprintf("Unable to load unit %d: %s", unitID, err.Error()))
+		c.String(http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	go func() {
+		svc.logInfo(js, fmt.Sprintf("Publishing %d master files to IIIF with overwrite=%t", len(tgtUnit.MasterFiles), overwrite))
+		unitDir := fmt.Sprintf("%09d", tgtUnit.ID)
+		for _, mf := range tgtUnit.MasterFiles {
+			svc.logInfo(js, fmt.Sprintf("Processing master file %s", mf.Filename))
+			if mf.DeaccessionedAt != nil {
+				svc.logInfo(js, fmt.Sprintf("Master file %s has been deaccessioned will not be published to IIIF", mf.Filename))
+				continue
+			}
+			if mf.OriginalMfID != nil {
+				svc.logInfo(js, fmt.Sprintf("Master file %s is a clone and will not be published to IIIF", mf.Filename))
+				continue
+			}
+
+			archiveFile := path.Join(svc.ArchiveDir, unitDir, mf.Filename)
+			if pathExists(archiveFile) == false {
+				svc.logError(js, fmt.Sprintf("Master file does not exist in the archive at %s", archiveFile))
+				continue
+			}
+
+			err = svc.publishToIIIF(js, &mf, archiveFile, overwrite)
+			if err != nil {
+				svc.logError(js, fmt.Sprintf("Publish %s to IIIF Failed: %s", archiveFile, err.Error()))
+			}
+		}
+		svc.jobDone(js)
+	}()
+
+	c.String(http.StatusOK, fmt.Sprintf("%d", js.ID))
+}
+
 func (svc *ServiceContext) createPatronDeliverables(c *gin.Context) {
 	unitID, _ := strconv.ParseInt(c.Param("id"), 10, 64)
 	js, err := svc.createJobStatus("CreatePatronDeliverables", "Unit", unitID)
