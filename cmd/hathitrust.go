@@ -356,7 +356,7 @@ func (svc *ServiceContext) createHathiTrustPackage(c *gin.Context) {
 
 			svc.logInfo(js, "Find target unit")
 			var units []unit
-			err = svc.GDB.Where("metadata_id=? and unit_status != ?", mdID, "canceled").Find(&units).Error
+			err = svc.GDB.Where("metadata_id=? and unit_status != ? and reorder = ?", mdID, "canceled", false).Find(&units).Error
 			if err != nil {
 				svc.logError(js, fmt.Sprintf("Unable to get a unit for metadata %d: %s", mdID, err.Error()))
 				continue
