@@ -1,7 +1,7 @@
 #
 # build the target application
 #
-FROM public.ecr.aws/docker/library/golang:1.21.3-alpine3.18 as builder
+FROM public.ecr.aws/docker/library/golang:1.21.6-alpine3.19 as builder
 RUN apk update && apk upgrade && apk add --no-cache make npm yarn
 
 WORKDIR /build
@@ -14,7 +14,7 @@ RUN make linux
 #
 # build the target container
 #
-FROM public.ecr.aws/docker/library/alpine:3.18
+FROM public.ecr.aws/docker/library/alpine:3.19
 
 # update the packages
 RUN apk update && apk upgrade && apk add bash tzdata ca-certificates curl exiftool wget && rm -rf /var/cache/apk/*
