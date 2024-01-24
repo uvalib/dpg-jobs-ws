@@ -345,12 +345,12 @@ func (svc *ServiceContext) createHathiTrustPackage(c *gin.Context) {
 			}
 
 			if md.Barcode == "" {
-				svc.logError(js, "Metadata is missing the required Barcode")
+				svc.failHathiTrustPackage(js, md.ID, "required barcode is missing")
 				continue
 			}
 
 			if md.OcrHint == nil {
-				svc.logError(js, "Metadata is missing the required OCRHint setting")
+				svc.failHathiTrustPackage(js, md.ID, "required OCRHint setting is missing")
 				continue
 			}
 
@@ -358,12 +358,12 @@ func (svc *ServiceContext) createHathiTrustPackage(c *gin.Context) {
 			var units []unit
 			err = svc.GDB.Where("metadata_id=? and unit_status != ? and reorder = ?", mdID, "canceled", false).Find(&units).Error
 			if err != nil {
-				svc.logError(js, fmt.Sprintf("Unable to get a unit for metadata %d: %s", mdID, err.Error()))
+				svc.failHathiTrustPackage(js, md.ID, fmt.Sprintf("unable to get a unit: %s", err.Error()))
 				continue
 			}
 
 			if len(units) == 0 {
-				svc.logError(js, fmt.Sprintf("No units found for metadata %d", mdID))
+				svc.failHathiTrustPackage(js, md.ID, "no units found")
 				continue
 			}
 
@@ -378,7 +378,7 @@ func (svc *ServiceContext) createHathiTrustPackage(c *gin.Context) {
 			if specialCase == false {
 				// This is the snandard case; enforce 1 unit per metadata record
 				if len(units) > 1 {
-					svc.logError(js, fmt.Sprintf("Too many units found (%d) for metadata %d", len(units), mdID))
+					svc.failHathiTrustPackage(js, md.ID, fmt.Sprintf("too many units found (%d)", len(units)))
 					continue
 				}
 			} else {
@@ -405,19 +405,19 @@ func (svc *ServiceContext) createHathiTrustPackage(c *gin.Context) {
 			}
 
 			if latestCompressDate == nil {
-				svc.logError(js, fmt.Sprintf("Unabe to determine latest compression date for metadata %d; skipping", mdID))
+				svc.failHathiTrustPackage(js, md.ID, "unable to determine latest compression date")
 				continue
 			}
 
 			svc.logInfo(js, fmt.Sprintf("Load master files for units %v", unitIDs))
 			err = svc.GDB.Where("unit_id in ?", unitIDs).Find(&masterFiles).Error
 			if err != nil {
-				svc.logError(js, fmt.Sprintf("Unabe to load master files: %s", err.Error()))
+				svc.failHathiTrustPackage(js, md.ID, fmt.Sprintf("unable to load master files: %s", err.Error()))
 				continue
 			}
 
 			if len(masterFiles) == 0 {
-				svc.logError(js, fmt.Sprintf("No master files found for metadata %d", mdID))
+				svc.failHathiTrustPackage(js, md.ID, "no master files found")
 				continue
 			}
 
@@ -446,7 +446,7 @@ func (svc *ServiceContext) createHathiTrustPackage(c *gin.Context) {
 			svc.logInfo(js, fmt.Sprintf("Ensure package assembly directory %s exists", assembleDir))
 			err = ensureDirExists(assembleDir, 0777)
 			if err != nil {
-				svc.logError(js, fmt.Sprintf("Unable to create package assembly directory %s: %s", assembleDir, err.Error()))
+				svc.failHathiTrustPackage(js, md.ID, fmt.Sprintf("unable to create package assembly directory %s: %s", assembleDir, err.Error()))
 				continue
 			}
 
@@ -467,7 +467,7 @@ func (svc *ServiceContext) createHathiTrustPackage(c *gin.Context) {
 						// note; this call will not return until all master files in the unit have OCR results
 						err = svc.requestUnitOCR(js, md.PID, ocrUnit.ID, md.OcrLanguageHint)
 						if err != nil {
-							svc.logError(js, fmt.Sprintf("Unable to request OCR for unit %d: %s", ocrUnit.ID, err.Error()))
+							svc.failHathiTrustPackage(js, md.ID, fmt.Sprintf("unable to request ocr for unit %d: %s", ocrUnit.ID, err.Error()))
 							continue
 						}
 					}
@@ -475,7 +475,7 @@ func (svc *ServiceContext) createHathiTrustPackage(c *gin.Context) {
 					svc.logInfo(js, "Refreshing master file list after succesful OCR generation")
 					err = svc.GDB.Where("unit_id in ?", unitIDs).Find(&masterFiles).Error
 					if err != nil {
-						svc.logError(js, fmt.Sprintf("Unabe to refresh master files: %s", err.Error()))
+						svc.failHathiTrustPackage(js, md.ID, fmt.Sprintf("unable to reload units with ocr: %s", err.Error()))
 						continue
 					}
 				}
@@ -485,7 +485,7 @@ func (svc *ServiceContext) createHathiTrustPackage(c *gin.Context) {
 			svc.logInfo(js, fmt.Sprintf("Package will be generated here %s", packageFilename))
 			zipFile, err := os.Create(packageFilename)
 			if err != nil {
-				svc.logError(js, fmt.Sprintf("Unable to create package zip %s: %s", packageFilename, err.Error()))
+				svc.failHathiTrustPackage(js, md.ID, fmt.Sprintf("unable to create package zip %s: %s", packageFilename, err.Error()))
 				continue
 			}
 			zipWriter := zip.NewWriter(zipFile)
@@ -496,7 +496,7 @@ func (svc *ServiceContext) createHathiTrustPackage(c *gin.Context) {
 			checksumPath := path.Join(assembleDir, "checksum.md5")
 			checksumFile, err := os.Create(checksumPath)
 			if err != nil {
-				svc.logError(js, fmt.Sprintf("Unable to create checksum file %s: %s", checksumPath, err.Error()))
+				svc.failHathiTrustPackage(js, md.ID, fmt.Sprintf("unable to create checksum file %s: %s", checksumPath, err.Error()))
 				continue
 			}
 			checksumFile.Chmod(0666)
@@ -506,7 +506,7 @@ func (svc *ServiceContext) createHathiTrustPackage(c *gin.Context) {
 			lastCaptureDate := masterFiles[len(masterFiles)-1].CreatedAt
 			ymlMD5, err := svc.writeMetaYML(js, assembleDir, &lastCaptureDate, latestCompressDate)
 			if err != nil {
-				svc.logError(js, fmt.Sprintf("Unable to write meta.yml: %s", err.Error()))
+				svc.failHathiTrustPackage(js, md.ID, fmt.Sprintf("unable to write meta.yml: %s", err.Error()))
 				continue
 			}
 			checksumFile.WriteString(fmt.Sprintf("%s  meta.yml\n", ymlMD5))
@@ -519,14 +519,14 @@ func (svc *ServiceContext) createHathiTrustPackage(c *gin.Context) {
 				iiifInfo := svc.getIIIFContext(mf.PID)
 				err = svc.downlodFromIIIF(js, iiifInfo.S3Key(), destPath)
 				if err != nil {
-					svc.logFatal(js, fmt.Sprintf("Unable to downlaod masterFile %s:%s from IIIF: %s", mf.PID, mf.Filename, err.Error()))
+					svc.failHathiTrustPackage(js, md.ID, fmt.Sprintf("unable to download masterfile %s from iiif: %s", mf.Filename, err.Error()))
 					masterFileError = true
 					break
 				}
 
 				_, err := addFileToZip(packageFilename, zipWriter, assembleDir, destFN)
 				if err != nil {
-					svc.logError(js, fmt.Sprintf("Unable to add %s to zip file: %s", destPath, err.Error()))
+					svc.failHathiTrustPackage(js, md.ID, fmt.Sprintf("unable to add %s to zip file: %s", destPath, err.Error()))
 					masterFileError = true
 					break
 				}
@@ -538,13 +538,13 @@ func (svc *ServiceContext) createHathiTrustPackage(c *gin.Context) {
 					destTxtPath := path.Join(assembleDir, txtFileName)
 					err = os.WriteFile(destTxtPath, []byte(mf.TranscriptionText), 0666)
 					if err != nil {
-						svc.logError(js, fmt.Sprintf("Unable to write OCR text to %s %s", destTxtPath, err.Error()))
+						svc.failHathiTrustPackage(js, md.ID, fmt.Sprintf("unable to write ocr text to %s: %s", destTxtPath, err.Error()))
 						masterFileError = true
 						break
 					}
 					_, err := addFileToZip(packageFilename, zipWriter, assembleDir, txtFileName)
 					if err != nil {
-						svc.logError(js, fmt.Sprintf("Unable to add %s to zip file: %s", destTxtPath, err.Error()))
+						svc.failHathiTrustPackage(js, md.ID, fmt.Sprintf("unable to add ocr text file %s to zip: %s", destTxtPath, err.Error()))
 						masterFileError = true
 						break
 					}
@@ -594,6 +594,23 @@ func (svc *ServiceContext) createHathiTrustPackage(c *gin.Context) {
 	}()
 
 	c.String(http.StatusOK, fmt.Sprintf("%d", js.ID))
+}
+
+func (svc *ServiceContext) failHathiTrustPackage(js *jobStatus, mdID int64, reason string) {
+	svc.logError(js, fmt.Sprintf("metadata %d failed package creation: %s", mdID, reason))
+
+	var htStatus hathitrustStatus
+	err := svc.GDB.Where("metadata_id=?", mdID).First(&htStatus).Error
+	if err != nil {
+		svc.logError(js, fmt.Sprintf("Unable to find HathiTrust status for metadata %d: %s", mdID, err.Error()))
+		return
+	}
+	htStatus.Notes += reason
+	htStatus.PackageStatus = "failed"
+	err = svc.GDB.Save(&htStatus).Error
+	if err != nil {
+		svc.logError(js, fmt.Sprintf("Unable to update HathiTrust status record: %s", err.Error()))
+	}
 }
 
 func (svc *ServiceContext) submitHathiTrustPackage(c *gin.Context) {
@@ -738,9 +755,6 @@ func (svc *ServiceContext) submitHathiTrustPackage(c *gin.Context) {
 			return
 		}
 
-		if len(req.Barcodes) > 0 {
-			svc.logError(js, fmt.Sprintf("Requested barcodes not found: %v", req.Barcodes))
-		}
 		svc.logInfo(js, fmt.Sprintf("%d packages submitted", submitted))
 		svc.jobDone(js)
 	}()
