@@ -20,7 +20,7 @@ FROM public.ecr.aws/docker/library/alpine:3.19
 RUN apk update && apk upgrade && apk add bash tzdata ca-certificates curl exiftool wget && rm -rf /var/cache/apk/*
 
 # image magick support
-RUN apk add fftw-double-libs fontconfig freetype ghostscript ghostscript-fonts lcms2 libbz2 libgcc libgomp libheif libjxl libltdl libraw libx11 libxext libxml2 openjpeg pango tiff zlib
+RUN apk add fftw-double-libs fontconfig freetype ghostscript ghostscript-fonts lcms2 libbz2 libgcc libgomp libheif libjxl libltdl libraw libx11 libxext libxml2 openjpeg pango tiff zlib libwebpmux libwebpdemux
 COPY distro/bin/magick /usr/local/bin
 RUN ln -s /usr/local/bin/magick /usr/local/bin/convert && ln -s /usr/local/bin/magick /usr/local/bin/identify
 COPY distro/etc/ /usr/local/etc
@@ -73,7 +73,7 @@ ARG BUILD_TAG
 RUN test -n "$BUILD_TAG" && touch $APP_HOME/buildtag.build-$BUILD_TAG || touch $APP_HOME/buildtag.build-0
 
 # Specify the user
-USER libsnlocal
+#USER libsnlocal
 
 #
 # end of file
