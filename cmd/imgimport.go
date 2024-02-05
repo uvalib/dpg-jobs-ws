@@ -37,6 +37,7 @@ type jp2Source struct {
 }
 
 // curl -X POST https://dpg-jobs.lib.virginia.edu/units/799/import -H "Content-Type: application/json" --data '{"from": "archive", "target": "000000799"}'
+// curl -X POST https://dpg-jobs.lib.virginia.edu/units/58722/import -H "Content-Type: application/json" --data '{"from": "from_fineArts", "target": "20100316ARCH"}'
 // curl -X POST http://localhost:8180/units/799/import -H "Content-Type: application/json" --data '{"from": "archive", "target": "000000799"}'
 
 func (svc *ServiceContext) importGuestImages(c *gin.Context) {
