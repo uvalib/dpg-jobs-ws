@@ -273,6 +273,9 @@ func (svc *ServiceContext) sendASGetRequest(url string) ([]byte, *RequestError) 
 func (svc *ServiceContext) sendASPostRequest(url string, payload interface{}) ([]byte, *RequestError) {
 	return svc.sendASRequest("POST", url, payload)
 }
+func (svc *ServiceContext) sendASDeleteRequest(url string) ([]byte, *RequestError) {
+	return svc.sendASRequest("DELETE", url, nil)
+}
 func (svc *ServiceContext) sendASRequest(verb string, url string, payload interface{}) ([]byte, *RequestError) {
 	fullURL := fmt.Sprintf("%s%s", svc.ArchivesSpace.APIURL, url)
 	log.Printf("INFO: archivesspace %s request: %s", verb, fullURL)
@@ -280,10 +283,14 @@ func (svc *ServiceContext) sendASRequest(verb string, url string, payload interf
 
 	var req *http.Request
 	if verb == "POST" {
-		b, _ := json.Marshal(payload)
-		req, _ = http.NewRequest("POST", fullURL, bytes.NewBuffer(b))
+		if payload != nil {
+			b, _ := json.Marshal(payload)
+			req, _ = http.NewRequest("POST", fullURL, bytes.NewBuffer(b))
+		} else {
+			req, _ = http.NewRequest("POST", fullURL, nil)
+		}
 	} else {
-		req, _ = http.NewRequest("GET", fullURL, nil)
+		req, _ = http.NewRequest(verb, fullURL, nil)
 	}
 
 	req.Header.Add("Content-type", "application/json")

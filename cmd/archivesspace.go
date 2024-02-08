@@ -37,6 +37,7 @@ type asMetadataResponse struct {
 }
 
 type asDigitalObject struct {
+	ID      string `json:"id"`
 	PID     string `json:"pid"`
 	Title   string `json:"title"`
 	IIIF    string `json:"iiif"`
@@ -339,6 +340,71 @@ func (svc *ServiceContext) validateArchivesSpaceURL(c *gin.Context) {
 	c.String(http.StatusOK, outURL)
 }
 
+func (svc *ServiceContext) unpublishArchivesSpace(c *gin.Context) {
+	mdID, _ := strconv.ParseInt(c.Param("id"), 10, 64)
+	js, err := svc.createJobStatus("UnpublishArchivesSpace", "Metadata", mdID)
+	if err != nil {
+		log.Printf("ERROR: unable to create UnpublishArchivesSpace job status: %s", err.Error())
+		c.String(http.StatusInternalServerError, err.Error())
+		return
+	}
+	svc.logInfo(js, fmt.Sprintf("Unublish metadata %d from ArchivesSpace", mdID))
+
+	// grab he metadata record and parse the external_url to get the repo and parent info
+	var tgtMetadata metadata
+	err = svc.GDB.Find(&tgtMetadata, mdID).Error
+	if err != nil {
+		svc.logFatal(js, fmt.Sprintf("Unable to get metadata %d", mdID))
+		return
+	}
+	asURL := parsePublicASURL(tgtMetadata.ExternalURI)
+	if asURL == nil {
+		svc.logFatal(js, fmt.Sprintf("Metadata contains an invalid ArchivesSpace URL: %s", tgtMetadata.ExternalURI))
+		c.String(http.StatusBadRequest, fmt.Sprintf("%s is not a valid aSpace URL", tgtMetadata.ExternalURI))
+		return
+	}
+	log.Printf("%+v", *asURL)
+
+	svc.logInfo(js, fmt.Sprintf("Lookup existing digital object info from %s", tgtMetadata.ExternalURI))
+	tgtASObj, err := svc.getASDetails(js, asURL)
+	if err != nil {
+		svc.logFatal(js, fmt.Sprintf("%s:%s not found in repo %s", asURL.ParentType, asURL.ParentID, asURL.RepositoryID))
+		c.String(http.StatusBadRequest, fmt.Sprintf("%s was not found in aSpace", tgtMetadata.ExternalURI))
+		return
+	}
+
+	dObj := svc.getDigitalObject(js, tgtASObj, tgtMetadata.PID)
+	if dObj == nil {
+		svc.logFatal(js, fmt.Sprintf("No digital object exists for %s", tgtMetadata.ExternalURI))
+		c.String(http.StatusBadRequest, fmt.Sprintf("no digital object for %s", tgtMetadata.ExternalURI))
+		return
+	}
+	// [:DELETE] /repositories/:repo_id/digital_objects/:id
+	delURI := fmt.Sprintf("/repositories/%s/digital_objects/%s", asURL.RepositoryID, dObj.ID)
+	svc.logInfo(js, fmt.Sprintf("Delete digital object request: %s", delURI))
+	_, reqErr := svc.sendASDeleteRequest(delURI)
+	if reqErr != nil {
+		svc.logFatal(js, fmt.Sprintf("Unable to delete digital object: %s", reqErr.Message))
+		c.String(http.StatusInternalServerError, fmt.Sprintf("delete failed: %s", reqErr.Message))
+		return
+	}
+
+	// once the object has been deleted, the record it was attached to must be re-published. There are two endpoints:
+	// [:POST] /repositories/:repo_id/resources/:id/publish
+	// [:POST] /repositories/:repo_id/archival_objects/:id/publish
+	svc.logInfo(js, fmt.Sprintf("Publish the parent of the digital object to make the deletion public: %s %s", asURL.ParentType, asURL.ParentID))
+	pubURL := fmt.Sprintf("/repositories/%s/%s/%s/publish", asURL.RepositoryID, asURL.ParentType, asURL.ParentID)
+	_, reqErr = svc.sendASPostRequest(pubURL, nil)
+	if reqErr != nil {
+		svc.logFatal(js, fmt.Sprintf("Unable to delete digital object: %s", reqErr.Message))
+		c.String(http.StatusInternalServerError, fmt.Sprintf("delete failed: %s", reqErr.Message))
+		return
+	}
+
+	svc.jobDone(js)
+	c.String(http.StatusOK, "deleted")
+}
+
 func (svc *ServiceContext) publishToArchivesSpace(c *gin.Context) {
 	type pubReqData struct {
 		UserID     int64 `json:"userID"`
@@ -445,6 +511,10 @@ func (svc *ServiceContext) getDigitalObject(js *jobStatus, tgtObj asObjectDetail
 					Title:   fmt.Sprintf("%v", doJSON["title"]),
 					Created: fmt.Sprintf("%v", doJSON["create_time"]),
 				}
+
+				doURI := fmt.Sprintf("%v", doJSON["uri"])
+				bits := strings.Split(doURI, "/")
+				out.ID = bits[len(bits)-1]
 
 				fvIface := doJSON["file_versions"]
 				if fvIface == nil {
