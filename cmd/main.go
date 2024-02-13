@@ -42,6 +42,7 @@ func main() {
 
 	router.POST("/audit", svc.auditMasterFiles)
 	router.POST("/audit/fix/jp2", svc.fixFailedJP2Audit)
+	router.POST("/audit/fix/md5", svc.checkMissingMD5Audit)
 
 	router.POST("/phash", svc.generateMasterFilesPHash)
 
