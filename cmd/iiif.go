@@ -34,6 +34,7 @@ func (svc *ServiceContext) publishToIIIF(js *jobStatus, mf *masterFile, srcPath 
 	if fileType == "" {
 		svc.logError(js, "No imageFormat tag present in tech metadata; default to file exenstion")
 		fileType = strings.ToLower(filepath.Ext(mf.Filename))
+		fileType = strings.Replace(fileType, ".", "", 1)
 	}
 	if fileType != "tif" && fileType != "tiff" && fileType != "jp2" {
 		return fmt.Errorf("unsupported image format for %s: %s", mf.PID, fileType)
