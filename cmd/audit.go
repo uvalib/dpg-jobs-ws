@@ -59,6 +59,78 @@ type auditYearResults struct {
 	FinishedAt           string
 }
 
+func (svc *ServiceContext) fixFailedJP2Audit(c *gin.Context) {
+	log.Printf("INFO: received request to fix missing jp2 files identified by audit")
+	var req struct {
+		Limit int `json:"limit"`
+	}
+	err := c.ShouldBindJSON(&req)
+	if err != nil {
+		log.Printf("ERROR: unable to parse fix request: %s", err.Error())
+		c.String(http.StatusBadRequest, err.Error())
+		return
+	}
+	if req.Limit > 0 {
+		log.Printf("INFO: fixes will be limited to %d files", req.Limit)
+	}
+
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				log.Printf("ERROR: panic recovered when processing jp2 repair: %v", r)
+				debug.PrintStack()
+			}
+
+			batchSize := 1000
+			var fails []masterFileAudit
+			cnt := 0
+			err := svc.GDB.Debug().Joins("MasterFile").Where("iiif_exists=?", false).FindInBatches(&fails, batchSize, func(tx *gorm.DB, batch int) error {
+				for _, mfa := range fails {
+					cnt++
+					filename := mfa.MasterFile.Filename
+					unitDir := fmt.Sprintf("%09d", mfa.MasterFile.UnitID)
+					archiveFile := path.Join(svc.ArchiveDir, unitDir, mfa.MasterFile.Filename)
+					if strings.Contains(filename, "ARCH") || strings.Contains(filename, "AVRN") || strings.Contains(filename, "VRC") {
+						if strings.Contains(filename, "_") {
+							overrideDir := strings.Split(filename, "_")[0]
+							archiveFile = path.Join(svc.ArchiveDir, overrideDir, filename)
+						}
+					}
+
+					log.Printf("INFO: publish %s to iiif", archiveFile)
+					if pathExists(archiveFile) == false {
+						log.Printf("ERROR: master file %d archive %s does not exist", mfa.MasterFileID, archiveFile)
+					} else {
+						err := svc.publishToIIIF(nil, mfa.MasterFile, archiveFile, false)
+						if err != nil {
+							log.Printf("ERROR: publish jp2 for %s failed: %s", filename, err.Error())
+						} else {
+							mfa.AuditedAt = time.Now()
+							mfa.IIIFExists = true
+							err = svc.GDB.Save(&mfa).Error
+							if err != nil {
+								log.Printf("ERROR: unable to update audit rec %d: %s", mfa.ID, err.Error())
+							}
+						}
+					}
+					if cnt >= req.Limit {
+						log.Printf("INFO: stopping after processing %d mster files", req.Limit)
+						break
+					}
+				}
+				if cnt >= req.Limit {
+					return fmt.Errorf("reached max processing count %d", cnt)
+				}
+				return nil
+			}).Error
+			if err != nil {
+				log.Printf("ERROR: fix missing jp2 images process has stopped: %s", err.Error())
+			}
+		}()
+	}()
+	c.String(http.StatusOK, fmt.Sprintf("jp2 fix started"))
+}
+
 func (svc *ServiceContext) auditMasterFiles(c *gin.Context) {
 	log.Printf("INFO: received masterfile audit request")
 	var req auditRequest

@@ -11,7 +11,7 @@ import (
 )
 
 // Version of the service
-const version = "1.20.0"
+const version = "1.21.0"
 
 func main() {
 	log.Printf("===> DPG backend processing service starting up <===")
@@ -41,6 +41,8 @@ func main() {
 	router.POST("/aptrust", svc.batchAPTrustSubmission)
 
 	router.POST("/audit", svc.auditMasterFiles)
+	router.POST("/audit/fix/jp2", svc.fixFailedJP2Audit)
+
 	router.POST("/phash", svc.generateMasterFilesPHash)
 
 	router.POST("/hathitrust/package", svc.createHathiTrustPackage)
