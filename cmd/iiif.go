@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -30,8 +31,12 @@ func (svc *ServiceContext) publishToIIIF(js *jobStatus, mf *masterFile, srcPath 
 
 	svc.logInfo(js, "Validate file type is TIF or JP2")
 	fileType := strings.ToLower(mf.ImageTechMeta.ImageFormat)
+	if fileType == "" {
+		svc.logError(js, "No imageFormat tag present in tech metadata; default to file exenstion")
+		fileType = strings.ToLower(filepath.Ext(mf.Filename))
+	}
 	if fileType != "tif" && fileType != "tiff" && fileType != "jp2" {
-		return fmt.Errorf("unsupported image format for %s: %s", mf.PID, mf.ImageTechMeta.ImageFormat)
+		return fmt.Errorf("unsupported image format for %s: %s", mf.PID, fileType)
 	}
 
 	iiifInfo := svc.getIIIFContext(mf.PID)

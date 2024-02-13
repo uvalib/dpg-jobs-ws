@@ -105,7 +105,7 @@ func (svc *ServiceContext) checkMissingMD5Audit(c *gin.Context) {
 					}
 
 					if cnt >= req.Limit {
-						log.Printf("INFO: stopping after processing %d mster files", req.Limit)
+						log.Printf("INFO: stopping after processing %d master files", req.Limit)
 						break
 					}
 				}
@@ -169,7 +169,7 @@ func (svc *ServiceContext) fixFailedJP2Audit(c *gin.Context) {
 						}
 					}
 					if cnt >= req.Limit {
-						log.Printf("INFO: stopping after processing %d mster files", req.Limit)
+						log.Printf("INFO: stopping after processing %d master files", req.Limit)
 						break
 					}
 				}
