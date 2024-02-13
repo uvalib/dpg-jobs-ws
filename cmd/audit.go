@@ -147,37 +147,40 @@ func (svc *ServiceContext) fixFailedJP2Audit(c *gin.Context) {
 			batchSize := 1000
 			var fails []masterFileAudit
 			cnt := 0
-			err := svc.GDB.Debug().Joins("MasterFile").Where("iiif_exists=? and archive_exists=?", false, true).FindInBatches(&fails, batchSize, func(tx *gorm.DB, batch int) error {
-				for _, mfa := range fails {
-					cnt++
+			err := svc.GDB.Preload("MasterFile").Preload("MasterFile.ImageTechMeta").
+				Where("iiif_exists=? and archive_exists=?", false, true).
+				FindInBatches(&fails, batchSize, func(tx *gorm.DB, batch int) error {
+					for _, mfa := range fails {
+						cnt++
+						log.Printf("INFO: Publish masterfile %s: %s from audit record %d", mfa.MasterFile.PID, mfa.MasterFile.Filename, mfa.ID)
 
-					archiveFile := svc.getArchiveFileName(mfa.MasterFile)
-					log.Printf("INFO: publish %s to iiif", archiveFile)
-					if pathExists(archiveFile) == false {
-						log.Printf("ERROR: master file %d archive %s does not exist", mfa.MasterFileID, archiveFile)
-					} else {
-						err := svc.publishToIIIF(nil, mfa.MasterFile, archiveFile, false)
-						if err != nil {
-							log.Printf("ERROR: publish jp2 for %s failed: %s", mfa.MasterFile.Filename, err.Error())
+						archiveFile := svc.getArchiveFileName(mfa.MasterFile)
+						log.Printf("INFO: publish %s to iiif", archiveFile)
+						if pathExists(archiveFile) == false {
+							log.Printf("ERROR: master file %d archive %s does not exist", mfa.MasterFileID, archiveFile)
 						} else {
-							mfa.AuditedAt = time.Now()
-							mfa.IIIFExists = true
-							err = svc.GDB.Save(&mfa).Error
+							err := svc.publishToIIIF(nil, mfa.MasterFile, archiveFile, false)
 							if err != nil {
-								log.Printf("ERROR: unable to update audit rec %d: %s", mfa.ID, err.Error())
+								log.Printf("ERROR: publish jp2 for %s failed: %s", mfa.MasterFile.Filename, err.Error())
+							} else {
+								mfa.AuditedAt = time.Now()
+								mfa.IIIFExists = true
+								err = svc.GDB.Save(&mfa).Error
+								if err != nil {
+									log.Printf("ERROR: unable to update audit rec %d: %s", mfa.ID, err.Error())
+								}
 							}
+						}
+						if cnt >= req.Limit {
+							log.Printf("INFO: stopping after processing %d master files", req.Limit)
+							break
 						}
 					}
 					if cnt >= req.Limit {
-						log.Printf("INFO: stopping after processing %d master files", req.Limit)
-						break
+						return fmt.Errorf("reached max processing count %d", cnt)
 					}
-				}
-				if cnt >= req.Limit {
-					return fmt.Errorf("reached max processing count %d", cnt)
-				}
-				return nil
-			}).Error
+					return nil
+				}).Error
 			if err != nil {
 				log.Printf("ERROR: fix missing jp2 images process has stopped: %s", err.Error())
 			}
