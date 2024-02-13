@@ -30,7 +30,7 @@ func (svc *ServiceContext) publishToIIIF(js *jobStatus, mf *masterFile, srcPath 
 
 	svc.logInfo(js, "Validate file type is TIF or JP2")
 	fileType := strings.ToLower(mf.ImageTechMeta.ImageFormat)
-	if fileType != "tiff" && fileType != "jp2" {
+	if fileType != "tif" && fileType != "tiff" && fileType != "jp2" {
 		return fmt.Errorf("unsupported image format for %s: %s", mf.PID, mf.ImageTechMeta.ImageFormat)
 	}
 

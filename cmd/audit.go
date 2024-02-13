@@ -123,6 +123,7 @@ func (svc *ServiceContext) checkMissingMD5Audit(c *gin.Context) {
 	c.String(http.StatusOK, fmt.Sprintf("md5 fix started"))
 }
 
+// curl -X POST https://dpg-jobs.lib.virginia.edu/audit/fix/jp2  -H "Content-Type: application/json" --data '{"limit": 1}'
 func (svc *ServiceContext) fixFailedJP2Audit(c *gin.Context) {
 	log.Printf("INFO: received request to fix missing jp2 files identified by audit")
 	var req auditFixLimit
