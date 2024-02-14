@@ -159,7 +159,7 @@ func (svc *ServiceContext) fixFailedJP2Audit(c *gin.Context) {
 						if pathExists(archiveFile) == false {
 							log.Printf("ERROR: master file %d archive %s does not exist", mfa.MasterFileID, archiveFile)
 						} else {
-							err := svc.publishToIIIF(nil, mfa.MasterFile, archiveFile, false)
+							err := svc.publishToIIIF(nil, mfa.MasterFile, archiveFile, true)
 							if err != nil {
 								log.Printf("ERROR: publish jp2 for %s failed: %s", mfa.MasterFile.Filename, err.Error())
 							} else {
