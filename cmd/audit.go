@@ -98,7 +98,7 @@ func (svc *ServiceContext) checkMissingMD5Audit(c *gin.Context) {
 					} else {
 						mfa.AuditedAt = time.Now()
 						mfa.ChecksumMatch = true
-						err = svc.GDB.Save(&mfa).Error
+						err = svc.GDB.Model(&mfa).Select("AuditedAt", "ChecksumMatch").Updates(mfa).Error
 						if err != nil {
 							log.Printf("ERROR: unable to update audit rec %d: %s", mfa.ID, err.Error())
 						}
@@ -163,12 +163,12 @@ func (svc *ServiceContext) fixFailedJP2Audit(c *gin.Context) {
 							if err != nil {
 								log.Printf("ERROR: publish jp2 for %s failed: %s", mfa.MasterFile.Filename, err.Error())
 							} else {
-								// mfa.AuditedAt = time.Now()
-								// mfa.IIIFExists = true
-								// err = svc.GDB.Save(&mfa).Error
-								// if err != nil {
-								// 	log.Printf("ERROR: unable to update audit rec %d: %s", mfa.ID, err.Error())
-								// }
+								mfa.AuditedAt = time.Now()
+								mfa.IIIFExists = true
+								err = svc.GDB.Model(&mfa).Select("AuditedAt", "IIIFExists").Updates(mfa).Error
+								if err != nil {
+									log.Printf("ERROR: unable to update audit rec %d: %s", mfa.ID, err.Error())
+								}
 								log.Printf("INFO: stubbed out audit rec update")
 							}
 						}
