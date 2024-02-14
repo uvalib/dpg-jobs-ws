@@ -169,7 +169,6 @@ func (svc *ServiceContext) fixFailedJP2Audit(c *gin.Context) {
 								if err != nil {
 									log.Printf("ERROR: unable to update audit rec %d: %s", mfa.ID, err.Error())
 								}
-								log.Printf("INFO: stubbed out audit rec update")
 							}
 						}
 						if cnt >= req.Limit {
