@@ -104,12 +104,12 @@ func (svc *ServiceContext) checkMissingMD5Audit(c *gin.Context) {
 						}
 					}
 
-					if cnt >= req.Limit {
+					if req.Limit > 0 && cnt >= req.Limit {
 						log.Printf("INFO: stopping after processing %d master files", req.Limit)
 						break
 					}
 				}
-				if cnt >= req.Limit {
+				if req.Limit > 0 && cnt >= req.Limit {
 					return fmt.Errorf("reached max processing count %d", cnt)
 				}
 				return nil
@@ -171,12 +171,12 @@ func (svc *ServiceContext) fixFailedJP2Audit(c *gin.Context) {
 								}
 							}
 						}
-						if cnt >= req.Limit {
+						if req.Limit > 0 && cnt >= req.Limit {
 							log.Printf("INFO: stopping after processing %d master files", req.Limit)
 							break
 						}
 					}
-					if cnt >= req.Limit {
+					if req.Limit > 0 && cnt >= req.Limit {
 						return fmt.Errorf("reached max processing count %d", cnt)
 					}
 					return nil
