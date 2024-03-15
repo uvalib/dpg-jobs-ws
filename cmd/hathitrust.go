@@ -504,7 +504,7 @@ func (svc *ServiceContext) createHathiTrustPackage(c *gin.Context) {
 
 			// Write the meta.yml file
 			lastCaptureDate := masterFiles[len(masterFiles)-1].CreatedAt
-			ymlMD5, err := svc.writeMetaYML(js, assembleDir, &lastCaptureDate, latestCompressDate)
+			ymlMD5, err := svc.writeMetaYML(assembleDir, &lastCaptureDate, latestCompressDate)
 			if err != nil {
 				svc.failHathiTrustPackage(js, md.ID, fmt.Sprintf("unable to write meta.yml: %s", err.Error()))
 				continue
@@ -809,7 +809,7 @@ func (svc *ServiceContext) getMARCMetadata(md metadata) (string, error) {
 	return prettyXML, nil
 }
 
-func (svc *ServiceContext) writeMetaYML(js *jobStatus, assembleDir string, digitizationDate *time.Time, compressedAt *time.Time) (string, error) {
+func (svc *ServiceContext) writeMetaYML(assembleDir string, digitizationDate *time.Time, compressedAt *time.Time) (string, error) {
 	ymlPath := path.Join(assembleDir, "meta.yml")
 	ymlFile, err := os.Create(ymlPath)
 	if err != nil {

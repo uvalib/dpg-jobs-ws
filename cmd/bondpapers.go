@@ -16,6 +16,8 @@ import (
 	"golang.org/x/exp/slices"
 )
 
+// SAMPLE LOCAL CALL
+// curl -X POST http://localhost:8180/script -H "Content-Type: application/json" --data '{"computeID": "lf6f", "name": "createBondLocations", "params": {"fileName": "boxes9-12.csv"}}'
 func (svc *ServiceContext) createBondLocations(c *gin.Context, js *jobStatus, params map[string]interface{}) error {
 	svc.logInfo(js, fmt.Sprintf("start script to create locations for bond papers"))
 	csvFileName, found := params["fileName"].(string)
@@ -55,6 +57,8 @@ func (svc *ServiceContext) createBondLocations(c *gin.Context, js *jobStatus, pa
 		if err != nil {
 			svc.logError(js, fmt.Sprintf("unable to find metadata %s", callNum))
 			continue
+		} else {
+			svc.logInfo(js, fmt.Sprintf("location %s for call num %s will be attached to metadata %s", boxFolder, callNum, tgtMD.PID))
 		}
 
 		hasLocation := false
@@ -95,7 +99,7 @@ func (svc *ServiceContext) createBondLocations(c *gin.Context, js *jobStatus, pa
 //   - box: (OPTIONAL) which box of images to igest.  If omitted, all boxes will be processed
 //   - folder: (OPTIONAL) folder to ingest. If omitted, the entire box will be ingested
 //
-// EXAMPLE: curl -X POST https://dpg-jobs.lib.virginia.edu/script -H "Content-Type: application/json" --data '{"computeID": "lf6f", "name": "createBondUnits", "params": {"orderID": 12167, "src": "/mnt/work/bondpapers", "fileName": "BondBoxes1-2-3-6-7-8.csv", "box": "1"}}'
+// EXAMPLE: curl -X POST https://dpg-jobs.lib.virginia.edu/script -H "Content-Type: application/json" --data '{"computeID": "lf6f", "name": "createBondUnits", "params": {"orderID": 12288, "src": "/mnt/work/bondpapers", "fileName": "boxes9-12.csv", "box": "9"}}'
 func (svc *ServiceContext) createBondUnits(c *gin.Context, js *jobStatus, params map[string]interface{}) error {
 	svc.logInfo(js, fmt.Sprintf("start script to create units for bond papers"))
 	bondRoot, found := params["src"].(string)
@@ -233,7 +237,7 @@ func (svc *ServiceContext) createBondUnits(c *gin.Context, js *jobStatus, params
 //   - box: which box of images to igest
 //   - folder: (OPTIONAL) folder to ingest. If omitted, the entire box will be ingested
 //
-// EXAMPLE: curl -X POST https://dpg-jobs.lib.virginia.edu/script -H "Content-Type: application/json" --data '{"computeID": "lf6f", "name": "ingestBondImages", "params": {"orderID": 12167, "src": "/mnt/bondpapers/New from Bond Project", "box": "1", "folder": "27"}}'
+// EXAMPLE: curl -X POST https://dpg-jobs.lib.virginia.edu/script -H "Content-Type: application/json" --data '{"computeID": "lf6f", "name": "ingestBondImages", "params": {"orderID": 12288, "src": "/mnt/work/bondpapers/Jan 2024 Delivery", "box": "9", "folder": "21"}}'
 func (svc *ServiceContext) ingestBondImages(c *gin.Context, js *jobStatus, params map[string]interface{}) error {
 	svc.logInfo(js, fmt.Sprintf("start script to ingest bond images"))
 	bondRoot, found := params["src"].(string)
@@ -264,7 +268,7 @@ func (svc *ServiceContext) ingestBondImages(c *gin.Context, js *jobStatus, param
 	}
 
 	callNum := fmt.Sprintf("MSS 13347 Box %s", tgtBox)
-	svc.logInfo(js, fmt.Sprintf("lookup unit from order %d with metadata call number %s", tgtOrder.ID, callNum))
+	svc.logInfo(js, fmt.Sprintf("lookup metadata from order %d with call number %s", tgtOrder.ID, callNum))
 	var tgtMD metadata
 	err = svc.GDB.Preload("Locations").Where("call_number=?", callNum).First(&tgtMD).Error
 	if err != nil {
@@ -431,6 +435,8 @@ func (svc *ServiceContext) ingestBondImages(c *gin.Context, js *jobStatus, param
 //   - orderID: the target TS order ID. By default, all units will be exported
 //   - box: (OPTIONAL) which box of images use
 //   - folder: (OPTIONAL) which folder to export
+//
+// EXAMPLE: curl -X POST https://dpg-jobs.lib.virginia.edu/script -H "Content-Type: application/json" --data '{"computeID": "lf6f", "name": "generateBondMapping", "params": {"orderID": 12288, "box": "9"}}'
 func (svc *ServiceContext) generateBondMapping(c *gin.Context, js *jobStatus, params map[string]interface{}) error {
 	svc.logInfo(js, fmt.Sprintf("start script to export a bond to tracksys mapping csv"))
 	rawOrderID, found := params["orderID"].(float64)

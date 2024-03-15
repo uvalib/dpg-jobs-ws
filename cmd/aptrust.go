@@ -317,17 +317,19 @@ func (svc *ServiceContext) getAPTrustGroupStatus(collectionMD *metadata) ([]apTr
 		log.Printf("INFO: request page %d of results for group %s - %s", page, collectionMD.PID, collectionMD.Title)
 		cmd := exec.Command("apt-cmd", "registry", "list", "workitems", fmt.Sprintf("bag_group_identifier=%s", groupID),
 			"sort=date_processed__desc", "per_page=1000", fmt.Sprintf("page=%d", page))
-		aptOut, err := cmd.CombinedOutput()
-		if err != nil {
+		aptOut, cmdErr := cmd.CombinedOutput()
+		if cmdErr != nil {
 			done = true
 			err = fmt.Errorf(string(aptOut))
+			break
 		}
 
 		var jsonResp apTrustResponse
-		err = json.Unmarshal(aptOut, &jsonResp)
-		if err != nil {
+		jsonErr := json.Unmarshal(aptOut, &jsonResp)
+		if jsonErr != nil {
 			done = true
-			err = fmt.Errorf("malformed response: %s", err.Error())
+			err = fmt.Errorf("malformed response: %s", jsonErr.Error())
+			break
 		}
 
 		log.Printf("INFO: %d results from a total of %d received", len(jsonResp.Results), jsonResp.Count)

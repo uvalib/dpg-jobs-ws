@@ -209,7 +209,7 @@ func (svc *ServiceContext) getArchivesSpaceMetadata(asURL *asURLInfo, tgtPID str
 
 	log.Printf("INFO: Lookup repository name")
 	resp, asErr := svc.sendASGetRequest(fmt.Sprintf("/repositories/%s", asURL.RepositoryID))
-	if err != nil {
+	if asErr != nil {
 		return nil, fmt.Errorf("unable to get repoisitory %s info: %s", asURL.RepositoryID, asErr.Message)
 	}
 	var repo map[string]interface{}

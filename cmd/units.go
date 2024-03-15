@@ -74,10 +74,10 @@ func (svc *ServiceContext) cloneMasterFiles(c *gin.Context) {
 				}
 				pageNum += cloneCnt
 			} else {
-				for _, mf := range cr.Files {
-					mf := findMasterfile(&srcUnit, mf.ID)
+				for _, mfInfo := range cr.Files {
+					mf := findMasterfile(&srcUnit, mfInfo.ID)
 					if mf == nil {
-						svc.logError(js, fmt.Sprintf("Unable to find masterfile %d in source unit %d. Skipping.", mf.ID, srcUnit.ID))
+						svc.logError(js, fmt.Sprintf("Unable to find masterfile %d in source unit %d. Skipping.", mfInfo.ID, srcUnit.ID))
 					} else {
 						err = svc.cloneMasterFile(js, &srcUnit, mf, &destUnit, mf.Title, pageNum)
 						if err != nil {

@@ -377,7 +377,7 @@ func getFileSize(path string) int64 {
 
 func ensureDirExists(dir string, mode fs.FileMode) error {
 	if _, err := os.Stat(dir); os.IsNotExist(err) {
-		err := os.MkdirAll(dir, 0777)
+		err := os.MkdirAll(dir, mode)
 		if err != nil {
 			return err
 		}
