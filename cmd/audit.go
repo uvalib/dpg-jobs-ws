@@ -64,7 +64,7 @@ type auditFixLimit struct {
 }
 
 func (svc *ServiceContext) checkMissingMD5Audit(c *gin.Context) {
-	log.Printf("INFO: received request to fix missing jp2 files identified by audit")
+	log.Printf("INFO: received request to fix missing md5 checsksum identified by audit")
 	var req auditFixLimit
 	err := c.ShouldBindJSON(&req)
 	if err != nil {
@@ -86,7 +86,7 @@ func (svc *ServiceContext) checkMissingMD5Audit(c *gin.Context) {
 			batchSize := 1000
 			var fails []masterFileAudit
 			cnt := 0
-			err := svc.GDB.Debug().Joins("MasterFile").Where("checksum_exists=? and archive_exists=?", false, true).FindInBatches(&fails, batchSize, func(tx *gorm.DB, batch int) error {
+			err := svc.GDB.Joins("MasterFile").Where("checksum_exists=? and archive_exists=?", false, true).FindInBatches(&fails, batchSize, func(tx *gorm.DB, batch int) error {
 				for _, mfa := range fails {
 					cnt++
 
@@ -101,6 +101,12 @@ func (svc *ServiceContext) checkMissingMD5Audit(c *gin.Context) {
 						err = svc.GDB.Model(&mfa).Select("AuditedAt", "ChecksumMatch").Updates(mfa).Error
 						if err != nil {
 							log.Printf("ERROR: unable to update audit rec %d: %s", mfa.ID, err.Error())
+						}
+						tgtMF := mfa.MasterFile
+						tgtMF.MD5 = fileMD5
+						err = svc.GDB.Model(&tgtMF).Select("MD5").Updates(tgtMF).Error
+						if err != nil {
+							log.Printf("ERROR: unable to update verified but missing md5 for masterfile %d - %s: %s", tgtMF.ID, tgtMF.Filename, err.Error())
 						}
 					}
 
