@@ -96,17 +96,21 @@ func (svc *ServiceContext) checkMissingMD5Audit(c *gin.Context) {
 					if fileMD5 != mfa.AuditChecksum {
 						log.Printf("ERROR:checksum match for %s failed", mfa.MasterFile.Filename)
 					} else {
-						mfa.AuditedAt = time.Now()
-						mfa.ChecksumMatch = true
-						err = svc.GDB.Model(&mfa).Select("AuditedAt", "ChecksumMatch").Updates(mfa).Error
-						if err != nil {
-							log.Printf("ERROR: unable to update audit rec %d: %s", mfa.ID, err.Error())
-						}
+						log.Printf("INFO: md5 matches original audit, set it as the md5 for the masterfile")
 						tgtMF := mfa.MasterFile
 						tgtMF.MD5 = fileMD5
 						err = svc.GDB.Model(&tgtMF).Select("MD5").Updates(tgtMF).Error
 						if err != nil {
 							log.Printf("ERROR: unable to update verified but missing md5 for masterfile %d - %s: %s", tgtMF.ID, tgtMF.Filename, err.Error())
+						} else {
+							log.Printf("INFO: update md5 audit record")
+							mfa.AuditedAt = time.Now()
+							mfa.ChecksumMatch = true
+							mfa.ChecksumExists = true
+							err = svc.GDB.Model(&mfa).Select("AuditedAt", "ChecksumMatch", "ChecksumExists").Updates(mfa).Error
+							if err != nil {
+								log.Printf("ERROR: unable to update audit rec %d: %s", mfa.ID, err.Error())
+							}
 						}
 					}
 
