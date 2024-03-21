@@ -6,9 +6,7 @@ import (
 	"log"
 	"net/http"
 	"os"
-	"os/exec"
 	"path"
-	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -755,19 +753,6 @@ func (svc *ServiceContext) makeGapForInsertion(js *jobStatus, tgtUnit *unit, tif
 	return nil
 }
 
-func (svc *ServiceContext) updateMasterFileSensitivity(mf *masterFile, sensitive bool) error {
-	if mf.Sensitive == sensitive {
-		return fmt.Errorf("master file %s is already has sensitive %t", mf.PID, sensitive)
-	}
-
-	mf.Sensitive = sensitive
-	err := svc.GDB.Model(&mf).Select("Sensitive").Updates(mf).Error
-	if err != nil {
-		return fmt.Errorf("unable to set master file %s sensitive %t: %s", mf.PID, sensitive, err.Error())
-	}
-	return nil
-}
-
 func (svc *ServiceContext) clearMasterFileSensitive(c *gin.Context) {
 	mfID, _ := strconv.ParseInt(c.Param("id"), 10, 64)
 	js, err := svc.createJobStatus("UpdateSensitivity", "MasterFile", mfID)
@@ -818,65 +803,6 @@ func (svc *ServiceContext) clearMasterFileSensitive(c *gin.Context) {
 		return
 	}
 
-	svc.logInfo(js, "Clear sensitivity flag on masterfile")
-	err = svc.updateMasterFileSensitivity(&mf, false)
-	if err != nil {
-		svc.logFatal(js, err.Error())
-		c.String(http.StatusInternalServerError, err.Error())
-		return
-	}
-
 	svc.jobDone(js)
 	c.String(http.StatusOK, "ok")
-}
-
-func (svc *ServiceContext) getFullResolutionJP2(c *gin.Context) {
-	mfID, _ := strconv.ParseInt(c.Param("id"), 10, 64)
-	js, err := svc.createJobStatus("FullResolutionImage", "MasterFile", mfID)
-	if err != nil {
-		log.Printf("ERROR: unable to create FullResolutionImage job status: %s", err.Error())
-		c.String(http.StatusInternalServerError, err.Error())
-		return
-	}
-
-	svc.logInfo(js, fmt.Sprintf("get full resolution jp2 for sensitive master file %d", mfID))
-	var mf masterFile
-	err = svc.GDB.Find(&mf, mfID).Error
-	if err != nil {
-		svc.logError(js, fmt.Sprintf("Unable to load masterfile %d: %s", mfID, err.Error()))
-		c.String(http.StatusBadRequest, err.Error())
-		return
-	}
-
-	if mf.Sensitive == false {
-		svc.logInfo(js, fmt.Sprintf("Invalid request for original resolution master file %d that is not sensitive", mfID))
-		c.String(http.StatusNotFound, "image is not sensitive")
-		return
-	}
-
-	// the reduced resolution image is srored as the S3key and the original is stored at the same
-	// path, but with -original appended to the filename
-	iiifInfo := svc.getIIIFContext(mf.PID)
-	origFileName := strings.Replace(iiifInfo.FileName, ".jp2", "-original.jp2", 1)
-	origS3Key := fmt.Sprintf("%s/%s", iiifInfo.BucketPrefix, origFileName)
-	err = svc.downlodFromIIIF(js, origS3Key, iiifInfo.StagePath)
-	if err != nil {
-		svc.logError(js, fmt.Sprintf("Unable to download JP2 file %s: %s", origS3Key, err.Error()))
-		c.String(http.StatusBadRequest, err.Error())
-		return
-	}
-
-	jpgFileName := strings.Replace(iiifInfo.FileName, ".jp2", ".jpg", 1)
-	jpgPath := path.Join(filepath.Dir(iiifInfo.StagePath), jpgFileName)
-	svc.logInfo(js, fmt.Sprintf("Convert downloaded jp2 %s to jpg %s", iiifInfo.StagePath, jpgPath))
-	cmdArray := []string{iiifInfo.StagePath, jpgPath}
-	cmd := exec.Command("magick", cmdArray...)
-	cmd.Output()
-	os.Remove(iiifInfo.StagePath)
-
-	c.Header("Content-Type", "image/jpg")
-	c.File(jpgPath)
-	c.Status(http.StatusOK)
-	svc.jobDone(js)
-	defer os.Remove(jpgPath)
 }
