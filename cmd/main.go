@@ -11,7 +11,7 @@ import (
 )
 
 // Version of the service
-const version = "1.22.1"
+const version = "1.22.2"
 
 func main() {
 	log.Printf("===> DPG backend processing service starting up <===")
@@ -92,7 +92,6 @@ func main() {
 	router.POST("/masterfiles/:id/deaccession", svc.deaccessionMasterFile)
 	router.POST("/masterfiles/:id/iiif", svc.updateMasterFileIIIF)
 	router.DELETE("/masterfiles/:id/iiif", svc.deleteMasterFileIIIF)
-	router.DELETE("/masterfiles/:id/sensitive", svc.clearMasterFileSensitive)
 	router.POST("/masterfiles/:id/techmeta", svc.updateMasterFileTechMetadata)
 
 	router.POST("/units/:id/masterfiles/add", svc.addMasterFiles)
