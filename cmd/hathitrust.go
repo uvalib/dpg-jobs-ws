@@ -127,6 +127,7 @@ func (svc *ServiceContext) flagOrderForHathiTrust(c *gin.Context) {
 		flagCnt++
 	}
 	svc.logInfo(js, fmt.Sprintf("%d metadata records fro order %d flagged for hathitrust", flagCnt, req.OrderID))
+	svc.jobDone(js)
 	c.String(http.StatusOK, "ok")
 }
 
@@ -166,6 +167,8 @@ func (svc *ServiceContext) flagMetadataForHathiTrust(js *jobStatus, mdID int64) 
 	return nil
 }
 
+// curl -X POST https://dpg-jobs.lib.virginia.edu/hathitrust/metadata -H "Content-Type: application/json" --data '{"computeID": "lf6f", "mode": "prod", "orders": [11195,11441], "name": "batch20240523"}'
+// curl -X POST https://dpg-jobs.lib.virginia.edu/hathitrust/metadata -H "Content-Type: application/json" --data '{"computeID": "lf6f", "mode": "dev", "orders": [11195,11441], "name": "batch20240523"}'
 func (svc *ServiceContext) submitHathiTrustMetadata(c *gin.Context) {
 	log.Printf("INFO: received hathitrust metadata request")
 	var req hathiTrustRequest
@@ -334,13 +337,13 @@ func (svc *ServiceContext) submitHathiTrustMetadata(c *gin.Context) {
 			// cancel the ftps context immediately when the upload is done
 			ftpsCancel()
 
-			svc.sendHathiTrustUploadEmail(uploadFN, len(metadataOut), len(updatedIDs))
-			if err != nil {
-				svc.logFatal(js, fmt.Sprintf("Unable to send email to HathiTrust: %s", err.Error()))
-				return
-			}
+			if req.Mode == "prod" {
+				svc.sendHathiTrustUploadEmail(uploadFN, len(metadataOut), len(updatedIDs))
+				if err != nil {
+					svc.logFatal(js, fmt.Sprintf("Unable to send email to HathiTrust: %s", err.Error()))
+					return
+				}
 
-			if req.Mode == "prod" || req.Mode == "dev" {
 				svc.logInfo(js, "Update metadata submitted dates")
 				now := time.Now()
 				err = svc.GDB.Model(&hathitrustStatus{}).Where("metadata_id in ?", updatedIDs).
@@ -348,6 +351,8 @@ func (svc *ServiceContext) submitHathiTrustMetadata(c *gin.Context) {
 				if err != nil {
 					svc.logError(js, fmt.Sprintf("Unable to update HathiTrust status records: %s", err.Error()))
 				}
+			} else {
+				svc.logInfo(js, fmt.Sprintf("metadata request is in mode=%s, no email sent and status not updated", req.Mode))
 			}
 		} else {
 			svc.logFatal(js, "No metadata records uploaded")
