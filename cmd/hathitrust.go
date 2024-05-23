@@ -44,6 +44,11 @@ type hathiTrustRequest struct {
 	Name        string  `json:"name"`
 }
 
+type hathiTrustInitRequest struct {
+	ComputeID string `json:"computeID"`
+	OrderID   int64  `json:"orderID"`
+}
+
 type hathiTrustSubmitRequest struct {
 	ComputeID string   `json:"computeID"`
 	OrderID   int64    `json:"order"`
@@ -57,6 +62,108 @@ type hathiTrustSubmission struct {
 	MimeType string
 	IsDir    bool
 	ID       string
+}
+
+// EX: curl -X POST  https://dpg-jobs.lib.virginia.edu/hathitrust/init -H "Content-Type: application/json" --data '{"computeID": "lf6f", "orderID": 11441}'
+// (LOCAL)  curl -X POST  http://localhost:8180/hathitrust/init -H "Content-Type: application/json" --data '{"computeID": "lf6f", "orderID": 10104}'
+func (svc *ServiceContext) flagOrderForHathiTrust(c *gin.Context) {
+	log.Printf("INFO: received request to init order for submission to hathitrust")
+	var req hathiTrustInitRequest
+	err := c.ShouldBindJSON(&req)
+	if err != nil {
+		log.Printf("ERROR: unable to parse hathitrust add request: %s", err.Error())
+		c.String(http.StatusBadRequest, err.Error())
+		return
+	}
+
+	if req.OrderID == 0 {
+		log.Printf("INFO: add hathitrust request is missing required order id")
+		c.String(http.StatusBadRequest, "orderID is required")
+		return
+	}
+
+	submitUser, err := svc.validateHathiTrustRequestor(req.ComputeID)
+	if err != nil {
+		log.Printf("ERROR: %s", err.Error())
+		c.String(http.StatusBadRequest, err.Error())
+		return
+	}
+
+	js, err := svc.createJobStatus("HathiTrustInit", "StaffMember", submitUser.ID)
+	if err != nil {
+		log.Printf("ERROR: unable to create HathiTrustInit job status: %s", err.Error())
+		c.String(http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	var tgtUnits []unit
+	err = svc.GDB.Where("order_id=? and unit_status != ?", req.OrderID, "canceled").Find(&tgtUnits).Error
+	if err != nil {
+		svc.logFatal(js, fmt.Sprintf("unable to get units for order %d: %s", req.OrderID, err.Error()))
+		c.String(http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	svc.logInfo(js, fmt.Sprintf("%d units in order %d are suitable for hathitrust submission", len(tgtUnits), req.OrderID))
+	flagCnt := 0
+	for _, tgtUnit := range tgtUnits {
+		var mfCnt int64
+		err = svc.GDB.Table("master_files").Where("unit_id=?", tgtUnit.ID).Count(&mfCnt).Error
+		if err != nil {
+			svc.logError(js, fmt.Sprintf("unable to get master file count for unit %d, it will not be flagged for hathitrust inclusion: %s", tgtUnit.ID, err.Error()))
+			continue
+		}
+		if mfCnt == 0 {
+			svc.logInfo(js, fmt.Sprintf("unit %d has no master files and will not be flagged for hathitrust inclusion", tgtUnit.ID))
+			continue
+		}
+
+		svc.logInfo(js, fmt.Sprintf("[%d] flag metadata %d from unit %d for inclusion in hathitrust", (flagCnt+1), *tgtUnit.MetadataID, tgtUnit.ID))
+		err = svc.flagMetadataForHathiTrust(js, *tgtUnit.MetadataID)
+		if err != nil {
+			log.Printf("ERROR: %s", err.Error())
+			continue
+		}
+		flagCnt++
+	}
+	svc.logInfo(js, fmt.Sprintf("%d metadata records fro order %d flagged for hathitrust", flagCnt, req.OrderID))
+	c.String(http.StatusOK, "ok")
+}
+
+func (svc *ServiceContext) flagMetadataForHathiTrust(js *jobStatus, mdID int64) error {
+	svc.logInfo(js, fmt.Sprintf("flag metadata %d for inclusion in hathitrust", mdID))
+	var tgtMD metadata
+	err := svc.GDB.First(&tgtMD, mdID).Error
+	if err != nil {
+		return fmt.Errorf("unable to load metadata %d: %s", mdID, err.Error())
+	}
+
+	if tgtMD.HathiTrust {
+		svc.logInfo(js, fmt.Sprintf("metadata %d is already flagged for hathitrust", mdID))
+		return nil
+	}
+
+	var existCnt int64
+	err = svc.GDB.Table("hathitrust_statuses").Where("metadata_id=?", mdID).Count(&existCnt).Error
+	if err != nil {
+		return fmt.Errorf("unable to determine if metadata %d has hathitrust status: %s", mdID, err.Error())
+	}
+	if existCnt > 0 {
+		svc.logInfo(js, fmt.Sprintf("metadata %d is already has hathitrust ststus", mdID))
+		return nil
+	}
+
+	err = svc.GDB.Model(&metadata{ID: mdID}).Update("hathitrust", 1).Error
+	if err != nil {
+		return fmt.Errorf("unable to flag metadata %d for hathitrust: %s", mdID, err.Error())
+	}
+
+	htStatus := hathitrustStatus{MetadataID: mdID, RequestedAt: time.Now()}
+	err = svc.GDB.Create(&htStatus).Error
+	if err != nil {
+		return fmt.Errorf("unable to create hathitrust status for metadata %d: %s", mdID, err.Error())
+	}
+	return nil
 }
 
 func (svc *ServiceContext) submitHathiTrustMetadata(c *gin.Context) {
@@ -75,28 +182,16 @@ func (svc *ServiceContext) submitHathiTrustMetadata(c *gin.Context) {
 		return
 	}
 
-	if req.ComputeID == "" {
-		log.Printf("ERROR: hathitrust metadata request requires compute id")
-		c.String(http.StatusBadRequest, "compute if is required")
-		return
-	}
-	if len(req.MetadataIDs) == 0 && len(req.OrderIDs) == 0 {
-		log.Printf("INFO: hathitrust metadata request requires a list of order or metadata ids")
-		c.String(http.StatusBadRequest, "order or metadata id list is required")
-		return
-	}
-
-	var submitUser staffMember
-	err = svc.GDB.Where("computing_id=?", req.ComputeID).First(&submitUser).Error
+	submitUser, err := svc.validateHathiTrustRequestor(req.ComputeID)
 	if err != nil {
-		log.Printf("ERROR: user %s not found: %s", req.ComputeID, err.Error())
+		log.Printf("ERROR: %s", err.Error())
 		c.String(http.StatusBadRequest, err.Error())
 		return
 	}
 
-	if submitUser.Role != Admin {
-		log.Printf("ERROR: hathitrust metadata requests can only be submitted by admin users")
-		c.String(http.StatusBadRequest, "you do not have permission to make this request")
+	if len(req.MetadataIDs) == 0 && len(req.OrderIDs) == 0 {
+		log.Printf("INFO: hathitrust metadata request requires a list of order or metadata ids")
+		c.String(http.StatusBadRequest, "order or metadata id list is required")
 		return
 	}
 
@@ -280,28 +375,16 @@ func (svc *ServiceContext) createHathiTrustPackage(c *gin.Context) {
 		return
 	}
 
-	if req.ComputeID == "" {
-		log.Printf("ERROR: hathitrust package request requires compute id")
-		c.String(http.StatusBadRequest, "compute id is required")
-		return
-	}
 	if len(req.MetadataIDs) == 0 && len(req.OrderIDs) == 0 {
 		log.Printf("INFO: hathitrust package request requires order id or metadata ids")
 		c.String(http.StatusBadRequest, "order or metadata id list is required")
 		return
 	}
 
-	var submitUser staffMember
-	err = svc.GDB.Where("computing_id=?", req.ComputeID).First(&submitUser).Error
+	submitUser, err := svc.validateHathiTrustRequestor(req.ComputeID)
 	if err != nil {
-		log.Printf("ERROR: user %s not found: %s", req.ComputeID, err.Error())
+		log.Printf("ERROR: %s", err.Error())
 		c.String(http.StatusBadRequest, err.Error())
-		return
-	}
-
-	if submitUser.Role != Admin {
-		log.Printf("ERROR: hathitrust package requests can only be submitted by admin users")
-		c.String(http.StatusBadRequest, "you do not have permission to make this request")
 		return
 	}
 
@@ -623,28 +706,16 @@ func (svc *ServiceContext) submitHathiTrustPackage(c *gin.Context) {
 		return
 	}
 
-	if req.ComputeID == "" {
-		log.Printf("ERROR: hathitrust package submit request requires compute id")
-		c.String(http.StatusBadRequest, "compute id is required")
-		return
-	}
 	if req.OrderID == 0 {
 		log.Printf("INFO: hathitrust package submit request requires am order id")
 		c.String(http.StatusBadRequest, "order id is required")
 		return
 	}
 
-	var submitUser staffMember
-	err = svc.GDB.Where("computing_id=?", req.ComputeID).First(&submitUser).Error
+	submitUser, err := svc.validateHathiTrustRequestor(req.ComputeID)
 	if err != nil {
-		log.Printf("ERROR: user %s not found: %s", req.ComputeID, err.Error())
+		log.Printf("ERROR: %s", err.Error())
 		c.String(http.StatusBadRequest, err.Error())
-		return
-	}
-
-	if submitUser.Role != Admin {
-		log.Printf("ERROR: hathitrust  package submit requests can only be submitted by admin users")
-		c.String(http.StatusBadRequest, "you do not have permission to make this request")
 		return
 	}
 
@@ -760,6 +831,23 @@ func (svc *ServiceContext) submitHathiTrustPackage(c *gin.Context) {
 	}()
 
 	c.String(http.StatusOK, "package submit request started")
+}
+
+func (svc *ServiceContext) validateHathiTrustRequestor(computeID string) (*staffMember, error) {
+	if computeID == "" {
+		return nil, fmt.Errorf("compute id is required")
+	}
+
+	var submitUser staffMember
+	err := svc.GDB.Where("computing_id=?", computeID).First(&submitUser).Error
+	if err != nil {
+		return nil, fmt.Errorf("user %s not found: %s", computeID, err.Error())
+	}
+
+	if submitUser.Role != Admin {
+		return nil, fmt.Errorf("%s does not have permission to make this request", computeID)
+	}
+	return &submitUser, nil
 }
 
 func (svc *ServiceContext) listHathiTrustSubmissions(c *gin.Context) {

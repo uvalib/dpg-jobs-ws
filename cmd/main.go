@@ -46,6 +46,7 @@ func main() {
 
 	router.POST("/phash", svc.generateMasterFilesPHash)
 
+	router.POST("/hathitrust/init", svc.flagOrderForHathiTrust)
 	router.POST("/hathitrust/package", svc.createHathiTrustPackage)
 	router.POST("/hathitrust/package/submit", svc.submitHathiTrustPackage)
 	router.GET("/hathitrust/package/submitted", svc.listHathiTrustSubmissions)
