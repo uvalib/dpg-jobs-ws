@@ -97,7 +97,7 @@ func (svc *ServiceContext) flagOrderForHathiTrust(c *gin.Context) {
 	}
 
 	var tgtUnits []unit
-	err = svc.GDB.Where("order_id=? and unit_status != ?", req.OrderID, "canceled").Find(&tgtUnits).Error
+	err = svc.GDB.Where("order_id=? and unit_status != ? and intended_use_id=?", req.OrderID, "canceled", 110).Find(&tgtUnits).Error
 	if err != nil {
 		svc.logFatal(js, fmt.Sprintf("unable to get units for order %d: %s", req.OrderID, err.Error()))
 		c.String(http.StatusInternalServerError, err.Error())
