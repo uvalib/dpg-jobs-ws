@@ -159,7 +159,7 @@ func (svc *ServiceContext) flagMetadataForHathiTrust(js *jobStatus, mdID int64) 
 		return fmt.Errorf("unable to flag metadata %d for hathitrust: %s", mdID, err.Error())
 	}
 
-	htStatus := hathitrustStatus{MetadataID: mdID, RequestedAt: time.Now()}
+	htStatus := hathitrustStatus{MetadataID: mdID, RequestedAt: time.Now(), MetadataStatus: "pending", PackageStatus: "pending"}
 	err = svc.GDB.Create(&htStatus).Error
 	if err != nil {
 		return fmt.Errorf("unable to create hathitrust status for metadata %d: %s", mdID, err.Error())
@@ -347,7 +347,7 @@ func (svc *ServiceContext) submitHathiTrustMetadata(c *gin.Context) {
 				svc.logInfo(js, "Update metadata submitted dates")
 				now := time.Now()
 				err = svc.GDB.Model(&hathitrustStatus{}).Where("metadata_id in ?", updatedIDs).
-					Updates(hathitrustStatus{MetadataSubmittedAt: &now, MetadataStatus: "pending"}).Error
+					Updates(hathitrustStatus{MetadataSubmittedAt: &now, MetadataStatus: "submitted"}).Error
 				if err != nil {
 					svc.logError(js, fmt.Sprintf("Unable to update HathiTrust status records: %s", err.Error()))
 				}
