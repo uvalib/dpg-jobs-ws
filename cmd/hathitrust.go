@@ -207,7 +207,10 @@ func (svc *ServiceContext) submitHathiTrustMetadata(c *gin.Context) {
 
 	submissionInfo := fmt.Sprintf("for metadata records %v", req.MetadataIDs)
 	if len(req.OrderIDs) > 0 {
-		err = svc.GDB.Raw("select metadata_id from units where order_id in ? and unit_status != ?", req.OrderIDs, "canceled").Scan(&req.MetadataIDs).Error
+		// when selecting metadata records from an order to submit, don't pick records that have already been submitted or accepted
+		mdQ := "select u.metadata_id from units u inner join hathitrust_statuses hs on hs.metadata_id = u.metadata_id "
+		mdQ += " where order_id in ? and unit_status != ? and package_status != ? and package_status != ?"
+		err = svc.GDB.Raw(mdQ, req.OrderIDs, "canceled", "submitted", "accepted").Scan(&req.MetadataIDs).Error
 		if err != nil {
 			log.Printf("ERROR: unable to get metadata ids for orders %v: %s", req.OrderIDs, err.Error())
 			c.String(http.StatusInternalServerError, fmt.Sprintf("uable to get metadata ids for orders: %s", err.Error()))
