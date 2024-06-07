@@ -290,9 +290,10 @@ func (svc *ServiceContext) submitHathiTrustMetadata(c *gin.Context) {
 				Username: svc.HathiTrust.User,
 				Passowrd: svc.HathiTrust.Pass,
 				TLSConfig: &tls.Config{
-					InsecureSkipVerify: false,
+					MinVersion:         tls.VersionTLS13,
+					InsecureSkipVerify: true,
 				},
-				ExplicitTLS:         false,
+				ExplicitTLS:         true,
 				InsecureUnencrypted: false,
 			})
 			defer ftpsConn.Close()
