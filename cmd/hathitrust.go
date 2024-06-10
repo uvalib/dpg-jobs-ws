@@ -2,7 +2,6 @@ package main
 
 import (
 	"archive/zip"
-	"bufio"
 	"context"
 	"crypto/tls"
 	"encoding/json"
@@ -303,6 +302,7 @@ func (svc *ServiceContext) submitHathiTrustMetadata(c *gin.Context) {
 			svc.logInfo(js, fmt.Sprintf("connecting to ftps server %s as %s", svc.HathiTrust.FTPS, svc.HathiTrust.User))
 			ftpsCtx, ftpsCancel := context.WithCancel(context.Background())
 			defer ftpsCancel()
+
 			ftpsConn, err := ftps.Dial(ftpsCtx, ftps.DialOptions{
 				Host:     svc.HathiTrust.FTPS,
 				Port:     21,
@@ -315,12 +315,12 @@ func (svc *ServiceContext) submitHathiTrustMetadata(c *gin.Context) {
 				ExplicitTLS:         true,
 				InsecureUnencrypted: false,
 			})
-			defer ftpsConn.Close()
 			if err != nil {
 				svc.logFatal(js, fmt.Sprintf("Unable to connect to FTPS: %s", err.Error()))
 				return
 			}
 
+			defer ftpsConn.Close()
 			uploadDirectory := "submissions"
 			if req.Mode == "test" || req.Mode == "dev" {
 				uploadDirectory = "testrecs"
@@ -345,12 +345,12 @@ func (svc *ServiceContext) submitHathiTrustMetadata(c *gin.Context) {
 				svc.logInfo(js, fmt.Sprintf("metadata has been written to %s", mdFileName))
 			} else {
 				svc.logInfo(js, fmt.Sprintf("Upload %d MARC records with total size %d to FTPS %s as %s", len(updatedIDs), mdSize, svc.HathiTrust.FTPS, uploadFN))
-				mdReader, err := os.Open(mdFileName)
+				mdBytes, err := os.ReadFile(mdFileName)
 				if err != nil {
 					svc.logFatal(js, err.Error())
 					return
 				}
-				err = ftpsConn.Upload(ftpsCtx, uploadFN, bufio.NewReader(mdReader))
+				err = ftpsConn.Upload(ftpsCtx, uploadFN, strings.NewReader(string(mdBytes)))
 				if err != nil {
 					svc.logFatal(js, err.Error())
 					return
