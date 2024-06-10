@@ -2,6 +2,7 @@ package main
 
 import (
 	"archive/zip"
+	"bufio"
 	"context"
 	"crypto/tls"
 	"encoding/json"
@@ -349,14 +350,12 @@ func (svc *ServiceContext) submitHathiTrustMetadata(c *gin.Context) {
 					svc.logFatal(js, err.Error())
 					return
 				}
-				err = ftpsConn.Upload(ftpsCtx, uploadFN, mdReader)
+				err = ftpsConn.Upload(ftpsCtx, uploadFN, bufio.NewReader(mdReader))
 				if err != nil {
 					svc.logFatal(js, err.Error())
 					return
 				}
 			}
-			// cancel the ftps context immediately when the upload is done
-			ftpsCancel()
 
 			if req.Mode == "prod" {
 				err = svc.sendHathiTrustUploadEmail(uploadFN, mdSize, len(updatedIDs))
