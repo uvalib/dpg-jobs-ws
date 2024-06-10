@@ -2,6 +2,7 @@ package main
 
 import (
 	"archive/zip"
+	"bufio"
 	"context"
 	"crypto/tls"
 	"encoding/json"
@@ -169,6 +170,7 @@ func (svc *ServiceContext) flagMetadataForHathiTrust(js *jobStatus, mdID int64) 
 
 // curl -X POST https://dpg-jobs.lib.virginia.edu/hathitrust/metadata -H "Content-Type: application/json" --data '{"computeID": "lf6f", "mode": "prod", "orders": [11195,11441], "name": "batch20240523"}'
 // curl -X POST https://dpg-jobs.lib.virginia.edu/hathitrust/metadata -H "Content-Type: application/json" --data '{"computeID": "lf6f", "mode": "dev", "orders": [11195,11441], "name": "batch20240523"}'
+// curl -X POST http://localhost:8180/hathitrust/metadata -H "Content-Type: application/json" --data '{"computeID": "lf6f", "mode": "dev", "orders": [11884], "name": "testorder11884"}'
 func (svc *ServiceContext) submitHathiTrustMetadata(c *gin.Context) {
 	log.Printf("INFO: received hathitrust metadata request")
 	var req hathiTrustRequest
@@ -236,7 +238,19 @@ func (svc *ServiceContext) submitHathiTrustMetadata(c *gin.Context) {
 			uploadFN += fmt.Sprintf("_%s", req.Name)
 		}
 		uploadFN += ".xml"
-		metadataOut := "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<collection xmlns=\"http://www.loc.gov/MARC21/slim\">"
+		mdFileName := path.Join(svc.ProcessingDir, "hathitrust", uploadFN)
+		svc.logInfo(js, fmt.Sprintf("Write local copy of metadata submission to %s", mdFileName))
+		if pathExists(mdFileName) {
+			svc.logInfo(js, fmt.Sprintf("%s already exists; removing", mdFileName))
+			os.Remove(mdFileName)
+		}
+		metadataFile, err := os.Create(mdFileName)
+		if err != nil {
+			svc.logFatal(js, fmt.Sprintf("Unable to create metadaa file: %s", err.Error()))
+			return
+		}
+
+		metadataFile.WriteString("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<collection xmlns=\"http://www.loc.gov/MARC21/slim\">")
 		updatedIDs := make([]int64, 0)
 		generatedCatKeys := make([]string, 0)
 		for _, mdID := range req.MetadataIDs {
@@ -274,13 +288,18 @@ func (svc *ServiceContext) submitHathiTrustMetadata(c *gin.Context) {
 				svc.logError(js, fmt.Sprintf("Unable to retrieve MARC XML for %d: %s", mdID, err.Error()))
 				continue
 			}
-			metadataOut += fmt.Sprintf("\n%s", xml)
+			metadataFile.WriteString(fmt.Sprintf("\n%s", xml))
 			updatedIDs = append(updatedIDs, tgtMD.ID)
 		}
-		metadataOut += "\n</collection>"
+		metadataFile.WriteString("\n</collection>")
+		metadataFile.Close()
+		fi, err := os.Stat(mdFileName)
+		mdSize := fi.Size()
+		if err != nil {
+			svc.logError(js, fmt.Sprintf("unable to determine size of metadata file: %s", err.Error()))
+		}
 
 		if len(updatedIDs) > 0 {
-
 			svc.logInfo(js, fmt.Sprintf("connecting to ftps server %s as %s", svc.HathiTrust.FTPS, svc.HathiTrust.User))
 			ftpsCtx, ftpsCancel := context.WithCancel(context.Background())
 			defer ftpsCancel()
@@ -323,27 +342,20 @@ func (svc *ServiceContext) submitHathiTrustMetadata(c *gin.Context) {
 			}
 
 			if req.Mode == "dev" {
-				svc.logInfo(js, metadataOut)
+				svc.logInfo(js, fmt.Sprintf("metadata has been written to %s", mdFileName))
 			} else {
-				svc.logInfo(js, fmt.Sprintf("Upload %d MARC records with total size %d to FTPS %s as %s", len(updatedIDs), len(metadataOut), svc.HathiTrust.FTPS, uploadFN))
-				err = ftpsConn.Upload(ftpsCtx, uploadFN, strings.NewReader(metadataOut))
+				svc.logInfo(js, fmt.Sprintf("Upload %d MARC records with total size %d to FTPS %s as %s", len(updatedIDs), mdSize, svc.HathiTrust.FTPS, uploadFN))
+				err = ftpsConn.Upload(ftpsCtx, uploadFN, bufio.NewReader(metadataFile))
 				if err != nil {
 					svc.logFatal(js, fmt.Sprintf("upload failed: %s", err.Error()))
 					return
-				}
-
-				localCopy := path.Join(svc.ProcessingDir, "hathitrust", uploadFN)
-				svc.logInfo(js, fmt.Sprintf("Write local copy of metadata submission to %s", localCopy))
-				err = os.WriteFile(localCopy, []byte(metadataOut), 0664)
-				if err != nil {
-					svc.logError(js, fmt.Sprintf("Unable to write local copy to %s: %s", localCopy, err.Error()))
 				}
 			}
 			// cancel the ftps context immediately when the upload is done
 			ftpsCancel()
 
 			if req.Mode == "prod" {
-				svc.sendHathiTrustUploadEmail(uploadFN, len(metadataOut), len(updatedIDs))
+				err = svc.sendHathiTrustUploadEmail(uploadFN, mdSize, len(updatedIDs))
 				if err != nil {
 					svc.logFatal(js, fmt.Sprintf("Unable to send email to HathiTrust: %s", err.Error()))
 					return

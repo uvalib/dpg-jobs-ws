@@ -27,7 +27,7 @@ type emailRequest struct {
 	Body    string
 }
 
-func (svc *ServiceContext) sendHathiTrustUploadEmail(fileName string, fileSize int, recordCount int) {
+func (svc *ServiceContext) sendHathiTrustUploadEmail(fileName string, fileSize int64, recordCount int) error {
 	log.Printf("INFO: sending hathitrust upload email")
 	req := emailRequest{Subject: "Zephir metadata file submission",
 		To:      []string{"cdl-zphr-l@ucop.edu"},
@@ -43,10 +43,9 @@ func (svc *ServiceContext) sendHathiTrustUploadEmail(fileName string, fileSize i
 
 	err := svc.sendEmail(&req)
 	if err != nil {
-		log.Printf("ERROR: unable to send hathitrust submission email: %s", err.Error())
-		return
+		return err
 	}
-	log.Printf("INFO: email for hathitrust submission successfully sent")
+	return nil
 }
 
 func (svc *ServiceContext) sendPHashResultsEmail(recipient string, phashSummary phashGenerateStats) {
