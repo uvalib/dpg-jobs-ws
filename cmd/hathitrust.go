@@ -2,7 +2,6 @@ package main
 
 import (
 	"archive/zip"
-	"bufio"
 	"context"
 	"crypto/tls"
 	"encoding/json"
@@ -345,9 +344,14 @@ func (svc *ServiceContext) submitHathiTrustMetadata(c *gin.Context) {
 				svc.logInfo(js, fmt.Sprintf("metadata has been written to %s", mdFileName))
 			} else {
 				svc.logInfo(js, fmt.Sprintf("Upload %d MARC records with total size %d to FTPS %s as %s", len(updatedIDs), mdSize, svc.HathiTrust.FTPS, uploadFN))
-				err = ftpsConn.Upload(ftpsCtx, uploadFN, bufio.NewReader(metadataFile))
+				mdReader, err := os.Open(mdFileName)
 				if err != nil {
-					svc.logFatal(js, fmt.Sprintf("upload failed: %s", err.Error()))
+					svc.logFatal(js, err.Error())
+					return
+				}
+				err = ftpsConn.Upload(ftpsCtx, uploadFN, mdReader)
+				if err != nil {
+					svc.logFatal(js, err.Error())
 					return
 				}
 			}
