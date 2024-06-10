@@ -309,7 +309,7 @@ func (svc *ServiceContext) submitHathiTrustMetadata(c *gin.Context) {
 				Username: svc.HathiTrust.User,
 				Passowrd: svc.HathiTrust.Pass,
 				TLSConfig: &tls.Config{
-					MinVersion:         tls.VersionTLS13,
+					MinVersion:         tls.VersionTLS12,
 					InsecureSkipVerify: true,
 				},
 				ExplicitTLS:         true,
