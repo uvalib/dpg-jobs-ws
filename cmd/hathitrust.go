@@ -292,16 +292,19 @@ func (svc *ServiceContext) submitHathiTrustMetadata(c *gin.Context) {
 		}
 		metadataFile.WriteString("\n</collection>")
 		metadataFile.Close()
-		fi, err := os.Stat(mdFileName)
-		mdSize := fi.Size()
-		if err != nil {
-			svc.logError(js, fmt.Sprintf("unable to determine size of metadata file: %s", err.Error()))
-		}
+		mdSize := getFileSize(mdFileName)
+		svc.logInfo(js, fmt.Sprintf("Metadata for %d records with size %d has been written to %s", len(updatedIDs), mdSize, mdFileName))
 
-		if len(updatedIDs) > 0 {
-			svc.logInfo(js, fmt.Sprintf("connecting to ftps server %s as %s", svc.HathiTrust.FTPS, svc.HathiTrust.User))
-			ftpsCtx, ftpsCancel := context.WithCancel(context.Background())
-			defer ftpsCancel()
+		if req.Mode == "dev" {
+			// In dev mode, there is nothing more to do. just log the location where the metadata file can be found
+			svc.logInfo(js, "Metadata request is in dev mode. File not submitted, no email sent and status not updated")
+
+		} else if len(updatedIDs) > 0 {
+			svc.logInfo(js, fmt.Sprintf("Connecting to ftps server %s as %s", svc.HathiTrust.FTPS, svc.HathiTrust.User))
+			// ftpsCtx, ftpsCancel := context.WithCancel(context.Background())
+			// defer ftpsCancel()
+			ftpsCtx, cancel := context.WithTimeout(context.Background(), time.Second*10)
+			defer cancel()
 
 			ftpsConn, err := ftps.Dial(ftpsCtx, ftps.DialOptions{
 				Host:     svc.HathiTrust.FTPS,
@@ -310,54 +313,44 @@ func (svc *ServiceContext) submitHathiTrustMetadata(c *gin.Context) {
 				Passowrd: svc.HathiTrust.Pass,
 				TLSConfig: &tls.Config{
 					MinVersion:         tls.VersionTLS12,
-					InsecureSkipVerify: true,
+					InsecureSkipVerify: false,
+					ServerName:         "ftps.cdlib.org",
 				},
 				ExplicitTLS:         true,
 				InsecureUnencrypted: false,
 			})
+			defer ftpsConn.Close()
 			if err != nil {
 				svc.logFatal(js, fmt.Sprintf("Unable to connect to FTPS: %s", err.Error()))
 				return
 			}
 
-			defer ftpsConn.Close()
 			uploadDirectory := "submissions"
-			if req.Mode == "test" || req.Mode == "dev" {
+			if req.Mode == "test" {
 				uploadDirectory = "testrecs"
 			}
 			svc.logInfo(js, fmt.Sprintf("Set FTPS working directory to %s", uploadDirectory))
-			err = ftpsConn.Chdir(uploadDirectory)
-			if err != nil {
-				svc.logFatal(js, fmt.Sprintf("Unable to switch to upload directory %s: %s", uploadDirectory, err.Error()))
-				return
-			}
-			pwd, err := ftpsConn.Getwd()
-			if err != nil {
-				svc.logFatal(js, fmt.Sprintf("Unable to get working directory: %s", err.Error()))
-				return
-			}
+			ftpsConn.Chdir(uploadDirectory)
+			pwd, _ := ftpsConn.Getwd()
 			if strings.Contains(pwd, uploadDirectory) == false {
-				svc.logFatal(js, fmt.Sprintf("Working directory mismatch; %s vs %s", pwd, uploadDirectory))
+				svc.logFatal(js, fmt.Sprintf("Unable to switch to upload directory %s", uploadDirectory))
 				return
 			}
 
-			if req.Mode == "dev" {
-				svc.logInfo(js, fmt.Sprintf("metadata has been written to %s", mdFileName))
-			} else {
-				svc.logInfo(js, fmt.Sprintf("Upload %d MARC records with total size %d to FTPS %s as %s", len(updatedIDs), mdSize, svc.HathiTrust.FTPS, uploadFN))
-				mdBytes, err := os.ReadFile(mdFileName)
-				if err != nil {
-					svc.logFatal(js, err.Error())
-					return
-				}
-				err = ftpsConn.Upload(ftpsCtx, uploadFN, strings.NewReader(string(mdBytes)))
-				if err != nil {
-					svc.logFatal(js, err.Error())
-					return
-				}
+			svc.logInfo(js, fmt.Sprintf("Upload %d MARC records with total size %d to FTPS %s as %s", len(updatedIDs), mdSize, svc.HathiTrust.FTPS, uploadFN))
+			mdBytes, err := os.ReadFile(mdFileName)
+			if err != nil {
+				svc.logFatal(js, err.Error())
+				return
+			}
+			err = ftpsConn.Upload(ftpsCtx, uploadFN, strings.NewReader(string(mdBytes)))
+			if err != nil {
+				svc.logFatal(js, err.Error())
+				return
 			}
 
 			if req.Mode == "prod" {
+				svc.logInfo(js, "Send email notification to hathitrust")
 				err = svc.sendHathiTrustUploadEmail(uploadFN, mdSize, len(updatedIDs))
 				if err != nil {
 					svc.logFatal(js, fmt.Sprintf("Unable to send email to HathiTrust: %s", err.Error()))
