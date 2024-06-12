@@ -2,8 +2,6 @@ package main
 
 import (
 	"archive/zip"
-	"context"
-	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -20,7 +18,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/go-xmlfmt/xmlfmt"
-	"github.com/kardianos/ftps"
 )
 
 type hathitrustStatus struct {
@@ -300,52 +297,14 @@ func (svc *ServiceContext) submitHathiTrustMetadata(c *gin.Context) {
 			svc.logInfo(js, "Metadata request is in dev mode. File not submitted, no email sent and status not updated")
 
 		} else if len(updatedIDs) > 0 {
-			svc.logInfo(js, fmt.Sprintf("Connecting to ftps server %s as %s", svc.HathiTrust.FTPS, svc.HathiTrust.User))
-			// ftpsCtx, ftpsCancel := context.WithCancel(context.Background())
-			// defer ftpsCancel()
-			ftpsCtx, cancel := context.WithTimeout(context.Background(), time.Second*10)
-			defer cancel()
+			svc.logInfo(js, fmt.Sprintf("Upload %s to ftps server %s as %s", uploadFN, svc.HathiTrust.FTPS, svc.HathiTrust.User))
 
-			ftpsConn, err := ftps.Dial(ftpsCtx, ftps.DialOptions{
-				Host:     svc.HathiTrust.FTPS,
-				Port:     21,
-				Username: svc.HathiTrust.User,
-				Passowrd: svc.HathiTrust.Pass,
-				TLSConfig: &tls.Config{
-					MinVersion:         tls.VersionTLS12,
-					InsecureSkipVerify: false,
-					ServerName:         "ftps.cdlib.org",
-				},
-				ExplicitTLS:         true,
-				InsecureUnencrypted: false,
-			})
-			defer ftpsConn.Close()
+			// curl --tls-max 1.2 -u ht-uva:ht-uva:PASS -T UVA-2_20240610_order11884.xml --ssl-reqd --ftp-pasv ftp://ftps.cdlib.org/submissions/UVA-2_20240610_order11884.xml
+			userPass := fmt.Sprintf("%s:%s", svc.HathiTrust.User, svc.HathiTrust.Pass)
+			ftpDest := fmt.Sprintf("%s/%s", svc.HathiTrust.FTPS, uploadFN)
+			ftpOut, err := exec.Command("curl", "--tls-max", "1.2", "-u", userPass, "-T", mdFileName, "--ssl-reqd", "--ftp-pasv", ftpDest).CombinedOutput()
 			if err != nil {
-				svc.logFatal(js, fmt.Sprintf("Unable to connect to FTPS: %s", err.Error()))
-				return
-			}
-
-			uploadDirectory := "submissions"
-			if req.Mode == "test" {
-				uploadDirectory = "testrecs"
-			}
-			svc.logInfo(js, fmt.Sprintf("Set FTPS working directory to %s", uploadDirectory))
-			ftpsConn.Chdir(uploadDirectory)
-			pwd, _ := ftpsConn.Getwd()
-			if strings.Contains(pwd, uploadDirectory) == false {
-				svc.logFatal(js, fmt.Sprintf("Unable to switch to upload directory %s", uploadDirectory))
-				return
-			}
-
-			svc.logInfo(js, fmt.Sprintf("Upload %d MARC records with total size %d to FTPS %s as %s", len(updatedIDs), mdSize, svc.HathiTrust.FTPS, uploadFN))
-			mdBytes, err := os.ReadFile(mdFileName)
-			if err != nil {
-				svc.logFatal(js, err.Error())
-				return
-			}
-			err = ftpsConn.Upload(ftpsCtx, uploadFN, strings.NewReader(string(mdBytes)))
-			if err != nil {
-				svc.logFatal(js, err.Error())
+				svc.logFatal(js, fmt.Sprintf("Upload failed: %s", ftpOut))
 				return
 			}
 
