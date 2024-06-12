@@ -27,12 +27,11 @@ type emailRequest struct {
 	Body    string
 }
 
-func (svc *ServiceContext) sendHathiTrustUploadEmail(fileName string, fileSize int64, recordCount int) error {
-	log.Printf("INFO: sending hathitrust upload email")
+func (svc *ServiceContext) sendHathiTrustUploadEmail(submitter *staffMember, fileName string, fileSize int64, recordCount int) error {
 	req := emailRequest{Subject: "Zephir metadata file submission",
 		To:      []string{"cdl-zphr-l@ucop.edu"},
-		From:    "lf6f@virginia.edu",
-		ReplyTo: "lf6f@virginia.edu",
+		From:    submitter.Email,
+		ReplyTo: submitter.Email,
 	}
 
 	req.Body = fmt.Sprintf("file name=%s\n", fileName)

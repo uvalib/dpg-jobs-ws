@@ -314,7 +314,7 @@ func (svc *ServiceContext) submitHathiTrustMetadata(c *gin.Context) {
 
 			if req.Mode == "prod" {
 				svc.logInfo(js, "Send email notification to hathitrust")
-				err = svc.sendHathiTrustUploadEmail(uploadFN, mdSize, len(updatedIDs))
+				err = svc.sendHathiTrustUploadEmail(submitUser, uploadFN, mdSize, len(updatedIDs))
 				if err != nil {
 					svc.logFatal(js, fmt.Sprintf("Unable to send email to HathiTrust: %s", err.Error()))
 					return
