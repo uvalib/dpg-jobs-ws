@@ -297,11 +297,15 @@ func (svc *ServiceContext) submitHathiTrustMetadata(c *gin.Context) {
 			svc.logInfo(js, "Metadata request is in dev mode. File not submitted, no email sent and status not updated")
 
 		} else if len(updatedIDs) > 0 {
-			svc.logInfo(js, fmt.Sprintf("Upload %s to ftps server %s as %s", uploadFN, svc.HathiTrust.FTPS, svc.HathiTrust.User))
+			uploadDirectory := "submissions"
+			if req.Mode == "test" {
+				uploadDirectory = "testrecs"
+			}
+			svc.logInfo(js, fmt.Sprintf("Upload %s to ftps server %s in directory %s as %s", uploadFN, svc.HathiTrust.FTPS, uploadDirectory, svc.HathiTrust.User))
 
 			// curl --tls-max 1.2 -u ht-uva:ht-uva:PASS -T UVA-2_20240610_order11884.xml --ssl-reqd --ftp-pasv ftp://ftps.cdlib.org/submissions/UVA-2_20240610_order11884.xml
 			userPass := fmt.Sprintf("%s:%s", svc.HathiTrust.User, svc.HathiTrust.Pass)
-			ftpDest := fmt.Sprintf("%s/%s", svc.HathiTrust.FTPS, uploadFN)
+			ftpDest := fmt.Sprintf("ftp://%s/%s/%s", svc.HathiTrust.FTPS, uploadDirectory, uploadFN)
 			ftpOut, err := exec.Command("curl", "--tls-max", "1.2", "-u", userPass, "-T", mdFileName, "--ssl-reqd", "--ftp-pasv", ftpDest).CombinedOutput()
 			if err != nil {
 				svc.logFatal(js, fmt.Sprintf("Upload failed: %s", ftpOut))
