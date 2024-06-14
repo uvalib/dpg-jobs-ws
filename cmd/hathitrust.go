@@ -342,10 +342,7 @@ func (svc *ServiceContext) submitHathiTrustMetadata(c *gin.Context) {
 }
 
 // curl -X POST  https://dpg-jobs.lib.virginia.edu/hathitrust/package -H "Content-Type: application/json" --data '{"computeID": "lf6f", "records": [87970,87973]}'
-// curl -X POST  https://dpg-jobs.lib.virginia.edu/hathitrust/package/submit -H "Content-Type: application/json" --data '{"computeID": "lf6f", "order": 10392, "barcodes": ["X004152220", "X000944673"]}'
-
-// curl -X POST  https://dpg-jobs.lib.virginia.edu/hathitrust/package -H "Content-Type: application/json" --data '{"computeID": "lf6f", "records": [103253]}'
-// curl -X POST  https://dpg-jobs.lib.virginia.edu/hathitrust/package/submit -H "Content-Type: application/json" --data '{"computeID": "lf6f", "order": 10675, "barcodes": ["X031512263"]}'
+// curl -X POST  https://dpg-jobs.lib.virginia.edu/hathitrust/package -H "Content-Type: application/json" --data '{"computeID": "lf6f", "orders": [12121]}'
 func (svc *ServiceContext) createHathiTrustPackage(c *gin.Context) {
 	log.Printf("INFO: received hathitrust package request")
 	var req hathiTrustRequest
