@@ -643,6 +643,8 @@ func (svc *ServiceContext) failHathiTrustPackage(js *jobStatus, mdID int64, reas
 	}
 }
 
+// EXAMPLE: curl -X POST  https://dpg-jobs.lib.virginia.edu/hathitrust/package/submit -H "Content-Type: application/json" --data '{"computeID": "lf6f", "order": 12121}'
+// EXAMPLE: curl -X POST  https://dpg-jobs.lib.virginia.edu/hathitrust/package/submit -H "Content-Type: application/json" --data '{"computeID": "lf6f", "order": 12059, "records": ["X004938494"]}'
 func (svc *ServiceContext) submitHathiTrustPackage(c *gin.Context) {
 	log.Printf("INFO: received hathitrust package submit request")
 	var req hathiTrustSubmitRequest
