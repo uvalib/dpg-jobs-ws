@@ -341,7 +341,7 @@ func (svc *ServiceContext) submitHathiTrustMetadata(c *gin.Context) {
 	c.String(http.StatusOK, "submit request started")
 }
 
-// curl -X POST  https://dpg-jobs.lib.virginia.edu/hathitrust/package -H "Content-Type: application/json" --data '{"computeID": "lf6f", "records": [87970,87973]}'
+// curl -X POST  https://dpg-jobs.lib.virginia.edu/hathitrust/package -H "Content-Type: application/json" --data '{"computeID": "lf6f", "records": [107255]}'
 // curl -X POST  https://dpg-jobs.lib.virginia.edu/hathitrust/package -H "Content-Type: application/json" --data '{"computeID": "lf6f", "orders": [12121]}'
 func (svc *ServiceContext) createHathiTrustPackage(c *gin.Context) {
 	log.Printf("INFO: received hathitrust package request")
@@ -644,7 +644,7 @@ func (svc *ServiceContext) failHathiTrustPackage(js *jobStatus, mdID int64, reas
 }
 
 // EXAMPLE: curl -X POST  https://dpg-jobs.lib.virginia.edu/hathitrust/package/submit -H "Content-Type: application/json" --data '{"computeID": "lf6f", "order": 12121}'
-// EXAMPLE: curl -X POST  https://dpg-jobs.lib.virginia.edu/hathitrust/package/submit -H "Content-Type: application/json" --data '{"computeID": "lf6f", "order": 12059, "records": ["X004938494"]}'
+// EXAMPLE: curl -X POST  https://dpg-jobs.lib.virginia.edu/hathitrust/package/submit -H "Content-Type: application/json" --data '{"computeID": "lf6f", "order": 12059, "barcodes": ["X004938494"]}'
 func (svc *ServiceContext) submitHathiTrustPackage(c *gin.Context) {
 	log.Printf("INFO: received hathitrust package submit request")
 	var req hathiTrustSubmitRequest
