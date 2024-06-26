@@ -61,7 +61,24 @@ func (svc *ServiceContext) collectionBulkAdd(c *gin.Context) {
 				svc.logError(js, fmt.Sprintf("Unable to load units for target metadata %d; skipping. Error: %s", mdID, err.Error()))
 				continue
 			}
-			svc.logInfo(js, fmt.Sprintf("Found %d units; processing each", len(mdUnits)))
+			if len(mdUnits) == 0 {
+				log.Printf("INFO: no units directly found for metadata %d; searching master files...", mdID)
+				err = svc.GDB.Joins("inner join master_files mf on mf.unit_id = units.id").
+					Joins("inner join metadata m on m.id = mf.metadata_id").
+					Where("m.id=?", mdID).Find(&mdUnits).Error
+				if err != nil {
+					svc.logError(js, fmt.Sprintf("Unable to load units for target metadata %d; skipping. Error: %s", mdID, err.Error()))
+					continue
+				}
+				if len(mdUnits) > 1 {
+					svc.logError(js, fmt.Sprintf("Too many units (%d) assiciated with master file metadata: %d. Skipping", len(mdUnits), mdID))
+					continue
+				} else {
+					svc.logInfo(js, fmt.Sprintf("Found unit %d associated with masterfile metadata %d", mdUnits[0].ID, mdID))
+				}
+			} else {
+				svc.logInfo(js, fmt.Sprintf("Found %d units; processing each", len(mdUnits)))
+			}
 
 			for _, tgtUnit := range mdUnits {
 				// see if the master files that are owned by this unit have different metadata than the unit

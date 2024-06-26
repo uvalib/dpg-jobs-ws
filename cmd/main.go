@@ -11,7 +11,7 @@ import (
 )
 
 // Version of the service
-const version = "1.24.2"
+const version = "1.24.3"
 
 func main() {
 	log.Printf("===> DPG backend processing service starting up <===")
@@ -19,6 +19,18 @@ func main() {
 	// Get config params and use them to init service context. Any issues are fatal
 	cfg := LoadConfiguration()
 	svc := InitializeService(version, cfg)
+
+	// HACK
+	log.Printf("HACK ================================================")
+	var units []unit
+	err := svc.GDB.Joins("inner join master_files mf on mf.unit_id = units.id").
+		Joins("inner join metadata m on m.id = mf.metadata_id").
+		Where("m.id=?", 21354).Find(&units).Error
+	if err != nil {
+		log.Fatal(err.Error())
+	}
+	log.Printf("GOT %+v", units)
+	log.Fatal("STOP")
 
 	log.Printf("INFO: setup routes...")
 	gin.SetMode(gin.ReleaseMode)
