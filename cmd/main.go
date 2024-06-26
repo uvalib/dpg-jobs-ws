@@ -20,18 +20,6 @@ func main() {
 	cfg := LoadConfiguration()
 	svc := InitializeService(version, cfg)
 
-	// HACK
-	log.Printf("HACK ================================================")
-	var units []unit
-	err := svc.GDB.Joins("inner join master_files mf on mf.unit_id = units.id").
-		Joins("inner join metadata m on m.id = mf.metadata_id").
-		Where("m.id=?", 21354).Find(&units).Error
-	if err != nil {
-		log.Fatal(err.Error())
-	}
-	log.Printf("GOT %+v", units)
-	log.Fatal("STOP")
-
 	log.Printf("INFO: setup routes...")
 	gin.SetMode(gin.ReleaseMode)
 	gin.DisableConsoleColor()
