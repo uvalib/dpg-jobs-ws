@@ -61,6 +61,7 @@ func (svc *ServiceContext) collectionBulkAdd(c *gin.Context) {
 				svc.logError(js, fmt.Sprintf("Unable to load units for target metadata %d; skipping. Error: %s", mdID, err.Error()))
 				continue
 			}
+
 			if len(mdUnits) == 0 {
 				log.Printf("INFO: no units directly found for metadata %d; searching master files...", mdID)
 				err = svc.GDB.Joins("inner join master_files mf on mf.unit_id = units.id").
@@ -70,40 +71,44 @@ func (svc *ServiceContext) collectionBulkAdd(c *gin.Context) {
 					svc.logError(js, fmt.Sprintf("Unable to load units for target metadata %d; skipping. Error: %s", mdID, err.Error()))
 					continue
 				}
-				if len(mdUnits) > 1 {
-					svc.logError(js, fmt.Sprintf("Too many units (%d) assiciated with master file metadata: %d. Skipping", len(mdUnits), mdID))
+				if len(mdUnits) > 1 || len(mdUnits) == 0 {
+					svc.logError(js, fmt.Sprintf("Invalid unit count (%d) for master file metadata: %d. Skipping", len(mdUnits), mdID))
 					continue
 				} else {
-					svc.logInfo(js, fmt.Sprintf("Found unit %d associated with masterfile metadata %d", mdUnits[0].ID, mdID))
+					svc.logInfo(js, fmt.Sprintf("Found unit %d associated with masterfile metadata %d. Adding it to collection %d", mdUnits[0].ID, mdID, collectionMetadataID))
+					err = svc.GDB.Debug().Table("metadata").Where("id = ?", mdID).Update("parent_metadata_id", collectionMetadataID).Error
+					if err != nil {
+						svc.logError(js, fmt.Sprintf("Unable to update parent metadata for %v: %s", mdID, err.Error()))
+						continue
+					}
 				}
 			} else {
 				svc.logInfo(js, fmt.Sprintf("Found %d units; processing each", len(mdUnits)))
-			}
-
-			for _, tgtUnit := range mdUnits {
-				// see if the master files that are owned by this unit have different metadata than the unit
-				svc.logInfo(js, fmt.Sprintf("Check masterfiles for unit %d to see if all have the same metadata", tgtUnit.ID))
-				var mdIDs []int64
-				err = svc.GDB.Table("master_files").Where("unit_id=?", tgtUnit.ID).Distinct("metadata_id").Scan(&mdIDs).Error
-				if err != nil {
-					svc.logError(js, fmt.Sprintf("Unable to determine if masterfiles of unit %d have one or more metadata records: %s", mdID, err.Error()))
-					continue
-				}
-
-				if len(mdIDs) == 1 {
-					svc.logInfo(js, fmt.Sprintf("Master files of unit %d all have the same metadata record %d; adding it to collection %d", tgtUnit.ID, *tgtUnit.MetadataID, collectionMetadataID))
-					err = svc.GDB.Table("metadata").Where("id = ?", mdIDs[0]).Update("parent_metadata_id", collectionMetadataID).Error
+				for _, tgtUnit := range mdUnits {
+					// see if the master files that are owned by this unit have different metadata than the unit
+					svc.logInfo(js, fmt.Sprintf("Check masterfiles for unit %d to see if all have the same metadata", tgtUnit.ID))
+					var mdIDs []int64
+					err = svc.GDB.Table("master_files").Where("unit_id=?", tgtUnit.ID).Distinct("metadata_id").Scan(&mdIDs).Error
 					if err != nil {
-						svc.logError(js, fmt.Sprintf("Unable to update parent metadata of metadata %d: %s", mdIDs[0], err.Error()))
+						svc.logError(js, fmt.Sprintf("Unable to determine if masterfiles of unit %d have one or more metadata records: %s", mdID, err.Error()))
 						continue
 					}
-				} else {
-					svc.logInfo(js, fmt.Sprintf("Update %d distinct metadata records for master files of unit %d to point to metadata %d as their parent collection",
-						len(mdIDs), tgtUnit.ID, collectionMetadataID))
-					err = svc.GDB.Debug().Table("metadata").Where("id in ?", mdIDs).Update("parent_metadata_id", collectionMetadataID).Error
-					if err != nil {
-						svc.logError(js, fmt.Sprintf("Unable to batch update parent metadata for %v: %s", mdIDs, err.Error()))
-						continue
+
+					if len(mdIDs) == 1 {
+						svc.logInfo(js, fmt.Sprintf("Master files of unit %d all have the same metadata record %d; adding it to collection %d", tgtUnit.ID, *tgtUnit.MetadataID, collectionMetadataID))
+						err = svc.GDB.Table("metadata").Where("id = ?", mdIDs[0]).Update("parent_metadata_id", collectionMetadataID).Error
+						if err != nil {
+							svc.logError(js, fmt.Sprintf("Unable to update parent metadata of metadata %d: %s", mdIDs[0], err.Error()))
+							continue
+						}
+					} else {
+						svc.logInfo(js, fmt.Sprintf("Update %d distinct metadata records for master files of unit %d to point to metadata %d as their parent collection",
+							len(mdIDs), tgtUnit.ID, collectionMetadataID))
+						err = svc.GDB.Debug().Table("metadata").Where("id in ?", mdIDs).Update("parent_metadata_id", collectionMetadataID).Error
+						if err != nil {
+							svc.logError(js, fmt.Sprintf("Unable to batch update parent metadata for %v: %s", mdIDs, err.Error()))
+							continue
+						}
 					}
 				}
 			}
