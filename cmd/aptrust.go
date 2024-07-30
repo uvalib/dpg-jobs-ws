@@ -370,9 +370,19 @@ func (svc *ServiceContext) getAPTrustGroupStatus(collectionMD *metadata) ([]apTr
 func (svc *ServiceContext) getAPTrustStatus(md *metadata) (*apTrustResponse, error) {
 	cmd := exec.Command("apt-cmd", "registry", "list", "workitems", fmt.Sprintf("name=%s", getBagFileName(md)), "sort=date_processed__desc")
 	aptOut, err := cmd.CombinedOutput()
+	log.Printf("aptrust registry response: %s", aptOut)
 	if err != nil {
-		log.Printf("INFO: get aptrust status for metadata %d failed: %s", md.ID, aptOut)
-		log.Printf("INFO: check s3 bucket")
+		return nil, fmt.Errorf(string(aptOut))
+	}
+
+	var jsonResp apTrustResponse
+	err = json.Unmarshal(aptOut, &jsonResp)
+	if err != nil {
+		return nil, fmt.Errorf("malformed response: %s", err.Error())
+	}
+
+	if jsonResp.Count == 0 {
+		log.Printf("INFO: no work item found for metadata %d; check s3 bucket", md.ID)
 		var aptSub apTrustSubmission
 		err := svc.GDB.Where("metadata_id=?", md.ID).First(&aptSub).Error
 		if err != nil {
@@ -382,13 +392,7 @@ func (svc *ServiceContext) getAPTrustStatus(md *metadata) (*apTrustResponse, err
 		log.Printf("INFO: s3 list command: %+v", cmd)
 		aptS3Out, err := cmd.CombinedOutput()
 		log.Printf("INFO: s3 list response: %s", aptS3Out)
-		return nil, fmt.Errorf(string(aptS3Out))
 	}
 
-	var jsonResp apTrustResponse
-	err = json.Unmarshal(aptOut, &jsonResp)
-	if err != nil {
-		return nil, fmt.Errorf("malformed response: %s", err.Error())
-	}
 	return &jsonResp, nil
 }
