@@ -237,6 +237,7 @@ func (svc *ServiceContext) doAPTrustSubmission(js *jobStatus, md *metadata) erro
 	cmd = exec.Command("apt-cmd", "s3", "upload", fmt.Sprintf("--host=%s", svc.APTrust.AWSHost), fmt.Sprintf("--bucket=%s", svc.APTrust.AWSBucket), bagFile)
 	svc.logInfo(js, fmt.Sprintf("submit command: %+v", cmd))
 	aptOut, err = cmd.CombinedOutput()
+	svc.logInfo(js, fmt.Sprintf("submit response: %s", aptOut))
 	if err != nil {
 		return fmt.Errorf("submission of %s failed: %s", bagFile, aptOut)
 	}
