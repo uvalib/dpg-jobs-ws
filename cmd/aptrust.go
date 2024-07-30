@@ -371,7 +371,18 @@ func (svc *ServiceContext) getAPTrustStatus(md *metadata) (*apTrustResponse, err
 	cmd := exec.Command("apt-cmd", "registry", "list", "workitems", fmt.Sprintf("name=%s", getBagFileName(md)), "sort=date_processed__desc")
 	aptOut, err := cmd.CombinedOutput()
 	if err != nil {
-		return nil, fmt.Errorf(string(aptOut))
+		log.Printf("INFO: get aptrust status for metadata %d failed: %s", md.ID, aptOut)
+		log.Printf("INFO: check s3 bucket")
+		var aptSub apTrustSubmission
+		err := svc.GDB.Where("metadata_id=?", md.ID).First(&aptSub).Error
+		if err != nil {
+			return nil, fmt.Errorf("no aptrust status found: %s", err.Error())
+		}
+		cmd = exec.Command("apt-cmd", "s3", "list", fmt.Sprintf("--host=%s", svc.APTrust.AWSHost), fmt.Sprintf("--bucket=%s", svc.APTrust.AWSBucket), fmt.Sprintf("--prefix=%s", aptSub.Bag))
+		log.Printf("INFO: s3 list command: %+v", cmd)
+		aptS3Out, err := cmd.CombinedOutput()
+		log.Printf("INFO: s3 list response: %s", aptS3Out)
+		return nil, fmt.Errorf(string(aptS3Out))
 	}
 
 	var jsonResp apTrustResponse
