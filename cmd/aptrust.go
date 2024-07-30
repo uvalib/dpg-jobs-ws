@@ -31,6 +31,12 @@ type apTrustResponse struct {
 	Results []apTrustResult `json:"results,omitempty"`
 }
 
+type aptS3Response struct {
+	Etag    string `json:"etag"`
+	Name    string `json:"name"`
+	Storage string `json:"storageClass"`
+}
+
 func (svc *ServiceContext) batchAPTrustSubmission(c *gin.Context) {
 	var req struct {
 		CollectionID    int64   `json:"collectionID"`
@@ -392,6 +398,21 @@ func (svc *ServiceContext) getAPTrustStatus(md *metadata) (*apTrustResponse, err
 		log.Printf("INFO: s3 list command: %+v", cmd)
 		aptS3Out, err := cmd.CombinedOutput()
 		log.Printf("INFO: s3 list response: %s", aptS3Out)
+		var s3Resp aptS3Response
+		jsonErr := json.Unmarshal(aptS3Out, &s3Resp)
+		if jsonErr != nil {
+			return nil, fmt.Errorf("malformed s3 response: %s", err.Error())
+		}
+
+		jsonResp.Count = 1
+		jsonResp.Results = make([]apTrustResult, 0)
+		jsonResp.Results = append(jsonResp.Results, apTrustResult{
+			ETag:          s3Resp.Etag,
+			Name:          s3Resp.Name,
+			StorageOption: s3Resp.Storage,
+			Status:        "Pending",
+			Note:          "Submitted to S3 bucket and awaiting ingest to APTrust",
+		})
 	}
 
 	return &jsonResp, nil
