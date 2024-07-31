@@ -312,7 +312,7 @@ func (svc *ServiceContext) getAPTrustGroupStatus(collectionMD *metadata) ([]apTr
 	candidates := []string{collectionMD.PID, collectionMD.CollectionID}
 	for _, testID := range candidates {
 		log.Printf("INFO: check aptrust for group id [%s]", testID)
-		cmd := exec.Command("apt-cmd", "registry", "list", "workitems", fmt.Sprintf("bag_group_identifier='%s'", testID), "per_page=1")
+		cmd := exec.Command("apt-cmd", "registry", "list", "workitems", fmt.Sprintf("bag_group_identifier=%s", testID), "per_page=1")
 		log.Printf("INFO: %+v", cmd)
 		aptOut, cmdErr := cmd.CombinedOutput()
 		if cmdErr != nil {
