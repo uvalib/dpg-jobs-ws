@@ -8,7 +8,6 @@ import (
 	"os/exec"
 	"runtime/debug"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -177,7 +176,7 @@ func (svc *ServiceContext) prepareAPTrustSubmission(mdID int64, resubmit bool) (
 	if md.APTrustSubmission == nil {
 		aptSubmission := apTrustSubmission{MetadataID: md.ID, Bag: getBagFileName(&md), RequestedAt: time.Now()}
 		if md.IsCollection {
-			aptSubmission.Bag = "collection: no bag"
+			aptSubmission.Bag = fmt.Sprintf("collection %s", md.CollectionID)
 		}
 		err = svc.GDB.Create(&aptSubmission).Error
 		if err != nil {
@@ -304,16 +303,49 @@ func (svc *ServiceContext) apTrustStatusRequest(c *gin.Context) {
 
 func (svc *ServiceContext) getAPTrustGroupStatus(collectionMD *metadata) ([]apTrustResult, error) {
 	// collections are generally grouped by the collection PID. Exception is a collection comprised of ArchivesSpace items.
-	// In this case, the group ID is the MSS identifer of the AS group, which is contained in the title. Format  [MSS ##: title]
-	// Look for this pattern and extract the MSS number.
-	groupID := collectionMD.PID
-	if strings.Index(collectionMD.Title, "MSS") == 0 {
-		mssNum := strings.Split(collectionMD.Title, ":")[0]
-		mssNum = strings.TrimSpace(mssNum)
-		if mssNum != "" {
-			groupID = mssNum
+	// In this case, the group ID is the collection identifer of the AS group, which is contained in the  collection_id field.
+	// Do small aptrust queries to determine which to use:
+	// TODO T
+	//    This might need to change if CollectionID field cannot be used. Instead it will be some mangling of the title but not a colon.
+	//    maybe [ID] title instead or ID | Title
+	groupID := ""
+	candidates := []string{collectionMD.PID, collectionMD.CollectionID}
+	for _, testID := range candidates {
+		log.Printf("INFO: check aptrust for group id [%s]", testID)
+		cmd := exec.Command("apt-cmd", "registry", "list", "workitems", fmt.Sprintf("bag_group_identifier='%s'", testID), "per_page=1")
+		log.Printf("INFO: %+v", cmd)
+		aptOut, cmdErr := cmd.CombinedOutput()
+		if cmdErr != nil {
+			log.Printf("ERROR: unable to test existance of collection id %s: %s", testID, cmdErr.Error())
+			continue
+		}
+
+		var jsonResp apTrustResponse
+		jsonErr := json.Unmarshal(aptOut, &jsonResp)
+		if jsonErr != nil {
+			log.Printf("ERROR: unable to parse aptrust collection id %s response: %s", testID, jsonErr.Error())
+			continue
+		}
+
+		if jsonResp.Count > 0 {
+			log.Printf("INFO: group %s exists with %d records", testID, jsonResp.Count)
+			groupID = testID
+			break
 		}
 	}
+
+	if groupID == "" {
+		return nil, fmt.Errorf("no aptrust collection data found for metadata %d", collectionMD.ID)
+	}
+
+	log.Printf("INFO: get a list of aptrust submission info for collection %d from tracksys", collectionMD.ID)
+	q := "select ats.* from ap_trust_submissions ats inner join metadata m on m.id = ats.metadata_id where m.parent_metadata_id = ?"
+	var aptSubs []apTrustSubmission
+	subErr := svc.GDB.Raw(q, collectionMD.ID).Scan(&aptSubs).Error
+	if subErr != nil {
+		return nil, fmt.Errorf("unable to get submission records for collection %d: %s", collectionMD.ID, subErr.Error())
+	}
+	totalRecs := len(aptSubs)
 
 	page := 1
 	done := false
@@ -321,7 +353,7 @@ func (svc *ServiceContext) getAPTrustGroupStatus(collectionMD *metadata) ([]apTr
 	statusResp := make([]apTrustResult, 0)
 	var err error
 	for done == false {
-		log.Printf("INFO: request page %d of results for group %s - %s", page, collectionMD.PID, collectionMD.Title)
+		log.Printf("INFO: request page %d of results for group %s - %s", page, groupID, collectionMD.Title)
 		cmd := exec.Command("apt-cmd", "registry", "list", "workitems", fmt.Sprintf("bag_group_identifier=%s", groupID),
 			"sort=date_processed__desc", "per_page=1000", fmt.Sprintf("page=%d", page))
 		aptOut, cmdErr := cmd.CombinedOutput()
@@ -352,15 +384,14 @@ func (svc *ServiceContext) getAPTrustGroupStatus(collectionMD *metadata) ([]apTr
 		// walk the list if respnses and include the first instance of each
 		// unique name (bag filename) in the response as this will be the latest status
 		for _, resp := range jsonResp.Results {
-			alreadyIncluded := false
-			for _, r := range statusResp {
-				if r.Name == resp.Name {
-					alreadyIncluded = true
+			for subIdx, sub := range aptSubs {
+				if sub.Bag == resp.Name {
+					// submission info still exists in the full list; add the APTrust status
+					// to the response and remove the submission info from the list
+					statusResp = append(statusResp, resp)
+					aptSubs = append(aptSubs[:subIdx], aptSubs[subIdx+1:]...)
 					break
 				}
-			}
-			if alreadyIncluded == false {
-				statusResp = append(statusResp, resp)
 			}
 		}
 	}
@@ -369,7 +400,14 @@ func (svc *ServiceContext) getAPTrustGroupStatus(collectionMD *metadata) ([]apTr
 		return nil, err
 	}
 
-	log.Printf("INFO: group %s status complete; %d unique items found", groupID, len(statusResp))
+	log.Printf("INFO: group %s status complete; %d unique items found from an expected total of %d", groupID, len(statusResp), totalRecs)
+	for _, sub := range aptSubs {
+		statusResp = append(statusResp, apTrustResult{
+			Name:            sub.Bag,
+			GroupIdentifier: groupID,
+			Status:          "Pending",
+			Note:            "Submitted to S3 bucket and awaiting ingest to APTrust"})
+	}
 	return statusResp, nil
 }
 
