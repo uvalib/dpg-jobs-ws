@@ -65,6 +65,15 @@ type asOrderedRecordsResp struct {
 	} `json:"uris"`
 }
 
+type asSearchResp struct {
+	TotalHits int64 `json:"total_hits"`
+	Ressults  []struct {
+		ID    string `json:"id"`
+		URI   string `json:"uri"`
+		Title string `json:"title"`
+	} `json:"results"`
+}
+
 func (r *asRepository) ID() string {
 	parts := strings.Split(r.URI, "/")
 	return parts[len(parts)-1]

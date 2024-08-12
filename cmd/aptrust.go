@@ -5,7 +5,10 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"net/url"
+	"os"
 	"os/exec"
+	"path"
 	"runtime/debug"
 	"strconv"
 	"time"
@@ -454,4 +457,209 @@ func (svc *ServiceContext) getAPTrustStatus(md *metadata) (*apTrustResponse, err
 	}
 
 	return &jsonResp, nil
+}
+
+type findingAidResp struct {
+	Metadata   metadata
+	FindingAid []byte
+}
+
+func (svc *ServiceContext) submitFindingAidToAPTrust(c *gin.Context) {
+	mdID := c.Param("id")
+	log.Printf("INFO: submit finding aid for metadata %s to aptrust", mdID)
+	faResp, err := svc.getFindingAid(mdID)
+	if err != nil {
+		log.Printf("ERROR: %s", err.Error())
+		c.String(http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	log.Printf("INFO: finding aid for %s generated; create bag", mdID)
+	faSubdir := getBagDirectoryName(&faResp.Metadata)
+	bagBaseDir := path.Join(svc.ProcessingDir, "bags")
+	bagAssembleDir := path.Join(bagBaseDir, faSubdir)
+	if pathExists(bagAssembleDir) {
+		log.Printf("INFO: clean up pre-existing bag directory %s", bagAssembleDir)
+		err := os.RemoveAll(bagAssembleDir)
+		if err != nil {
+			log.Printf("ERROR: unable to cleanup %s: %s", bagAssembleDir, err.Error())
+			c.String(http.StatusInternalServerError, err.Error())
+			return
+		}
+	}
+
+	log.Printf("INFO: create finding aid bag directory %s", bagAssembleDir)
+	err = ensureDirExists(bagAssembleDir, 0777)
+	if err != nil {
+		log.Printf("ERROR: unable to create %s: %s", bagAssembleDir, err.Error())
+		c.String(http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	findingAidFile := path.Join(bagAssembleDir, fmt.Sprintf("findingaid-%d.xml", faResp.Metadata.ID))
+	log.Printf("INFO: write finding aid for collection %d to %s", faResp.Metadata.ID, findingAidFile)
+	os.WriteFile(findingAidFile, faResp.FindingAid, 0644)
+
+	bagFileName := path.Join(bagBaseDir, fmt.Sprintf("%s.tar", faSubdir))
+	storage := "Standard"
+	if faResp.Metadata.PreservationTierID == 2 {
+		storage = "Glacier-VA"
+	}
+
+	// NOTE: must include double quote around the entire tag (name and value) if it contains spaces. See title as an example
+	cmdArray := []string{"bag", "create", "--profile=aptrust", "--manifest-algs=md5,sha256"}
+	cmdArray = append(cmdArray, fmt.Sprintf("--output-file=%s", bagFileName))
+	cmdArray = append(cmdArray, fmt.Sprintf("--bag-dir=%s", bagBaseDir))
+	cmdArray = append(cmdArray, fmt.Sprintf("--tags=\"aptrust-info.txt/Title=%s\"", faResp.Metadata.Title))
+	cmdArray = append(cmdArray, "--tags=aptrust-info.txt/Access=Consortia")
+	cmdArray = append(cmdArray, fmt.Sprintf("--tags=aptrust-info.txt/Storage-Option=%s", storage))
+	cmdArray = append(cmdArray, "--tags=bag-info.txt/Source-Organization=virginia.edu")
+	cmdArray = append(cmdArray, "--tags=\"Bag-Count=1 of 1\"")
+	cmdArray = append(cmdArray, fmt.Sprintf("--tags=\"Bag-Group-Identifier=%s\"", faResp.Metadata.CollectionID))
+	cmdArray = append(cmdArray, fmt.Sprintf("--tags=\"Internal-Sender-Identifier=%s\"", faResp.Metadata.CollectionID))
+	cmd := exec.Command("apt-cmd", cmdArray...)
+	log.Printf("INFO: bag command: %+v", cmd)
+	aptOut, err := exec.Command("apt-cmd", cmdArray...).CombinedOutput()
+	if err != nil {
+		log.Printf("ERROR: bag %s create failed: %s", bagFileName, aptOut)
+		c.String(http.StatusInternalServerError, string(aptOut))
+		return
+	}
+
+	cmd = exec.Command("apt-cmd", "bag", "validate", "-p", "aptrust", bagFileName)
+	log.Printf("INFO: validate command: %+v", cmd)
+	aptOut, err = cmd.CombinedOutput()
+	if err != nil {
+		log.Printf("ERROR: bag %s validation failed: %s", bagFileName, aptOut)
+		c.String(http.StatusInternalServerError, string(aptOut))
+		return
+	}
+
+	log.Printf("INFO: submit %s to aptrust bucket...", bagFileName)
+	cmd = exec.Command("apt-cmd", "s3", "upload", fmt.Sprintf("--host=%s", svc.APTrust.AWSHost), fmt.Sprintf("--bucket=%s", svc.APTrust.AWSBucket), bagFileName)
+	log.Printf("INFO: submit command: %+v", cmd)
+	aptOut, err = cmd.CombinedOutput()
+	log.Printf("INFO: submit response: %s", aptOut)
+	if err != nil {
+		log.Printf("ERROR: s3 submit failed: %s", aptOut)
+		c.String(http.StatusInternalServerError, fmt.Sprintf("s3 submit failed: %s", aptOut))
+		return
+	}
+
+	type aptS3SubmitResponse struct {
+		Bucket string
+		Key    string
+		ETag   string
+	}
+	var jsonResp aptS3SubmitResponse
+	err = json.Unmarshal(aptOut, &jsonResp)
+	if err != nil {
+		log.Printf("WARNING: s3 submit successful, but unable to parse response: %s", err.Error())
+		c.String(http.StatusOK, fmt.Sprintf("submission success, but anable to parse resposne: %s", err.Error()))
+		return
+	}
+
+	c.JSON(http.StatusOK, jsonResp)
+}
+
+func (svc *ServiceContext) generateFindingAid(c *gin.Context) {
+	mdID := c.Param("id")
+	log.Printf("INFO: get finding aid for metadata %s", mdID)
+	faResp, err := svc.getFindingAid(mdID)
+	if err != nil {
+		log.Printf("ERROR: %s", err.Error())
+		c.String(http.StatusInternalServerError, err.Error())
+		return
+	}
+	c.String(http.StatusOK, string(faResp.FindingAid))
+}
+
+type findingAidError struct {
+	StatusCode int
+	Message    string
+}
+
+func (e *findingAidError) Error() string {
+	return fmt.Sprintf("%d - %s", e.StatusCode, e.Message)
+}
+
+func (svc *ServiceContext) getFindingAid(mdID string) (*findingAidResp, error) {
+	log.Printf("INFO: load collection metadata record %s", mdID)
+	var faResp findingAidResp
+	err := svc.GDB.Find(&faResp.Metadata, mdID).Error
+	if err != nil {
+		return nil, &findingAidError{
+			StatusCode: http.StatusInternalServerError,
+			Message:    fmt.Sprintf("unable to get metadata %s: %s", mdID, err.Error()),
+		}
+	}
+
+	// finding aid is only valid for collection records
+	if faResp.Metadata.IsCollection == false {
+		return nil, &findingAidError{
+			StatusCode: http.StatusBadRequest,
+			Message:    fmt.Sprintf("metadata %d is not a collection", faResp.Metadata.ID),
+		}
+	}
+
+	// it is also only valid for collections made of only archivesspace records
+	var nonASCount int64
+	err = svc.GDB.Table("metadata").Where("parent_metadata_id=? and external_system_id!=?", faResp.Metadata.ID, 1).Count(&nonASCount).Error
+	if err != nil {
+		return nil, &findingAidError{
+			StatusCode: http.StatusInternalServerError,
+			Message:    fmt.Sprintf("unable to get non-archivesspace record count for  metadata %d: %s", faResp.Metadata.ID, err.Error()),
+		}
+	}
+	if nonASCount > 0 {
+		return nil, &findingAidError{
+			StatusCode: http.StatusBadRequest,
+			Message:    "finding aid is only available for archivesspace collections",
+		}
+	}
+
+	log.Printf("INFO: find archivesspace uri for collection %s", faResp.Metadata.CollectionID)
+	asURL := fmt.Sprintf("/search?q=%s&type[]=resource&page=1&page_size=1", url.QueryEscape(faResp.Metadata.CollectionID))
+	resp, asErr := svc.sendASGetRequest(asURL)
+	if asErr != nil {
+		return nil, &findingAidError{
+			StatusCode: asErr.StatusCode,
+			Message:    fmt.Sprintf("archivesspace request failed: %s", asErr.Message),
+		}
+	}
+
+	var jsonResp asSearchResp
+	err = json.Unmarshal(resp, &jsonResp)
+	if err != nil {
+		return nil, &findingAidError{
+			StatusCode: http.StatusInternalServerError,
+			Message:    fmt.Sprintf("unable to parse archivesspace results: %s", err.Error()),
+		}
+	}
+
+	if jsonResp.TotalHits == 0 {
+		return nil, &findingAidError{
+			StatusCode: http.StatusBadRequest,
+			Message:    fmt.Sprintf("no matches found for %s ", faResp.Metadata.CollectionID),
+		}
+	}
+	if jsonResp.TotalHits > 1 {
+		return nil, &findingAidError{
+			StatusCode: http.StatusBadRequest,
+			Message:    fmt.Sprintf("%s has %d matches; expect only 1", faResp.Metadata.CollectionID, jsonResp.TotalHits),
+		}
+	}
+
+	uri := jsonResp.Ressults[0].URI
+	log.Printf("INFO: request finding aid for %s using uri %s", faResp.Metadata.CollectionID, uri)
+	parsedURL := parsePublicASURL(uri)
+	asURL = fmt.Sprintf("/repositories/%s/resource_descriptions/%s.xml", parsedURL.RepositoryID, parsedURL.ParentID)
+	faResp.FindingAid, asErr = svc.sendASGetRequest(asURL)
+	if asErr != nil {
+		return nil, &findingAidError{
+			StatusCode: asErr.StatusCode,
+			Message:    fmt.Sprintf("archivesspace request failed: %s", asErr.Message),
+		}
+	}
+	return &faResp, nil
 }
