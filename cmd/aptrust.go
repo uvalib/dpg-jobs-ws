@@ -501,6 +501,15 @@ func (svc *ServiceContext) submitFindingAidToAPTrust(c *gin.Context) {
 	os.WriteFile(findingAidFile, faResp.FindingAid, 0644)
 
 	bagFileName := path.Join(bagBaseDir, fmt.Sprintf("%s.tar", faSubdir))
+	if pathExists(bagFileName) {
+		log.Printf("INFO: clean up pre-existing bag file %s", bagFileName)
+		err = os.Remove(bagFileName)
+		if err != nil {
+			log.Printf("ERROR: unable to cleanup %s: %s", bagFileName, err.Error())
+			c.String(http.StatusInternalServerError, err.Error())
+			return
+		}
+	}
 	storage := "Standard"
 	if faResp.Metadata.PreservationTierID == 2 {
 		storage = "Glacier-VA"
@@ -509,7 +518,7 @@ func (svc *ServiceContext) submitFindingAidToAPTrust(c *gin.Context) {
 	// NOTE: must include double quote around the entire tag (name and value) if it contains spaces. See title as an example
 	cmdArray := []string{"bag", "create", "--profile=aptrust", "--manifest-algs=md5,sha256"}
 	cmdArray = append(cmdArray, fmt.Sprintf("--output-file=%s", bagFileName))
-	cmdArray = append(cmdArray, fmt.Sprintf("--bag-dir=%s", bagBaseDir))
+	cmdArray = append(cmdArray, fmt.Sprintf("--bag-dir=%s", bagAssembleDir))
 	cmdArray = append(cmdArray, fmt.Sprintf("--tags=\"aptrust-info.txt/Title=%s\"", faResp.Metadata.Title))
 	cmdArray = append(cmdArray, "--tags=aptrust-info.txt/Access=Consortia")
 	cmdArray = append(cmdArray, fmt.Sprintf("--tags=aptrust-info.txt/Storage-Option=%s", storage))
