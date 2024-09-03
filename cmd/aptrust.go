@@ -512,7 +512,7 @@ func (svc *ServiceContext) submitFindingAidToAPTrust(c *gin.Context) {
 	}
 	storage := "Standard"
 	if faResp.Metadata.PreservationTierID == 2 {
-		storage = "Glacier-VA"
+		storage = "Glacier-OH"
 	}
 
 	// NOTE: must include double quote around the entire tag (name and value) if it contains spaces. See title as an example
