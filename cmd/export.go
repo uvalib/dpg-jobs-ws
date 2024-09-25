@@ -32,7 +32,7 @@ type exporData struct {
 	ExternalSystem   string           `json:"externalSystem,omitempty"`
 	ExternalURI      string           `json:"externalURI,omitempty"`
 	CreatedAt        time.Time        `json:"createdAt"`
-	UpdatedAt        time.Time        `json:"uddatedAt,omitempty"`
+	UpdatedAt        time.Time        `json:"updatedAt,omitempty"`
 	Children         []*exporData     `json:"children,omitempty"`
 }
 
