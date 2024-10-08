@@ -75,6 +75,7 @@ type ServiceContext struct {
 	ReindexURL    string
 	XMLReindexURL string
 	OcrURL        string
+	PdfURL        string
 	HTTPClient    *http.Client
 	Templates     htmlTemplates
 	OcrRequests   []int64
@@ -100,6 +101,7 @@ func InitializeService(version string, cfg *ServiceConfig) *ServiceContext {
 		ReindexURL:    cfg.ReindexURL,
 		XMLReindexURL: cfg.XMLReindexURL,
 		OcrURL:        cfg.OcrURL,
+		PdfURL:        cfg.PdfURL,
 		ServiceURL:    cfg.ServiceURL,
 		OcrRequests:   make([]int64, 0),
 	}

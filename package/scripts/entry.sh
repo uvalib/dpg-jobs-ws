@@ -38,6 +38,7 @@ cd bin; ./dpg-jobs-ws               \
   -aptbucket  ${APTRUST_AWS_BUCKET} \
   -apthost    ${APTRUST_AWS_HOST}   \
   -ocr        ${DPG_OCR}            \
+  -pdf        ${DPG_PDF}            \
   -service    ${DPG_SERVICE_URL}
 
 # return the status
