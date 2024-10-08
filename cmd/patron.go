@@ -33,18 +33,20 @@ func (svc *ServiceContext) createPatronPDF(js *jobStatus, tgtUnit *unit) error {
 		"-format", "jpg", "-path", assembleDir, srcTifFiles}
 	cmd := exec.Command("magick", cmdArray...)
 	svc.logInfo(js, fmt.Sprintf("%+v", cmd))
-	_, err = cmd.Output()
+	cmdOut, err := cmd.CombinedOutput()
 	if err != nil {
-		return fmt.Errorf("downsize failed: %s", err.Error())
+		return fmt.Errorf("downsize failed: %s - %s", err.Error(), cmdOut)
 	}
 
 	// convert all scaled jpg files to a single PDF
 	jpgFiles := path.Join(assembleDir, "*.jpg")
 	svc.logInfo(js, fmt.Sprintf("Covert %s to %s...", jpgFiles, pdfPath))
 	cmdArray = []string{"-quiet", jpgFiles, pdfPath}
-	_, err = exec.Command("magick", cmdArray...).Output()
+	cmd = exec.Command("magick", cmdArray...)
+	svc.logInfo(js, fmt.Sprintf("%+v", cmd))
+	cmdOut, err = cmd.CombinedOutput()
 	if err != nil {
-		return fmt.Errorf("Unable to convert jpg files to pdf: %s", err.Error())
+		return fmt.Errorf("Unable to convert jpg files to pdf: %s - %s", err.Error(), cmdOut)
 	}
 
 	if pathExists(pdfPath) == false {
