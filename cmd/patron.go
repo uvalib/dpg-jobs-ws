@@ -3,14 +3,18 @@ package main
 import (
 	"archive/zip"
 	"bufio"
+	"crypto/md5"
 	"fmt"
+	"io"
 	"log"
+	"net/http"
 	"os"
 	"os/exec"
 	"path"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 )
 
 func (svc *ServiceContext) createPatronPDF(js *jobStatus, tgtUnit *unit) error {
@@ -26,31 +30,47 @@ func (svc *ServiceContext) createPatronPDF(js *jobStatus, tgtUnit *unit) error {
 	pdfPath := path.Join(assembleDir, pdfFileName)
 	os.Remove(pdfPath)
 
-	// convert all tif files to scaled down jpgs
-	srcTifFiles := path.Join(svc.ProcessingDir, "finalization", fmt.Sprintf("%09d", tgtUnit.ID), "*.tif[0]")
-	svc.logInfo(js, fmt.Sprintf("Covert tif images in %s to scaled down JPGs in %s...", srcTifFiles, assembleDir))
-	cmdArray := []string{"mogrify", "-quiet", "-resize", "1024x", "-density", "150",
-		"-format", "jpg", "-path", assembleDir, srcTifFiles}
-	cmd := exec.Command("magick", cmdArray...)
-	svc.logInfo(js, fmt.Sprintf("%+v", cmd))
-	cmdOut, err := cmd.CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("downsize failed: %s - %s", err.Error(), cmdOut)
+	// Send to PDF WS to start creation
+	token := fmt.Sprintf("%x", md5.Sum([]byte(tgtUnit.Metadata.PID)))
+	url := fmt.Sprintf("%s/%s?unit=%d&embed=1&token=%s", svc.PdfURL, tgtUnit.Metadata.PID, tgtUnit.ID, token)
+	svc.logInfo(js, fmt.Sprintf("Request PDF with %s", url))
+	_, pdfErr := svc.getRequest(url)
+	if pdfErr != nil {
+		return fmt.Errorf("pdf request failed: %d:%s", pdfErr.StatusCode, pdfErr.Message)
 	}
 
-	// convert all scaled jpg files to a single PDF
-	jpgFiles := path.Join(assembleDir, "*.jpg")
-	svc.logInfo(js, fmt.Sprintf("Covert %s to %s...", jpgFiles, pdfPath))
-	cmdArray = []string{"-quiet", jpgFiles, pdfPath}
-	cmd = exec.Command("magick", cmdArray...)
-	svc.logInfo(js, fmt.Sprintf("%+v", cmd))
-	cmdOut, err = cmd.CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("Unable to convert jpg files to pdf: %s - %s", err.Error(), cmdOut)
+	// ...poll for status
+	svc.logInfo(js, "PDF generate stated; poll for status")
+	done := false
+	errorMsg := ""
+	statusURL := fmt.Sprintf("%s/%s/status?token=%s", svc.PdfURL, tgtUnit.Metadata.PID, token)
+	for done == false {
+		time.Sleep(15 * time.Second)
+		statusResp, pdfErr := svc.getRequest(statusURL)
+		if pdfErr != nil {
+			done = true
+			errorMsg = fmt.Sprintf("status check failed: %d:%s", pdfErr.StatusCode, pdfErr.Message)
+		} else {
+			strStatus := string(statusResp)
+			if strStatus == "FAILED" {
+				errorMsg = "PDF generation failed"
+				done = true
+			} else if strStatus == "READY" {
+				svc.logInfo(js, "PDF generation is done")
+				done = true
+			}
+		}
+	}
+	if errorMsg != "" {
+		return fmt.Errorf(errorMsg)
 	}
 
-	if pathExists(pdfPath) == false {
-		return fmt.Errorf("Target PDF %s was not created", pdfPath)
+	// once complete, download into pdfPath
+	downloadURL := fmt.Sprintf("%s/%s/download?token=%s", svc.PdfURL, tgtUnit.Metadata.PID, token)
+	svc.logInfo(js, fmt.Sprintf("Download PDF from %s to %s", downloadURL, pdfPath))
+	err = downloadPDF(downloadURL, pdfPath)
+	if err != nil {
+		return err
 	}
 
 	// Zip the PDF into the delivery directory
@@ -73,6 +93,25 @@ func (svc *ServiceContext) createPatronPDF(js *jobStatus, tgtUnit *unit) error {
 	zipWriter.Close()
 
 	svc.logInfo(js, "Zip deliverable of PDF created.")
+	return nil
+}
+
+func downloadPDF(url string, pdfPath string) error {
+	out, err := os.Create(pdfPath)
+	if err != nil {
+		return fmt.Errorf("unable to create %s: %s", pdfPath, err.Error())
+	}
+	defer out.Close()
+
+	pdfResp, dlErr := http.Get(url)
+	if dlErr != nil {
+		return fmt.Errorf("download request failed: %s", dlErr.Error())
+	}
+	defer pdfResp.Body.Close()
+	_, err = io.Copy(out, pdfResp.Body)
+	if err != nil {
+		return fmt.Errorf("download failed: %s", err.Error())
+	}
 	return nil
 }
 
