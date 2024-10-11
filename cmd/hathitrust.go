@@ -415,7 +415,7 @@ func (svc *ServiceContext) createHathiTrustPackage(c *gin.Context) {
 				continue
 			}
 
-			svc.logInfo(js, "Find target unit")
+			svc.logInfo(js, "Find target units")
 			var units []unit
 			err = svc.GDB.Where("metadata_id=? and unit_status != ? and reorder = ? and intended_use_id=?", mdID, "canceled", false, 110).Find(&units).Error
 			if err != nil {
@@ -427,24 +427,67 @@ func (svc *ServiceContext) createHathiTrustPackage(c *gin.Context) {
 				svc.failHathiTrustPackage(js, md.ID, "no units found")
 				continue
 			}
-			if len(units) > 1 {
-				svc.failHathiTrustPackage(js, md.ID, fmt.Sprintf("too many units found (%d)", len(units)))
-				continue
-			}
 
-			tgtUnit := units[0]
-			compressDate := tgtUnit.DateDLDeliverablesReady
-			if compressDate == nil {
-				compressDate = tgtUnit.DatePatronDeliverablesReady
-				if compressDate == nil {
-					svc.failHathiTrustPackage(js, md.ID, "unable to determine compression date")
-					continue
+			svc.logInfo(js, fmt.Sprintf("%d units found; determine compression date, validate orderID and do necessary OCR", len(units)))
+			var unitIDs []int64
+			var orderID int64
+			var compressDate *time.Time
+			for _, tgtUnit := range units {
+				unitIDs = append(unitIDs, tgtUnit.ID)
+				if orderID == 0 {
+					orderID = tgtUnit.OrderID
+				} else if orderID != tgtUnit.OrderID {
+					svc.logError(js, "Units are from multiple orders")
+					orderID = 0
+					break
+				}
+
+				// for compress date, prefer DateDLDeliverablesReady over DatePatronDeliverablesReady
+				// pick the latest date and set it as compress date
+				var candidateCompressDate *time.Time
+				if tgtUnit.DateDLDeliverablesReady != nil {
+					candidateCompressDate = tgtUnit.DateDLDeliverablesReady
+				} else if tgtUnit.DatePatronDeliverablesReady != nil {
+					candidateCompressDate = tgtUnit.DatePatronDeliverablesReady
+				}
+				if candidateCompressDate != nil {
+					if compressDate == nil {
+						compressDate = candidateCompressDate
+					} else if candidateCompressDate.After(*compressDate) {
+						compressDate = candidateCompressDate
+					}
+				}
+
+				if md.OcrHint.OcrCandidate {
+					svc.logInfo(js, fmt.Sprintf("This metadata record is an OCR candidate; check master files in unit %d to see if OCR needs to be done", tgtUnit.ID))
+					var mfOCRCnt int64
+					err = svc.GDB.Table("master_files").Where("unit_id=? and NOT ISNULL(transcription_text) and transcription_text !=?", tgtUnit.ID, "").Count(&mfOCRCnt).Error
+					if err != nil {
+						svc.logInfo(js, fmt.Sprintf("Unable to determine OCR status for unit %d, assume it needs to be done: %s", tgtUnit.ID, err.Error()))
+						mfOCRCnt = 0
+					}
+					if mfOCRCnt == 0 {
+						// note; this call will not return until all master files in the unit have OCR results
+						err = svc.requestUnitOCR(js, md.PID, tgtUnit.ID, md.OcrLanguageHint)
+						if err != nil {
+							svc.failHathiTrustPackage(js, md.ID, fmt.Sprintf("unable to request ocr for unit %d: %s", tgtUnit.ID, err.Error()))
+						}
+					}
 				}
 			}
 
-			log.Printf("INFO: load master files from target unit %d from metadata %d", tgtUnit.ID, mdID)
+			if orderID == 0 {
+				svc.failHathiTrustPackage(js, md.ID, "unable to determine package order")
+				continue
+			}
+			if compressDate == nil {
+				svc.failHathiTrustPackage(js, md.ID, "unable to determine compression date")
+				continue
+			}
+
+			svc.logInfo(js, fmt.Sprintf("Load master files from digitial collection units for metadata %d", mdID))
 			var masterFiles []masterFile
-			err = svc.GDB.Where("unit_id = ?", tgtUnit.ID).Find(&masterFiles).Error
+			err = svc.GDB.Where("unit_id in ?", unitIDs).Find(&masterFiles).Error
 			if err != nil {
 				svc.failHathiTrustPackage(js, md.ID, fmt.Sprintf("unable to load master files: %s", err.Error()))
 				continue
@@ -457,7 +500,7 @@ func (svc *ServiceContext) createHathiTrustPackage(c *gin.Context) {
 
 			// Setup package assembly directory; /digiserv-production/hathitrust/order_[order_id]/[barcode]
 			// final package data will reside at /digiserv-production/hathitrust/order_[order_id]/[barcode].zip
-			orderDir := fmt.Sprintf("order_%d", tgtUnit.OrderID)
+			orderDir := fmt.Sprintf("order_%d", orderID)
 			assembleDir := path.Join(svc.ProcessingDir, "hathitrust", orderDir, md.Barcode)
 			packageName := fmt.Sprintf("%s.zip", md.Barcode)
 			packageFilename := path.Join(svc.ProcessingDir, "hathitrust", orderDir, packageName)
@@ -481,34 +524,6 @@ func (svc *ServiceContext) createHathiTrustPackage(c *gin.Context) {
 			if err != nil {
 				svc.failHathiTrustPackage(js, md.ID, fmt.Sprintf("unable to create package assembly directory %s: %s", assembleDir, err.Error()))
 				continue
-			}
-
-			// If OCR is applicable, perform it first
-			if md.OcrHint.OcrCandidate {
-				svc.logInfo(js, "This unit is an OCR candidate; check master files to see if OCR needs to be done")
-				doOCR := true
-				for _, mf := range masterFiles {
-					if mf.TranscriptionText != "" {
-						svc.logInfo(js, fmt.Sprintf("Masterfile %s:%s has OCR text. Assume the whole unit has been OCR'd already", mf.PID, mf.Filename))
-						doOCR = false
-						break
-					}
-				}
-				if doOCR {
-					// note; this call will not return until all master files in the unit have OCR results
-					err = svc.requestUnitOCR(js, md.PID, tgtUnit.ID, md.OcrLanguageHint)
-					if err != nil {
-						svc.failHathiTrustPackage(js, md.ID, fmt.Sprintf("unable to request ocr for unit %d: %s", tgtUnit.ID, err.Error()))
-						continue
-					}
-
-					svc.logInfo(js, "Refreshing master file list after succesful OCR generation")
-					err = svc.GDB.Where("unit_id = ?", tgtUnit.ID).Find(&masterFiles).Error
-					if err != nil {
-						svc.failHathiTrustPackage(js, md.ID, fmt.Sprintf("unable to reload units with ocr: %s", err.Error()))
-						continue
-					}
-				}
 			}
 
 			// Create the package ZIP file
