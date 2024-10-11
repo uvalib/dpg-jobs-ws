@@ -428,10 +428,9 @@ func (svc *ServiceContext) createHathiTrustPackage(c *gin.Context) {
 				continue
 			}
 
-			svc.logInfo(js, fmt.Sprintf("%d units found; determine compression date, validate orderID and do necessary OCR", len(units)))
+			svc.logInfo(js, fmt.Sprintf("%d units found; validate orderID and do necessary OCR", len(units)))
 			var unitIDs []int64
 			var orderID int64
-			var compressDate *time.Time
 			for _, tgtUnit := range units {
 				unitIDs = append(unitIDs, tgtUnit.ID)
 				if orderID == 0 {
@@ -440,22 +439,6 @@ func (svc *ServiceContext) createHathiTrustPackage(c *gin.Context) {
 					svc.logError(js, "Units are from multiple orders")
 					orderID = 0
 					break
-				}
-
-				// for compress date, prefer DateDLDeliverablesReady over DatePatronDeliverablesReady
-				// pick the latest date and set it as compress date
-				var candidateCompressDate *time.Time
-				if tgtUnit.DateDLDeliverablesReady != nil {
-					candidateCompressDate = tgtUnit.DateDLDeliverablesReady
-				} else if tgtUnit.DatePatronDeliverablesReady != nil {
-					candidateCompressDate = tgtUnit.DatePatronDeliverablesReady
-				}
-				if candidateCompressDate != nil {
-					if compressDate == nil {
-						compressDate = candidateCompressDate
-					} else if candidateCompressDate.After(*compressDate) {
-						compressDate = candidateCompressDate
-					}
 				}
 
 				if md.OcrHint.OcrCandidate {
@@ -480,6 +463,16 @@ func (svc *ServiceContext) createHathiTrustPackage(c *gin.Context) {
 				svc.failHathiTrustPackage(js, md.ID, "unable to determine package order")
 				continue
 			}
+
+			// date archived on the order should be latest date that images were compressed.
+			// load the unit and get that date and use it for the manifest
+			var tgtOrder order
+			err = svc.GDB.First(&tgtOrder, orderID).Error
+			if err != nil {
+				svc.failHathiTrustPackage(js, md.ID, fmt.Sprintf("unabel to find order %d for metadata %s: %s", orderID, md.PID, err.Error()))
+				continue
+			}
+			compressDate := tgtOrder.DateArchivingComplete
 			if compressDate == nil {
 				svc.failHathiTrustPackage(js, md.ID, "unable to determine compression date")
 				continue
