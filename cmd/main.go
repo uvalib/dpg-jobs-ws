@@ -11,7 +11,7 @@ import (
 )
 
 // Version of the service
-const version = "1.28.1"
+const version = "1.29.0"
 
 func main() {
 	log.Printf("===> DPG backend processing service starting up <===")
@@ -81,6 +81,7 @@ func main() {
 	router.POST("/orders/:id/email", svc.createOrderEmail)
 	router.POST("/orders/:id/email/send", svc.sendOrderEmail)
 	router.POST("/orders/:id/fees", svc.sendFeesEmail)
+	router.POST("/orders/:id/import", svc.importOrderItem)
 
 	router.GET("/archive/exist", svc.archiveExists)
 	router.POST("/units/:id/copy", svc.downloadFromArchive)

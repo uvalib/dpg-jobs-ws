@@ -36,6 +36,132 @@ type jp2Source struct {
 	Path       string
 }
 
+// Import a directory full of guest images from the archive into a new unit owned by the target ID
+// NOTE: local order ID is 11500, local metadata ID is 104621
+// curl -X POST http://localhost:8180/orders/11500/import -H "Content-Type: application/json" --data '{"metadataID": 104621, "target": "20081001AVRN"}'
+// curl -X POST https://dpg-jobs.lib.virginia.edu/orders/11864/import -H "Content-Type: application/json" --data '{"metadataID": 105320, "target": "20100316ARCH"}'
+func (svc *ServiceContext) importOrderItem(c *gin.Context) {
+	orderID, _ := strconv.ParseInt(c.Param("id"), 10, 64)
+	var tgtOrder order
+	err := svc.GDB.First(&tgtOrder, orderID).Error
+	if err != nil {
+		log.Printf("ERROR: unable to get order %d: %s", orderID, err.Error())
+		c.String(http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	type orderImportReq struct {
+		MetadataID int64  `json:"metadataID"`
+		Target     string `json:"target"`
+	}
+	var req orderImportReq
+	err = c.ShouldBindJSON(&req)
+	if err != nil {
+		log.Printf("ERROR: unable to parse import order item request: %s", err.Error())
+		c.String(http.StatusBadRequest, err.Error())
+		return
+	}
+
+	srcDir := path.Join(svc.ArchiveDir, req.Target)
+	var mdRec metadata
+	err = svc.GDB.First(&mdRec, req.MetadataID).Error
+	if err != nil {
+		log.Printf("ERROR: unable to get metadata record %d: %s", req.MetadataID, err.Error())
+		c.String(http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	js, err := svc.createJobStatus("ImportOrderImages", "Order", orderID)
+	if err != nil {
+		log.Printf("ERROR: unable to create ImportOrderImages job status: %s", err.Error())
+		c.String(http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	svc.logInfo(js, fmt.Sprintf("import images from %s to a new unit in order %d with metadata %s", srcDir, orderID, mdRec.PID))
+	var digitalCollectionBuildingID int64
+	digitalCollectionBuildingID = 110
+	staffNotes := fmt.Sprintf("Archive: %s", req.Target)
+	var tgtUnit unit
+	err = svc.GDB.Where("staff_notes=?", staffNotes).Find(&tgtUnit).Limit(1).Error
+	if err != nil {
+		svc.logFatal(js, fmt.Sprintf("unable to load unit with staff notes [%s]: %s", staffNotes, err.Error()))
+		c.String(http.StatusInternalServerError, err.Error())
+		return
+	}
+	if tgtUnit.ID == 0 {
+		svc.logInfo(js, fmt.Sprintf("Create new unit with staff_notes [%s]", staffNotes))
+		tgtUnit = unit{OrderID: tgtOrder.ID, MetadataID: &mdRec.ID, UnitStatus: "approved", IntendedUseID: &digitalCollectionBuildingID,
+			CompleteScan: true, StaffNotes: staffNotes}
+		err = svc.GDB.Create(&tgtUnit).Error
+		if err != nil {
+			svc.logFatal(js, fmt.Sprintf("unable to create unit for %s: %s", req.Target, err.Error()))
+			c.String(http.StatusInternalServerError, err.Error())
+			return
+		}
+	} else {
+		svc.logInfo(js, fmt.Sprintf("Unit with staff_notes [%s] already exists; using it", staffNotes))
+		if tgtUnit.UnitStatus != "approved" {
+			svc.logFatal(js, fmt.Sprintf("Existing unit %d for %s has an incompatible status %s", tgtUnit.ID, req.Target, tgtUnit.UnitStatus))
+			c.String(http.StatusBadRequest, fmt.Sprintf("exiating unit %d has incompatible status %s", tgtUnit.ID, tgtUnit.UnitStatus))
+			return
+		}
+	}
+
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				svc.logFatal(js, fmt.Sprintf("fatal error while ingesting images: %v", r))
+				log.Printf("ERROR: Panic recovered during guest image ingest: %v", r)
+				debug.PrintStack()
+			}
+		}()
+
+		cnt := 0
+		err = filepath.Walk(srcDir, func(fullPath string, entry os.FileInfo, err error) error {
+			if err != nil || entry.IsDir() {
+				return nil
+			}
+
+			// Grab the file extension - including the dot
+			ext := filepath.Ext(entry.Name())
+			if strings.ToLower(ext) != ".tif" || strings.Index(entry.Name(), "._") == 0 {
+				return nil
+			}
+
+			tifFile := tifInfo{path: fullPath, filename: entry.Name(), size: entry.Size()}
+			svc.logInfo(js, fmt.Sprintf("ingest %s", tifFile.path))
+
+			newMF, err := svc.getOrCreateMasterFile(js, tifFile, &tgtUnit, false)
+			if err != nil {
+				svc.logError(js, fmt.Sprintf("Create masterfile failed: %s", err.Error()))
+				return nil
+			}
+
+			err = svc.publishToIIIF(nil, newMF, tifFile.path, false)
+			if err != nil {
+				svc.logError(js, fmt.Sprintf("IIIF publish failed: %s", err.Error()))
+				return nil
+			}
+
+			cnt++
+			return nil
+		})
+
+		if err != nil {
+			svc.logFatal(js, err.Error())
+		} else {
+			svc.logInfo(js, fmt.Sprintf("%d masterfiles processed", cnt))
+			tgtUnit.UnitStatus = "done"
+			svc.GDB.Model(&tgtUnit).Select("UnitStatus").Updates(tgtUnit)
+		}
+
+		svc.jobDone(js)
+	}()
+
+	c.String(http.StatusOK, fmt.Sprintf("%d", js.ID))
+}
+
 // curl -X POST https://dpg-jobs.lib.virginia.edu/units/799/import -H "Content-Type: application/json" --data '{"from": "archive", "target": "000000799"}'
 // curl -X POST https://dpg-jobs.lib.virginia.edu/units/58722/import -H "Content-Type: application/json" --data '{"from": "from_fineArts", "target": "20100316ARCH"}'
 // curl -X POST http://localhost:8180/units/799/import -H "Content-Type: application/json" --data '{"from": "archive", "target": "000000799"}'
@@ -135,51 +261,9 @@ func (svc *ServiceContext) importGuestImages(c *gin.Context) {
 				}
 			}
 
-			newMF, err := svc.loadMasterFile(entry.Name())
+			newMF, err := svc.getOrCreateMasterFile(js, tifFile, &tgtUnit, overwrite)
 			if err != nil {
-				svc.logError(js, fmt.Sprintf("unable to load masterfile %s: %s", entry.Name(), err.Error()))
-				return err
-			}
-
-			if newMF.ID == 0 {
-				svc.logInfo(js, fmt.Sprintf("create guest masterfile %s", entry.Name()))
-				newMD5 := md5Checksum(tifFile.path)
-				newMF = &masterFile{UnitID: unitID, Filename: tifFile.filename, Filesize: tifFile.size, MD5: newMD5, MetadataID: tgtUnit.MetadataID}
-				err = svc.GDB.Create(&newMF).Error
-				if err != nil {
-					svc.logError(js, fmt.Sprintf("unable to create masterfile %s: %s", entry.Name(), err.Error()))
-					return err
-				}
-			} else {
-				svc.logInfo(js, fmt.Sprintf("master file %s already exists", tifFile.filename))
-				if newMF.PID == "" {
-					newMF.PID = fmt.Sprintf("tsm:%d", newMF.ID)
-					svc.GDB.Model(&newMF).Select("PID").Updates(newMF)
-				}
-			}
-
-			if newMF.ImageTechMeta.ID == 0 || overwrite {
-				if newMF.ImageTechMeta.ID != 0 {
-					svc.logInfo(js, fmt.Sprintf("overwite existing image tech metadata"))
-					err = svc.GDB.Delete(&newMF.ImageTechMeta).Error
-					if err != nil {
-						svc.logError(js, fmt.Sprintf("unable to delete existing tech metadata record %d: %s", newMF.ImageTechMeta.ID, err.Error()))
-					}
-				}
-				err = svc.createImageTechMetadata(newMF, tifFile.path)
-				if err != nil {
-					svc.logError(js, fmt.Sprintf("unable to create image tech metadata: %s", err.Error()))
-				}
-			}
-
-			if newMF.ImageTechMeta.Width == 0 || newMF.ImageTechMeta.Height == 0 {
-				svc.logError(js, fmt.Sprintf("%s has invalid tech metdata and is likely corrupt; skipping further processing", newMF.PID))
-				return nil
-			}
-
-			colorTest := strings.TrimSpace(newMF.ImageTechMeta.ColorSpace)
-			if colorTest == "CMYK" {
-				svc.logError(js, fmt.Sprintf("%s has unsupported colorspace %s; skipping further processing", newMF.PID, colorTest))
+				svc.logError(js, fmt.Sprintf("Create masterfile failed: %s", err.Error()))
 				return nil
 			}
 
@@ -427,6 +511,53 @@ func (svc *ServiceContext) importImages(js *jobStatus, tgtUnit *unit, srcDir str
 
 	svc.logInfo(js, "Images for Unit successfully imported.")
 	return nil
+}
+
+func (svc *ServiceContext) getOrCreateMasterFile(js *jobStatus, srcTifInfo tifInfo, tgtUnit *unit, overwrite bool) (*masterFile, error) {
+	newMF, err := svc.loadMasterFile(srcTifInfo.filename)
+	if err != nil {
+		return nil, fmt.Errorf("unable to load existing masterfile %s: %s", srcTifInfo.filename, err.Error())
+	}
+
+	if newMF.ID == 0 {
+		svc.logInfo(js, fmt.Sprintf("create new masterfile for %s", srcTifInfo.filename))
+		newMD5 := md5Checksum(srcTifInfo.path)
+		newMF = &masterFile{UnitID: tgtUnit.ID, Filename: srcTifInfo.filename, Filesize: srcTifInfo.size, MD5: newMD5, MetadataID: tgtUnit.MetadataID}
+		err = svc.GDB.Create(&newMF).Error
+		if err != nil {
+			return nil, fmt.Errorf("unable to create masterfile %s: %s", srcTifInfo.filename, err.Error())
+		}
+	} else {
+		svc.logInfo(js, fmt.Sprintf("master file %s already exists", srcTifInfo.filename))
+		if newMF.PID == "" {
+			newMF.PID = fmt.Sprintf("tsm:%d", newMF.ID)
+			svc.GDB.Model(&newMF).Select("PID").Updates(newMF)
+		}
+	}
+
+	if newMF.ImageTechMeta.ID == 0 || overwrite {
+		if newMF.ImageTechMeta.ID != 0 {
+			svc.logInfo(js, fmt.Sprintf("overwite existing image tech metadata"))
+			err = svc.GDB.Delete(&newMF.ImageTechMeta).Error
+			if err != nil {
+				svc.logError(js, fmt.Sprintf("unable to delete existing tech metadata record %d: %s", newMF.ImageTechMeta.ID, err.Error()))
+			}
+		}
+		err = svc.createImageTechMetadata(newMF, srcTifInfo.path)
+		if err != nil {
+			svc.logError(js, fmt.Sprintf("unable to create image tech metadata: %s", err.Error()))
+		}
+	}
+
+	if newMF.ImageTechMeta.Width == 0 || newMF.ImageTechMeta.Height == 0 {
+		return nil, fmt.Errorf("%s has invalid tech metdata and is likely corrupt; skipping further processing", newMF.PID)
+	}
+
+	colorTest := strings.TrimSpace(newMF.ImageTechMeta.ColorSpace)
+	if colorTest == "CMYK" {
+		return nil, fmt.Errorf("%s has unsupported colorspace %s; skipping further processing", newMF.PID, colorTest)
+	}
+	return newMF, nil
 }
 
 func (svc *ServiceContext) loadMasterFile(filename string) (*masterFile, error) {
