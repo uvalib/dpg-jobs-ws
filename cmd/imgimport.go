@@ -54,6 +54,11 @@ func (svc *ServiceContext) importOrderItem(c *gin.Context) {
 		MetadataID int64  `json:"metadataID"`
 		Target     string `json:"target"`
 	}
+	type orderImportResp struct {
+		JobID  int64 `json:"job"`
+		UnitID int64 `json:"unit"`
+	}
+
 	var req orderImportReq
 	err = c.ShouldBindJSON(&req)
 	if err != nil {
@@ -100,12 +105,24 @@ func (svc *ServiceContext) importOrderItem(c *gin.Context) {
 			return
 		}
 	} else {
-		svc.logInfo(js, fmt.Sprintf("Unit with staff_notes [%s] already exists; using it", staffNotes))
+		if tgtUnit.UnitStatus == "done" {
+			svc.logInfo(js, fmt.Sprintf("%s has already been imoorted to unit %d", req.Target, tgtUnit.ID))
+			svc.jobDone(js)
+
+			out := orderImportResp{
+				JobID:  0,
+				UnitID: tgtUnit.ID,
+			}
+			c.JSON(http.StatusOK, out)
+			return
+		}
+
 		if tgtUnit.UnitStatus != "approved" {
 			svc.logFatal(js, fmt.Sprintf("Existing unit %d for %s has an incompatible status %s", tgtUnit.ID, req.Target, tgtUnit.UnitStatus))
 			c.String(http.StatusBadRequest, fmt.Sprintf("exiating unit %d has incompatible status %s", tgtUnit.ID, tgtUnit.UnitStatus))
 			return
 		}
+		svc.logInfo(js, fmt.Sprintf("Unit with staff_notes [%s] already exists; using it", staffNotes))
 	}
 
 	go func() {
@@ -159,14 +176,10 @@ func (svc *ServiceContext) importOrderItem(c *gin.Context) {
 		svc.jobDone(js)
 	}()
 
-	out := struct {
-		JobID  int64 `json:"job"`
-		UnitID int64 `json:"unit"`
-	}{
+	out := orderImportResp{
 		JobID:  js.ID,
 		UnitID: tgtUnit.ID,
 	}
-
 	c.JSON(http.StatusOK, out)
 }
 
