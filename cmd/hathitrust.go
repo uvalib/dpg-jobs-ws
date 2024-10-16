@@ -562,6 +562,14 @@ func (svc *ServiceContext) createHathiTrustPackage(c *gin.Context) {
 					break
 				}
 
+				// check the downloaded jp2 to see if it has an alpha channel. If it does, remove it.
+				err = svc.removeAlphaChannel(js, destPath)
+				if err != nil {
+					svc.failHathiTrustPackage(js, md.ID, fmt.Sprintf("unable to check/remove alpha channel for %s: %s", destPath, err.Error()))
+					masterFileError = true
+					break
+				}
+
 				_, err := addFileToZip(packageFilename, zipWriter, assembleDir, destFN)
 				if err != nil {
 					svc.failHathiTrustPackage(js, md.ID, fmt.Sprintf("unable to add %s to zip file: %s", destPath, err.Error()))
@@ -632,6 +640,23 @@ func (svc *ServiceContext) createHathiTrustPackage(c *gin.Context) {
 	}()
 
 	c.String(http.StatusOK, fmt.Sprintf("%d", js.ID))
+}
+
+func (svc *ServiceContext) removeAlphaChannel(js *jobStatus, imgPath string) error {
+	cmdArray := []string{"-format", "%[channels]", imgPath}
+	out, err := exec.Command("identify", cmdArray...).CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("alpha channel check for %s failed: %s", imgPath, out)
+	}
+	if string(out) == "srgba" {
+		svc.logInfo(js, fmt.Sprintf("Alpha channel present on %s; removing", imgPath))
+		cmdArray := []string{imgPath, "-alpha", "off", imgPath}
+		out, err := exec.Command("magick", cmdArray...).CombinedOutput()
+		if err != nil {
+			return fmt.Errorf("remove alpha channel for %s failed: %s", imgPath, out)
+		}
+	}
+	return nil
 }
 
 func (svc *ServiceContext) failHathiTrustPackage(js *jobStatus, mdID int64, reason string) {
