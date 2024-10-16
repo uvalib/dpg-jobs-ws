@@ -341,7 +341,7 @@ func (svc *ServiceContext) submitHathiTrustMetadata(c *gin.Context) {
 	c.String(http.StatusOK, "submit request started")
 }
 
-// curl -X POST  https://dpg-jobs.lib.virginia.edu/hathitrust/package -H "Content-Type: application/json" --data '{"computeID": "lf6f", "records": [107255]}'
+// curl -X POST  https://dpg-jobs.lib.virginia.edu/hathitrust/package -H "Content-Type: application/json" --data '{"computeID": "lf6f", "records": [108247]}'
 // curl -X POST  https://dpg-jobs.lib.virginia.edu/hathitrust/package -H "Content-Type: application/json" --data '{"computeID": "lf6f", "orders": [12121]}'
 func (svc *ServiceContext) createHathiTrustPackage(c *gin.Context) {
 	log.Printf("INFO: received hathitrust package request")
@@ -643,12 +643,15 @@ func (svc *ServiceContext) createHathiTrustPackage(c *gin.Context) {
 }
 
 func (svc *ServiceContext) removeAlphaChannel(js *jobStatus, imgPath string) error {
+	svc.logInfo(js, fmt.Sprintf("Check %s for an alpha channel", imgPath))
 	cmdArray := []string{"-format", "%[channels]", imgPath}
 	out, err := exec.Command("identify", cmdArray...).CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("alpha channel check for %s failed: %s", imgPath, out)
 	}
-	if string(out) == "srgba" {
+	strChannel := string(out)
+	svc.logInfo(js, fmt.Sprintf("Alpha channel check response: [%s]", strChannel))
+	if strings.Contains(strChannel, "srgba") {
 		svc.logInfo(js, fmt.Sprintf("Alpha channel present on %s; removing", imgPath))
 		cmdArray := []string{imgPath, "-alpha", "off", imgPath}
 		out, err := exec.Command("magick", cmdArray...).CombinedOutput()
