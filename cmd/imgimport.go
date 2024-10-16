@@ -39,7 +39,7 @@ type jp2Source struct {
 // Import a directory full of guest images from the archive into a new unit owned by the target ID
 // NOTE: local order ID is 11500, local metadata ID is 104621
 // curl -X POST http://localhost:8180/orders/11500/import -H "Content-Type: application/json" --data '{"metadataID": 104621, "target": "20081001AVRN"}'
-// curl -X POST https://dpg-jobs.lib.virginia.edu/orders/11864/import -H "Content-Type: application/json" --data '{"metadataID": 105320, "target": "20100316ARCH"}'
+// curl -X POST https://dpg-jobs.lib.virginia.edu/orders/11864/import -H "Content-Type: application/json" --data '{"metadataID": 105320, "target": "20081001AVRN"}'
 func (svc *ServiceContext) importOrderItem(c *gin.Context) {
 	orderID, _ := strconv.ParseInt(c.Param("id"), 10, 64)
 	var tgtOrder order
@@ -159,7 +159,15 @@ func (svc *ServiceContext) importOrderItem(c *gin.Context) {
 		svc.jobDone(js)
 	}()
 
-	c.String(http.StatusOK, fmt.Sprintf("%d", js.ID))
+	out := struct {
+		JobID  int64 `json:"job"`
+		UnitID int64 `json:"unit"`
+	}{
+		JobID:  js.ID,
+		UnitID: tgtUnit.ID,
+	}
+
+	c.JSON(http.StatusOK, out)
 }
 
 // curl -X POST https://dpg-jobs.lib.virginia.edu/units/799/import -H "Content-Type: application/json" --data '{"from": "archive", "target": "000000799"}'
