@@ -63,10 +63,10 @@ func (svc *ServiceContext) collectionBulkAdd(c *gin.Context) {
 			}
 
 			if len(mdUnits) == 0 {
-				log.Printf("INFO: no units directly found for metadata %d; searching master files...", mdID)
+				svc.logInfo(js, fmt.Sprintf("No digitial collection building units directly found for metadata %d; searching master files...", mdID))
 				err = svc.GDB.Joins("inner join master_files mf on mf.unit_id = units.id").
 					Joins("inner join metadata m on m.id = mf.metadata_id").
-					Where("m.id=?", mdID).Find(&mdUnits).Error
+					Where("m.id=?", mdID).Distinct("units.id").Find(&mdUnits).Error
 				if err != nil {
 					svc.logError(js, fmt.Sprintf("Unable to load units for target metadata %d; skipping. Error: %s", mdID, err.Error()))
 					continue
