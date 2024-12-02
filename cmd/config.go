@@ -224,7 +224,6 @@ func LoadConfiguration() *ServiceConfig {
 		log.Printf("[CONFIG] smtphost      = [%s]", cfg.SMTP.Host)
 		log.Printf("[CONFIG] smtpport      = [%d]", cfg.SMTP.Port)
 		log.Printf("[CONFIG] smtpuser      = [%s]", cfg.SMTP.User)
-		log.Printf("[CONFIG] smtppass      = [%s]", cfg.SMTP.Pass)
 		log.Printf("[CONFIG] smtpsender    = [%s]", cfg.SMTP.Sender)
 	}
 
