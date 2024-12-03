@@ -11,7 +11,7 @@ import (
 )
 
 // Version of the service
-const version = "1.29.3"
+const version = "1.30.0"
 
 func main() {
 	log.Printf("===> DPG backend processing service starting up <===")
@@ -62,8 +62,6 @@ func main() {
 	router.POST("/collections/:id/export", svc.exportCollection)
 
 	router.GET("/jobs/:id", svc.getJobStatus)
-
-	router.GET("/jstor/lookup", svc.lookupJstorMetadata)
 
 	router.GET("/metadata/:id/aptrust", svc.apTrustStatusRequest)
 	router.POST("/metadata/:id/aptrust", svc.submitToAPTrust)
