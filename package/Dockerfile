@@ -1,7 +1,7 @@
 #
 # build the target application
 #
-FROM public.ecr.aws/docker/library/golang:1.22.3-alpine3.20 as builder
+FROM public.ecr.aws/docker/library/golang:1.23.4-alpine3.21 AS builder
 
 # update the packages
 RUN apk update && apk upgrade && apk add --no-cache make npm yarn
@@ -16,7 +16,7 @@ RUN make linux
 #
 # build the target container
 #
-FROM public.ecr.aws/docker/library/alpine:3.20
+FROM public.ecr.aws/docker/library/alpine:3.21
 
 # update the packages
 RUN apk update && apk upgrade && apk add bash tzdata ca-certificates curl exiftool wget && rm -rf /var/cache/apk/*
@@ -41,7 +41,7 @@ ENV TZ=UTC
 RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
 
 # Specify home
-ENV APP_HOME /dpg-jobs-ws
+ENV APP_HOME=/dpg-jobs-ws
 WORKDIR $APP_HOME
 
 # Create necessary directories
@@ -50,7 +50,7 @@ RUN chown -R libsnlocal $APP_HOME && chgrp -R lb-digiserv $APP_HOME
 
 # port and run command
 EXPOSE 8080
-CMD scripts/entry.sh
+ENTRYPOINT ["scripts/entry.sh"]
 
 # Move in necessary assets
 COPY package/data/container_bash_profile /home/libsnlocal/.profile
