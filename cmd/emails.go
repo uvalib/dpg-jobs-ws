@@ -313,7 +313,7 @@ func (svc *ServiceContext) generateOrderEmail(js *jobStatus, o *order) ([]byte, 
 		return nil, err
 	}
 
-	log.Printf(renderedEmail.String())
+	log.Printf("%s", renderedEmail.String())
 
 	svc.GDB.Model(o).Select("email").Updates(order{Email: renderedEmail.String()})
 	svc.logInfo(js, "An email for web delivery has been created")

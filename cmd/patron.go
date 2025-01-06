@@ -62,7 +62,7 @@ func (svc *ServiceContext) createPatronPDF(js *jobStatus, tgtUnit *unit) error {
 		}
 	}
 	if errorMsg != "" {
-		return fmt.Errorf(errorMsg)
+		return fmt.Errorf("%s", errorMsg)
 	}
 
 	// once complete, download into pdfPath

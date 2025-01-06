@@ -36,10 +36,9 @@ type jp2Source struct {
 	Path       string
 }
 
-// Import a directory full of guest images from the archive into a new unit owned by the target ID
-// NOTE: local order ID is 11500, local metadata ID is 104621
-// curl -X POST http://localhost:8180/orders/11500/import -H "Content-Type: application/json" --data '{"metadataID": 104621, "target": "20081001AVRN"}'
-// curl -X POST https://dpg-jobs.lib.virginia.edu/orders/11864/import -H "Content-Type: application/json" --data '{"metadataID": 105320, "target": "20081001AVRN"}'
+// Import a directory full of guest images from the archive or guest dropoff into a new unit owned by the target ID
+// curl -X POST https://dpg-jobs.lib.virginia.edu/orders/11864/import -H "Content-Type: application/json" --data '{"from": "from_fineArts", "metadataID": 105320, "target": "20090902ARCH"}'
+// curl -X POST https://dpg-jobs.lib.virginia.edu/orders/11864/import -H "Content-Type: application/json" --data '{"from": "archive", "metadataID": 105320, "target": "20090902ARCH"}'
 func (svc *ServiceContext) importOrderItem(c *gin.Context) {
 	orderID, _ := strconv.ParseInt(c.Param("id"), 10, 64)
 	var tgtOrder order
@@ -51,8 +50,9 @@ func (svc *ServiceContext) importOrderItem(c *gin.Context) {
 	}
 
 	type orderImportReq struct {
-		MetadataID int64  `json:"metadataID"`
+		From       string `json:"from"`
 		Target     string `json:"target"`
+		MetadataID int64  `json:"metadataID"`
 	}
 	type orderImportResp struct {
 		JobID  int64 `json:"job"`
@@ -67,7 +67,17 @@ func (svc *ServiceContext) importOrderItem(c *gin.Context) {
 		return
 	}
 
-	srcDir := path.Join(svc.ArchiveDir, req.Target)
+	srcDir := ""
+	if req.From == "archive" {
+		srcDir = path.Join(svc.ArchiveDir, req.Target)
+	} else if req.From == "from_fineArts" {
+		srcDir = path.Join(svc.ProcessingDir, "guest_dropoff", req.From, req.Target)
+	} else {
+		log.Printf("INFO: invalid from param in import request: %s", req.From)
+		c.String(http.StatusBadRequest, fmt.Sprintf("from %s is not valid", req.From))
+		return
+	}
+
 	var mdRec metadata
 	err = svc.GDB.First(&mdRec, req.MetadataID).Error
 	if err != nil {

@@ -362,7 +362,7 @@ func (svc *ServiceContext) getAPTrustGroupStatus(collectionMD *metadata) ([]apTr
 		aptOut, cmdErr := cmd.CombinedOutput()
 		if cmdErr != nil {
 			done = true
-			err = fmt.Errorf(string(aptOut))
+			err = fmt.Errorf("%s", string(aptOut))
 			break
 		}
 
@@ -419,7 +419,7 @@ func (svc *ServiceContext) getAPTrustStatus(md *metadata) (*apTrustResponse, err
 	aptOut, err := cmd.CombinedOutput()
 	log.Printf("aptrust registry response: %s", aptOut)
 	if err != nil {
-		return nil, fmt.Errorf(string(aptOut))
+		return nil, fmt.Errorf("%s", aptOut)
 	}
 
 	var jsonResp apTrustResponse

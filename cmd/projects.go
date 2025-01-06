@@ -122,12 +122,12 @@ func (svc *ServiceContext) projectFinishedFinalization(js *jobStatus, currProj *
 		if mf.MetadataID == nil {
 			reason := fmt.Sprintf("Masterfile %s missing desc metadata", mf.Filename)
 			svc.validationFailed(currProj, &activeAssign, reason)
-			return fmt.Errorf(reason)
+			return fmt.Errorf("%s", reason)
 		}
 		if mf.ImageTechMeta.ID == 0 {
 			reason := fmt.Sprintf("Masterfile %s missing desc tech metadata", mf.Filename)
 			svc.validationFailed(currProj, &activeAssign, reason)
-			return fmt.Errorf(reason)
+			return fmt.Errorf("%s", reason)
 		}
 	}
 
