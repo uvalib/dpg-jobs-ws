@@ -50,7 +50,7 @@ RUN chown -R libsnlocal $APP_HOME && chgrp -R lb-digiserv $APP_HOME
 
 # port and run command
 EXPOSE 8080
-ENTRYPOINT ["scripts/entry.sh"]
+CMD ["scripts/entry.sh"]
 
 # Move in necessary assets
 COPY package/data/container_bash_profile /home/libsnlocal/.profile
