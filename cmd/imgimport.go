@@ -39,7 +39,7 @@ type jp2Source struct {
 // Import a directory full of guest images from the archive or guest dropoff into a new unit owned by the target ID
 // curl -X POST https://dpg-jobs.lib.virginia.edu/orders/11864/import -H "Content-Type: application/json" --data '{"from": "from_fineArts", "metadataID": 105320, "target": "20090902ARCH"}'
 // curl -X POST https://dpg-jobs.lib.virginia.edu/orders/11864/import -H "Content-Type: application/json" --data '{"from": "archive", "metadataID": 105320, "target": "20090902ARCH"}'
-func (svc *ServiceContext) importOrderItem(c *gin.Context) {
+func (svc *ServiceContext) importOrderImages(c *gin.Context) {
 	orderID, _ := strconv.ParseInt(c.Param("id"), 10, 64)
 	var tgtOrder order
 	err := svc.GDB.First(&tgtOrder, orderID).Error
@@ -153,6 +153,7 @@ func (svc *ServiceContext) importOrderItem(c *gin.Context) {
 			// Grab the file extension - including the dot
 			ext := filepath.Ext(entry.Name())
 			if strings.ToLower(ext) != ".tif" || strings.Index(entry.Name(), "._") == 0 {
+				// skip non .tif files and macOS temp files
 				return nil
 			}
 
@@ -191,162 +192,6 @@ func (svc *ServiceContext) importOrderItem(c *gin.Context) {
 		UnitID: tgtUnit.ID,
 	}
 	c.JSON(http.StatusOK, out)
-}
-
-// curl -X POST https://dpg-jobs.lib.virginia.edu/units/799/import -H "Content-Type: application/json" --data '{"from": "archive", "target": "000000799"}'
-// curl -X POST https://dpg-jobs.lib.virginia.edu/units/58722/import -H "Content-Type: application/json" --data '{"from": "from_fineArts", "target": "20100316ARCH"}'
-// curl -X POST http://localhost:8180/units/799/import -H "Content-Type: application/json" --data '{"from": "archive", "target": "000000799"}'
-
-func (svc *ServiceContext) importGuestImages(c *gin.Context) {
-	unitID, _ := strconv.ParseInt(c.Param("id"), 10, 64)
-	type importReq struct {
-		From   string `json:"from"`
-		Target string `json:"target"`
-	}
-	var req importReq
-	err := c.ShouldBindJSON(&req)
-	if err != nil {
-		log.Printf("ERROR: unable to parse import request: %s", err.Error())
-		c.String(http.StatusBadRequest, err.Error())
-		return
-	}
-
-	overwrite := false
-	overwriteStr := c.Query("overwrite")
-	if overwriteStr == "1" || overwriteStr == "true" {
-		overwrite = true
-	}
-
-	srcDir := path.Join(svc.ProcessingDir, "guest_dropoff", req.From, req.Target)
-	if req.From == "archive" {
-		srcDir = path.Join(svc.ArchiveDir, req.Target)
-	} else if req.From == "download" {
-		srcDir = req.Target
-		req.Target = fmt.Sprintf("%09d", unitID)
-	}
-	if _, err := os.Stat(srcDir); os.IsNotExist(err) {
-		log.Printf("ERROR: %s does not exist", srcDir)
-		c.String(http.StatusBadRequest, fmt.Sprintf("%s does not exist", srcDir))
-		return
-	}
-
-	// validate unit (and get data so archived date can be set)
-	var tgtUnit unit
-	err = svc.GDB.Find(&tgtUnit, unitID).Error
-	if err != nil {
-		log.Printf("ERROR: unable to load target unit: %s", err.Error())
-		c.String(http.StatusBadRequest, err.Error())
-		return
-	}
-
-	js, err := svc.createJobStatus("IngestUnitImages", "Unit", unitID)
-	if err != nil {
-		log.Printf("ERROR: unable to create IngestUnitImages job status: %s", err.Error())
-		c.String(http.StatusInternalServerError, err.Error())
-		return
-	}
-	svc.logInfo(js, fmt.Sprintf("import images for unit %d from %s directory %s", unitID, req.From, srcDir))
-
-	go func() {
-		defer func() {
-			if r := recover(); r != nil {
-				svc.logFatal(js, fmt.Sprintf("fatal error while ingesting images: %v", r))
-				log.Printf("ERROR: Panic recovered during guest image ingest: %v", r)
-				debug.PrintStack()
-			}
-		}()
-
-		cnt := 0
-		badSequenceNum := false
-		err = filepath.Walk(srcDir, func(fullPath string, entry os.FileInfo, err error) error {
-			if err != nil || entry.IsDir() {
-				return nil
-			}
-
-			// Grab the file extension - including the dot
-			ext := filepath.Ext(entry.Name())
-			if strings.ToLower(ext) != ".tif" {
-				return nil
-			}
-			if strings.Index(entry.Name(), "._") == 0 {
-				// some guest directories have macOS temp files that start with ._
-				// the need to be skipped
-				return nil
-			}
-
-			tifFile := tifInfo{path: fullPath, filename: entry.Name(), size: entry.Size()}
-			svc.logInfo(js, fmt.Sprintf("ingest %s", tifFile.path))
-
-			// be sure the filename is xxxx_sequence.tif.
-			if req.From != "download" {
-				test := strings.Split(strings.TrimSuffix(entry.Name(), ext), "_")
-				if len(test) == 1 {
-					svc.logInfo(js, fmt.Sprintf("%s is missing sequence number, import and add staff note to unit", fullPath))
-					badSequenceNum = true
-				}
-				seqStr := test[len(test)-1]
-				seq, _ := strconv.Atoi(seqStr)
-				if seq == 0 {
-					svc.logInfo(js, fmt.Sprintf("%s has invalid sequence number %s, import and add staff note to unit", fullPath, seqStr))
-					badSequenceNum = true
-				}
-			}
-
-			newMF, err := svc.getOrCreateMasterFile(js, tifFile, &tgtUnit, overwrite)
-			if err != nil {
-				svc.logError(js, fmt.Sprintf("Create masterfile failed: %s", err.Error()))
-				return nil
-			}
-
-			err = svc.publishToIIIF(nil, newMF, tifFile.path, overwrite)
-			if err != nil {
-				svc.logError(js, fmt.Sprintf("IIIF publish failed: %s", err.Error()))
-				return nil
-			}
-
-			if req.From == "archive" {
-				if newMF.DateArchived == nil {
-					svc.logInfo(js, fmt.Sprintf("update date archived for %s", newMF.Filename))
-					newMF.DateArchived = tgtUnit.DateArchived
-					if newMF.DateArchived == nil {
-						now := time.Now()
-						newMF.DateArchived = &now
-					}
-					err = svc.GDB.Model(newMF).Select("DateArchived").Updates(*newMF).Error
-					if err != nil {
-						svc.logError(js, fmt.Sprintf("unable to set date archived for master file %d:%s", newMF.ID, err.Error()))
-					}
-				}
-			} else if newMF.DateArchived == nil {
-				archiveMD5, err := svc.archiveFineArtsFile(tifFile.path, req.Target, newMF)
-				if err != nil {
-					svc.logError(js, fmt.Sprintf("archive failed: %s", err.Error()))
-					return nil
-				}
-				if archiveMD5 != newMF.MD5 {
-					svc.logError(js, fmt.Sprintf("archived MD5 does not match source MD5 for %s", newMF.Filename))
-				}
-			}
-			cnt++
-
-			return nil
-		})
-
-		if err != nil {
-			svc.logFatal(js, err.Error())
-		} else {
-			svc.logInfo(js, fmt.Sprintf("%d masterfiles processed", cnt))
-			tgtUnit.UnitStatus = "done"
-			if badSequenceNum {
-				tgtUnit.StaffNotes += fmt.Sprintf("Archive: %s", req.Target)
-			}
-			svc.GDB.Model(&tgtUnit).Select("UnitStatus", "StaffNotes").Updates(tgtUnit)
-
-			svc.jobDone(js)
-		}
-	}()
-
-	c.String(http.StatusOK, "ingest has started")
 }
 
 func (svc *ServiceContext) importImages(js *jobStatus, tgtUnit *unit, srcDir string) error {
