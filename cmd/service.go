@@ -236,6 +236,9 @@ func (svc *ServiceContext) getRequest(url string) ([]byte, *RequestError) {
 func (svc *ServiceContext) putRequest(url string) ([]byte, *RequestError) {
 	return svc.sendRequest("PUT", url, nil)
 }
+func (svc *ServiceContext) deleteRequest(url string) ([]byte, *RequestError) {
+	return svc.sendRequest("DELETE", url, nil)
+}
 func (svc *ServiceContext) postFormRequest(url string, payload *url.Values) ([]byte, *RequestError) {
 	return svc.sendRequest("POST", url, payload)
 }

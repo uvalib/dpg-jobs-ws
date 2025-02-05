@@ -172,6 +172,19 @@ func (svc *ServiceContext) importOrderImages(c *gin.Context) {
 				return nil
 			}
 
+			if req.From == "from_fineArts" {
+				if newMF.DateArchived == nil {
+					archiveMD5, err := svc.archiveFineArtsFile(tifFile.path, req.Target, newMF)
+					if err != nil {
+						svc.logError(js, fmt.Sprintf("archive failed: %s", err.Error()))
+						return nil
+					}
+					if archiveMD5 != newMF.MD5 {
+						svc.logError(js, fmt.Sprintf("archived MD5 does not match source MD5 for %s", newMF.Filename))
+					}
+				}
+			}
+
 			cnt++
 			return nil
 		})
