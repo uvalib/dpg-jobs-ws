@@ -147,8 +147,8 @@ func (svc *ServiceContext) assignMasterFileMetadata(c *gin.Context) {
 		c.String(http.StatusInternalServerError, fmt.Sprintf("metadata record is missing external system data"))
 	}
 
-	if md.Type == "SirsiMetadata" || (md.Type == "ExternalMetadata" && md.ExternalSystem.Name != "ArchivesSpace") {
-		svc.logFatal(js, fmt.Sprintf("Metadata %d is type %s. Only XML and ArchivesSpace are supported", req.MetadataID, md.Type))
+	if md.Type == "ExternalMetadata" && md.ExternalSystem.Name != "ArchivesSpace" {
+		svc.logFatal(js, fmt.Sprintf("Metadata %d is type %s. Only Sirsi, XML and ArchivesSpace are supported", req.MetadataID, md.Type))
 		c.String(http.StatusBadRequest, fmt.Sprintf("Metadata %d is %s. Only  XML and ArchivesSpace are supported", md.ID, md.Type))
 		return
 	}
