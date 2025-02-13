@@ -201,7 +201,7 @@ func (svc *ServiceContext) publishSirsiToVirgo(js *jobStatus, sirsiMetadata *met
 	if tgtUnit == nil {
 		svc.logInfo(js, "Find the single unit flagged for inclusion in Virgo")
 		var dlUnits []*unit
-		err := svc.GDB.Preload("Metadata").Where("metadata_id=?", sirsiMetadata.ID).Where("include_in_dl=?", true).Find(&dlUnits).Error
+		err := svc.GDB.Where("metadata_id=?", sirsiMetadata.ID).Where("include_in_dl=?", true).Find(&dlUnits).Error
 		if err != nil {
 			svc.logError(js, fmt.Sprintf("Unable to find unit suitable for publicataion: %s", err.Error()))
 			return err
@@ -236,7 +236,7 @@ func (svc *ServiceContext) publishSirsiToVirgo(js *jobStatus, sirsiMetadata *met
 	svc.logInfo(js, fmt.Sprintf("Unit %d will be published to DL", tgtUnit.ID))
 
 	// be sure there is a current IIIF manifest by forcing a regenerate
-	iiifURL := fmt.Sprintf("%s/pid/%s?refresh=true", svc.IIIF.ManifestURL, tgtUnit.Metadata.PID)
+	iiifURL := fmt.Sprintf("%s/pid/%s?refresh=true", svc.IIIF.ManifestURL, sirsiMetadata.PID)
 	svc.logInfo(js, fmt.Sprintf("Generating IIIF manifest with %s", iiifURL))
 	_, errResp := svc.getRequest(iiifURL)
 	if errResp != nil {
@@ -247,23 +247,23 @@ func (svc *ServiceContext) publishSirsiToVirgo(js *jobStatus, sirsiMetadata *met
 
 	// Flag metadata DL ingest / update time
 	now := time.Now()
-	if tgtUnit.Metadata.DateDlIngest == nil {
-		svc.logInfo(js, fmt.Sprintf("Set DateDlIngest for unit metadata record %d", tgtUnit.MetadataID))
-		tgtUnit.Metadata.DateDlIngest = &now
-		err := svc.GDB.Model(tgtUnit.Metadata).Select("DateDlIngest").Updates(*tgtUnit.Metadata).Error
+	if sirsiMetadata.DateDlIngest == nil {
+		svc.logInfo(js, fmt.Sprintf("Set DateDlIngest for unit metadata record %d", sirsiMetadata.ID))
+		sirsiMetadata.DateDlIngest = &now
+		err := svc.GDB.Model(sirsiMetadata).Select("DateDlIngest").Updates(*sirsiMetadata).Error
 		if err != nil {
 			svc.logError(js, fmt.Sprintf("Unable to update DateDlIngest: %s", err.Error()))
 		} else {
-			svc.logInfo(js, fmt.Sprintf("Successfully updated DateDlIngest for metadata %d", tgtUnit.MetadataID))
+			svc.logInfo(js, fmt.Sprintf("Successfully updated DateDlIngest for metadata %d", sirsiMetadata.ID))
 		}
 	} else {
-		svc.logInfo(js, fmt.Sprintf("Set DateDlUpdate for unit metadata record %d", tgtUnit.MetadataID))
-		tgtUnit.Metadata.DateDlUpdate = &now
-		err := svc.GDB.Model(tgtUnit.Metadata).Select("DateDlUpdate").Updates(*tgtUnit.Metadata).Error
+		svc.logInfo(js, fmt.Sprintf("Set DateDlUpdate for unit metadata record %d", sirsiMetadata.ID))
+		sirsiMetadata.DateDlUpdate = &now
+		err := svc.GDB.Model(sirsiMetadata).Select("DateDlUpdate").Updates(*sirsiMetadata).Error
 		if err != nil {
 			svc.logError(js, fmt.Sprintf("Unable to update DateDlUpdate: %s", err.Error()))
 		} else {
-			svc.logInfo(js, fmt.Sprintf("Successfully updated DateDlUpdate for metadata %d", tgtUnit.MetadataID))
+			svc.logInfo(js, fmt.Sprintf("Successfully updated DateDlUpdate for metadata %d", sirsiMetadata.ID))
 		}
 	}
 
@@ -286,14 +286,14 @@ func (svc *ServiceContext) publishSirsiToVirgo(js *jobStatus, sirsiMetadata *met
 	}
 
 	//  Call the reindex API for sirsi items
-	svc.logInfo(js, fmt.Sprintf("Call the reindex service for %d - %s", *tgtUnit.MetadataID, tgtUnit.Metadata.CatalogKey))
-	url := fmt.Sprintf("%s/api/reindex/%s", svc.ReindexURL, tgtUnit.Metadata.CatalogKey)
+	svc.logInfo(js, fmt.Sprintf("Call the reindex service for %d - %s", sirsiMetadata.ID, sirsiMetadata.CatalogKey))
+	url := fmt.Sprintf("%s/api/reindex/%s", svc.ReindexURL, sirsiMetadata.CatalogKey)
 	_, resp := svc.putRequest(url)
 	if resp != nil {
-		svc.logError(js, fmt.Sprintf("%s reindex request failed: %d: %s", tgtUnit.Metadata.CatalogKey, resp.StatusCode, resp.Message))
+		svc.logError(js, fmt.Sprintf("%s reindex request failed: %d: %s", sirsiMetadata.CatalogKey, resp.StatusCode, resp.Message))
 		return fmt.Errorf("reindex request failed %d:%s", resp.StatusCode, resp.Message)
 	}
-	svc.logInfo(js, fmt.Sprintf("%s reindex request successful", tgtUnit.Metadata.CatalogKey))
+	svc.logInfo(js, fmt.Sprintf("%s reindex request successful", sirsiMetadata.CatalogKey))
 
 	// Lastly, flag the deliverables ready date if it is not already set
 	if tgtUnit.DateDLDeliverablesReady == nil {
