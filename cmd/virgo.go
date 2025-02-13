@@ -206,15 +206,32 @@ func (svc *ServiceContext) publishSirsiToVirgo(js *jobStatus, sirsiMetadata *met
 			svc.logError(js, fmt.Sprintf("Unable to find unit suitable for publicataion: %s", err.Error()))
 			return err
 		}
-		if len(dlUnits) == 0 {
-			svc.logError(js, "No units flagged for inclusion in Virgo")
-			return fmt.Errorf("no units flagged for publication")
-		}
 		if len(dlUnits) > 1 {
 			svc.logError(js, "Too many units flagged for inclusion in Virgo")
 			return fmt.Errorf("too many units flagged for publication")
 		}
-		tgtUnit = dlUnits[0]
+
+		if len(dlUnits) == 0 {
+			// if there are no units, it may mean a single unit has master files from more than one sirsi record.
+			// find the single unit that is flagged for DL that has master files tied to the target metadata record
+			svc.logInfo(js, fmt.Sprintf("No units found for metadata %d, looking for another unit with master files using that metadata", sirsiMetadata.ID))
+			var tgtUnits []*unit
+			q := "select u.* from units u inner join master_files m on m.unit_id = u.id "
+			q += "where m.metadata_id = ? and u.include_in_dl = ? GROUP by(u.id)"
+			uErr := svc.GDB.Raw(q, 109034, 1).Scan(&tgtUnits).Error
+			if uErr != nil {
+				svc.logError(js, fmt.Sprintf("Unable to get other units for metadata %d: %s", sirsiMetadata.ID, uErr.Error()))
+				return fmt.Errorf("unable to get publishable unit for metadata %d: %s", sirsiMetadata.ID, uErr.Error())
+			}
+
+			if len(tgtUnits) == 0 {
+				svc.logError(js, "No units suitable for publication found.")
+				return fmt.Errorf("no units suitable for publication")
+			}
+			tgtUnit = tgtUnits[0]
+		} else {
+			tgtUnit = dlUnits[0]
+		}
 	}
 	svc.logInfo(js, fmt.Sprintf("Unit %d will be published to DL", tgtUnit.ID))
 
