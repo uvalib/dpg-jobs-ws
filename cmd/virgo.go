@@ -270,7 +270,7 @@ func (svc *ServiceContext) publishSirsiToVirgo(js *jobStatus, sirsiMetadata *met
 	// now flag each master file
 	svc.logInfo(js, "Getting up-to-date list of master files for publication")
 	var masterfiles []masterFile
-	err := svc.GDB.Where("unit_id=?", tgtUnit.ID).Find(&masterfiles).Error
+	err := svc.GDB.Where("unit_id=? and metadata_id=?", tgtUnit.ID, sirsiMetadata.ID).Find(&masterfiles).Error
 	if err != nil {
 		svc.logError(js, fmt.Sprintf("Unable to get list of master files to mark as published: %s", err.Error()))
 	} else {
