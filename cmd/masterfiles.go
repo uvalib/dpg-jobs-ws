@@ -510,7 +510,7 @@ func (svc *ServiceContext) updateMasterFileTechMetadata(c *gin.Context) {
 	}
 
 	var tgtMF masterFile
-	err = svc.GDB.Preload("ImageTechMeta").First(&tgtMF, mfID).Error
+	err = svc.GDB.Preload("Unit").Preload("ImageTechMeta").First(&tgtMF, mfID).Error
 	if err != nil {
 		svc.logFatal(js, fmt.Sprintf("Unable to load master file %d: %s", mfID, err.Error()))
 		c.String(http.StatusInternalServerError, err.Error())
@@ -529,6 +529,11 @@ func (svc *ServiceContext) updateMasterFileTechMetadata(c *gin.Context) {
 
 	unitDir := fmt.Sprintf("%09d", tgtMF.UnitID)
 	archiveFile := path.Join(svc.ArchiveDir, unitDir, tgtMF.Filename)
+	if strings.Contains(tgtMF.Unit.StaffNotes, "Archive: ") {
+		srcDir := strings.Split(tgtMF.Unit.StaffNotes, "Archive: ")[1]
+		archiveFile = path.Join(svc.ArchiveDir, srcDir, tgtMF.Filename)
+	}
+
 	svc.logInfo(js, fmt.Sprintf("Create tech metadata ffrom archived master file %s", archiveFile))
 	if pathExists(archiveFile) == false {
 		svc.logFatal(js, fmt.Sprintf("Master file %d archive %s does not exist", mfID, archiveFile))
