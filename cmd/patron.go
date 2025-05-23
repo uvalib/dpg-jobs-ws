@@ -31,7 +31,8 @@ func (svc *ServiceContext) createPatronPDF(js *jobStatus, tgtUnit *unit) error {
 	os.Remove(pdfPath)
 
 	// Send to PDF WS to start creation
-	token := fmt.Sprintf("%x", md5.Sum([]byte(tgtUnit.Metadata.PID)))
+	key := fmt.Sprintf("%s.unit%d", tgtUnit.Metadata.PID, tgtUnit.ID)
+	token := fmt.Sprintf("%x", md5.Sum([]byte(key)))
 	url := fmt.Sprintf("%s/%s?unit=%d&embed=1&token=%s", svc.PdfURL, tgtUnit.Metadata.PID, tgtUnit.ID, token)
 	svc.logInfo(js, fmt.Sprintf("Request PDF with %s", url))
 	_, pdfErr := svc.getRequest(url)

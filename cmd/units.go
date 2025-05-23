@@ -182,21 +182,6 @@ func (svc *ServiceContext) createPatronDeliverables(c *gin.Context) {
 		unitDir := path.Join(svc.ProcessingDir, "finalization", fmt.Sprintf("%09d", unitID))
 		assembleDir := path.Join(svc.ProcessingDir, "finalization", "tmp", fmt.Sprintf("%09d", unitID))
 
-		if svc.unitImagesAvailable(js, &tgtUnit, assembleDir) == false {
-			if tgtUnit.Reorder {
-				svc.logInfo(js, "Creating deliverables for a reorder")
-				// in this case, each cloned masterfile will have a reference to the original.
-				// use this to get to the original unit and recalculate directories
-				svc.copyOriginalFiles(js, &tgtUnit, unitDir)
-			} else {
-				archiveDir := path.Join(svc.ArchiveDir, fmt.Sprintf("%09d", unitID))
-				svc.logInfo(js, fmt.Sprintf("Creating deliverables from the archive %s", archiveDir))
-				copyAll(archiveDir, unitDir)
-			}
-		} else {
-			svc.logInfo(js, fmt.Sprintf("All files needed to generate unit %d deliverables exist in %s", unitID, assembleDir))
-		}
-
 		if tgtUnit.IntendedUse.DeliverableFormat == "pdf" {
 			err = svc.createPatronPDF(js, &tgtUnit)
 			if err != nil {
@@ -210,6 +195,23 @@ func (svc *ServiceContext) createPatronDeliverables(c *gin.Context) {
 				svc.logFatal(js, fmt.Sprintf("Unable to create %s: %s", assembleDir, err.Error()))
 				return
 			}
+
+			// make sure images are available in the finalization dir
+			if svc.unitImagesAvailable(js, &tgtUnit, assembleDir) == false {
+				if tgtUnit.Reorder {
+					svc.logInfo(js, "Creating deliverables for a reorder")
+					// in this case, each cloned masterfile will have a reference to the original.
+					// use this to get to the original unit and recalculate directories
+					svc.copyOriginalFiles(js, &tgtUnit, unitDir)
+				} else {
+					archiveDir := path.Join(svc.ArchiveDir, fmt.Sprintf("%09d", unitID))
+					svc.logInfo(js, fmt.Sprintf("Creating deliverables from the archive %s", archiveDir))
+					copyAll(archiveDir, unitDir)
+				}
+			} else {
+				svc.logInfo(js, fmt.Sprintf("All files needed to generate unit %d deliverables exist in %s", unitID, assembleDir))
+			}
+
 			for _, mf := range tgtUnit.MasterFiles {
 				mfPath := path.Join(unitDir, mf.Filename)
 				callNumber := ""

@@ -4,7 +4,6 @@ import (
 	"archive/zip"
 	"encoding/json"
 	"fmt"
-	"io"
 	"io/fs"
 	"log"
 	"net/http"
@@ -903,26 +902,4 @@ func (svc *ServiceContext) writeMetaYML(assembleDir string, digitizationDate *ti
 	md5 := md5Checksum(ymlPath)
 
 	return md5, nil
-}
-
-func copyJP2(src string, dest string) error {
-	origFile, err := os.Open(src)
-	if err != nil {
-		return err
-	}
-	defer origFile.Close()
-
-	destFile, err := os.Create(dest)
-	if err != nil {
-		return err
-	}
-	defer destFile.Close()
-
-	_, err = io.Copy(destFile, origFile)
-	if err != nil {
-		return err
-	}
-	destFile.Close()
-
-	return os.Chmod(dest, 0666)
 }
