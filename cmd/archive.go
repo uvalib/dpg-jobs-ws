@@ -230,13 +230,23 @@ func (svc *ServiceContext) copyAllFromArchive(js *jobStatus, tgtUnit *unit, dest
 
 func (svc *ServiceContext) copyArchivedFile(js *jobStatus, unitDir, filename, destDir string) error {
 	archiveFile := path.Join(svc.ArchiveDir, unitDir, filename)
-	if strings.Contains(filename, "ARCH") || strings.Contains(filename, "AVRN") || strings.Contains(filename, "VRC") {
-		if strings.Contains(filename, "_") {
-			overrideDir := strings.Split(filename, "_")[0]
-			archiveFile = path.Join(svc.ArchiveDir, overrideDir, filename)
-			svc.logInfo(js, fmt.Sprintf("Masterfile %s is archived in non-standard location %s", filename, archiveFile))
+	exists := pathExists(archiveFile)
+	if exists == false {
+		svc.logInfo(js, fmt.Sprintf("%s not found; check for non-standard storage location", archiveFile))
+		if strings.Contains(filename, "ARCH") || strings.Contains(filename, "AVRN") || strings.Contains(filename, "VRC") {
+			if strings.Contains(filename, "_") {
+				overrideDir := strings.Split(filename, "_")[0]
+				archiveFile = path.Join(svc.ArchiveDir, overrideDir, filename)
+				svc.logInfo(js, fmt.Sprintf("Masterfile %s is archived in non-standard location %s", filename, archiveFile))
+				exists = pathExists(archiveFile)
+			}
 		}
 	}
+
+	if exists == false {
+		return fmt.Errorf("%s not found", archiveFile)
+	}
+
 	archiveMD5 := md5Checksum(archiveFile)
 	destFile := path.Join(destDir, filename)
 	copyMD5, err := copyFile(archiveFile, destFile, 0666)
