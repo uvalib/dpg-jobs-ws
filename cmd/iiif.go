@@ -55,10 +55,11 @@ func (svc *ServiceContext) publishToIIIF(js *jobStatus, mf *masterFile, srcPath 
 		svc.logInfo(js, "Existing file will be overwritten")
 	}
 
-	if fileType == "jp2" {
+	switch fileType {
+	case "jp2":
 		svc.logInfo(js, fmt.Sprintf("MasterFile %s is already jp2; send directly to IIIF staging: %s", mf.PID, iiifInfo.StagePath))
 		copyFile(srcPath, iiifInfo.StagePath, 0664)
-	} else if fileType == "tiff" {
+	case "tiff":
 		svc.logInfo(js, fmt.Sprintf("Compressing %s to %s using imagemagick...", srcPath, iiifInfo.StagePath))
 		rawFileInfo, _ := os.Stat(srcPath)
 		firstPage := fmt.Sprintf("%s[0]", srcPath) // need the [0] as some tifs have multiple pages. only want the first.

@@ -139,13 +139,14 @@ func calculatePHash(filePath string) (uint64, error) {
 	fileType = strings.Replace(fileType, ".", "", 1)
 	var imgData image.Image
 
-	if fileType == "TIF" {
+	switch fileType {
+	case "TIF":
 		imgData, err = tiff.Decode(imgFile)
-	} else if fileType == "JPG" {
+	case "JPG":
 		imgData, err = jpeg.Decode(imgFile)
-	} else if fileType == "PNG" {
+	case "PNG":
 		imgData, err = png.Decode(imgFile)
-	} else if fileType == "GIF" {
+	case "GIF":
 		imgData, err = gif.Decode(imgFile)
 	}
 	if err != nil {

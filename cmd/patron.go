@@ -53,10 +53,11 @@ func (svc *ServiceContext) createPatronPDF(js *jobStatus, tgtUnit *unit) error {
 			errorMsg = fmt.Sprintf("status check failed: %d:%s", pdfErr.StatusCode, pdfErr.Message)
 		} else {
 			strStatus := string(statusResp)
-			if strStatus == "FAILED" {
+			switch strStatus {
+			case "FAILED":
 				errorMsg = "PDF generation failed"
 				done = true
-			} else if strStatus == "READY" {
+			case "READY":
 				svc.logInfo(js, "PDF generation is done")
 				done = true
 			}
@@ -127,7 +128,8 @@ func (svc *ServiceContext) createPatronDeliverable(js *jobStatus, tgtUnit *unit,
 		return fmt.Errorf("actual_resolution is required when desired_resolution is specified")
 	}
 
-	if tgtUnit.IntendedUse.DeliverableFormat == "jpeg" {
+	switch tgtUnit.IntendedUse.DeliverableFormat {
+	case "jpeg":
 		suffix = ".jpg"
 		addLegalNotice = true
 		useID := *tgtUnit.IntendedUseID
@@ -142,10 +144,10 @@ func (svc *ServiceContext) createPatronDeliverable(js *jobStatus, tgtUnit *unit,
 		} else {
 			svc.logInfo(js, "Patron deliverable is a jpg file and will have a watermark")
 		}
-	} else if tgtUnit.IntendedUse.DeliverableFormat == "tiff" {
+	case "tiff":
 		svc.logInfo(js, "Patron deliverable is a tif file and will NOT have a watermark")
 		suffix = ".tif"
-	} else {
+	default:
 		return fmt.Errorf("unknown deliverable format %s", tgtUnit.IntendedUse.DeliverableFormat)
 	}
 
@@ -180,10 +182,11 @@ func (svc *ServiceContext) createPatronDeliverable(js *jobStatus, tgtUnit *unit,
 		}
 
 		// notice for personal research or presentation
-		if *tgtUnit.IntendedUseID == 106 || *tgtUnit.IntendedUseID == 104 {
+		switch *tgtUnit.IntendedUseID {
+		case 106, 104:
 			svc.logInfo(js, "Notice of private study")
 			notice += "This single copy was produced for the purposes of private study, scholarship, or research pursuant to 17 USC § 107 and/or 108.\nCopyright and other legal restrictions may apply to further uses. Special Collections, University of Virginia Library."
-		} else if *tgtUnit.IntendedUseID == 100 {
+		case 100:
 			svc.logInfo(js, "Notice of classroom teaching")
 			notice += "This single copy was produced for the purposes of classroom teaching pursuant to 17 USC § 107 (fair use).\nCopyright and other legal restrictions may apply to further uses. Special Collections, University of Virginia Library."
 		}

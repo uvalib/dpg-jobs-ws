@@ -629,7 +629,8 @@ func (svc *ServiceContext) createDigitalObject(js *jobStatus, repoID string, tgt
 func (svc *ServiceContext) getASDetails(js *jobStatus, asURL *asURLInfo) (asObjectDetails, error) {
 	svc.logInfo(js, fmt.Sprintf("Get details for /repositories/%s/%s/%s", asURL.RepositoryID, asURL.ParentType, asURL.ParentID))
 	var respBytes []byte
-	if asURL.ParentType == "resources" {
+	switch asURL.ParentType {
+	case "resources":
 		svc.logInfo(js, fmt.Sprintf("Looking up parent resource %s in repo %s...", asURL.ParentID, asURL.RepositoryID))
 		url := fmt.Sprintf("/repositories/%s/resources/%s", asURL.RepositoryID, asURL.ParentID)
 		resp, err := svc.sendASGetRequest(url)
@@ -637,7 +638,7 @@ func (svc *ServiceContext) getASDetails(js *jobStatus, asURL *asURLInfo) (asObje
 			return nil, fmt.Errorf("%d:%s", err.StatusCode, err.Message)
 		}
 		respBytes = resp
-	} else if asURL.ParentType == "archival_objects" {
+	case "archival_objects":
 		svc.logInfo(js, fmt.Sprintf("Looking up parent archival object %s in repo %s...", asURL.ParentID, asURL.RepositoryID))
 		url := fmt.Sprintf("/repositories/%s/archival_objects/%s", asURL.RepositoryID, asURL.ParentID)
 		resp, err := svc.sendASGetRequest(url)
@@ -645,7 +646,7 @@ func (svc *ServiceContext) getASDetails(js *jobStatus, asURL *asURLInfo) (asObje
 			return nil, fmt.Errorf("%d:%s", err.StatusCode, err.Message)
 		}
 		respBytes = resp
-	} else {
+	default:
 		return nil, fmt.Errorf("Unsupported parent type: %s", asURL.ParentType)
 	}
 	log.Printf("%s", respBytes)

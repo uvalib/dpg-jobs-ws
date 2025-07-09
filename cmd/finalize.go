@@ -111,11 +111,12 @@ func (svc *ServiceContext) finalizeUnit(c *gin.Context) {
 			// NOTE: neither publish method will trigger a logFatal, but will log and return
 			// an error if one was encountered. Ignore it here as a problem publishing should
 			// not cause finalization to fail; the error log is enough.
-			if tgtUnit.Metadata.Type == "SirsiMetadata" {
+			switch tgtUnit.Metadata.Type {
+			case "SirsiMetadata":
 				svc.publishSirsiToVirgo(js, tgtUnit.Metadata, &tgtUnit)
-			} else if tgtUnit.Metadata.Type == "XmlMetadata" {
+			case "XmlMetadata":
 				svc.publishXMLToVirgo(js, tgtUnit.Metadata, &tgtUnit)
-			} else {
+			default:
 				svc.logError(js, fmt.Sprintf("Unit is flagged for inclusion in DL, but metadata %d type %s is not supported", tgtUnit.Metadata.ID, tgtUnit.Metadata.Type))
 			}
 		}
