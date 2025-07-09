@@ -130,7 +130,7 @@ func (svc *ServiceContext) checkMissingMD5Audit(c *gin.Context) {
 		}()
 	}()
 
-	c.String(http.StatusOK, fmt.Sprintf("md5 fix started"))
+	c.String(http.StatusOK, "md5 fix started")
 }
 
 // curl -X POST https://dpg-jobs.lib.virginia.edu/audit/fix/jp2  -H "Content-Type: application/json" --data '{"limit": 1}'
@@ -196,7 +196,7 @@ func (svc *ServiceContext) fixFailedJP2Audit(c *gin.Context) {
 			}
 		}()
 	}()
-	c.String(http.StatusOK, fmt.Sprintf("jp2 fix started"))
+	c.String(http.StatusOK, "jp2 fix started")
 }
 
 func (svc *ServiceContext) getArchiveFileName(mf *masterFile) string {
@@ -227,7 +227,8 @@ func (svc *ServiceContext) auditMasterFiles(c *gin.Context) {
 		return
 	}
 
-	if req.Type == "year" {
+	switch req.Type {
+	case "year":
 		if req.Email == "" {
 			log.Printf("ERROR: audit year requires email recipient")
 			c.String(http.StatusBadRequest, "email is required for a year audit")
@@ -248,11 +249,11 @@ func (svc *ServiceContext) auditMasterFiles(c *gin.Context) {
 			svc.auditYear(req)
 		}()
 		c.String(http.StatusOK, fmt.Sprintf("audit year %s started for %s", req.Data, req.Email))
-	} else if req.Type == "unit" {
+	case "unit":
 		unitID, _ := strconv.ParseInt(req.Data, 10, 64)
 		go svc.auditUnitMasterFiles(unitID)
 		c.String(http.StatusOK, fmt.Sprintf("audit unit %d started", unitID))
-	} else {
+	default:
 		mfID, _ := strconv.ParseInt(req.Data, 10, 64)
 		audit, err := svc.auditMasterFile(mfID)
 		if err != nil {

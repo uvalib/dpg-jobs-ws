@@ -113,7 +113,7 @@ func InitializeService(version string, cfg *ServiceConfig) *ServiceContext {
 	ctx.IIIF.Bucket = cfg.IIIF.Bucket
 	awsCfg, err := config.LoadDefaultConfig(context.TODO())
 	if err != nil {
-		log.Fatal(fmt.Sprintf("unable to load s3 config: %s", err.Error()))
+		log.Fatalf("unable to load s3 config: %s", err.Error())
 	}
 	ctx.IIIF.S3Client = s3.NewFromConfig(awsCfg)
 	log.Printf("INFO: s3 session established")

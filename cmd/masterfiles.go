@@ -144,7 +144,7 @@ func (svc *ServiceContext) assignMasterFileMetadata(c *gin.Context) {
 
 	if md.Type == "ExternalMetadata" && md.ExternalSystemID == 0 {
 		svc.logFatal(js, fmt.Sprintf("External metadata %d is missinng the external system ID.", req.MetadataID))
-		c.String(http.StatusInternalServerError, fmt.Sprintf("metadata record is missing external system data"))
+		c.String(http.StatusInternalServerError, "metadata record is missing external system data")
 	}
 
 	if md.Type == "ExternalMetadata" && md.ExternalSystem.Name != "ArchivesSpace" {

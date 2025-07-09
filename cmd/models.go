@@ -58,7 +58,7 @@ func (c *component) Name() string {
 	} else {
 		name = fmt.Sprintf("%d", c.ID) // Everything has an id, so it is the LCD.
 	}
-	m := regexp.MustCompile("\\s+")
+	m := regexp.MustCompile(`\s+`)
 	name = strings.ReplaceAll(name, "\n", " ")
 	name = m.ReplaceAllString(name, " ")
 	return name

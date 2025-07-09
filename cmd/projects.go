@@ -38,7 +38,7 @@ type assignment struct {
 
 type workflow struct {
 	ID   int64
-	name string
+	Name string
 }
 
 type project struct {

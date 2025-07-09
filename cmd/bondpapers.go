@@ -19,7 +19,7 @@ import (
 // SAMPLE LOCAL CALL
 // curl -X POST http://localhost:8180/script -H "Content-Type: application/json" --data '{"computeID": "lf6f", "name": "createBondLocations", "params": {"fileName": "boxes9-12.csv"}}'
 func (svc *ServiceContext) createBondLocations(c *gin.Context, js *jobStatus, params map[string]interface{}) error {
-	svc.logInfo(js, fmt.Sprintf("start script to create locations for bond papers"))
+	svc.logInfo(js, "start script to create locations for bond papers")
 	csvFileName, found := params["fileName"].(string)
 	if found == false {
 		return fmt.Errorf("missing required fileName param")
@@ -100,8 +100,8 @@ func (svc *ServiceContext) createBondLocations(c *gin.Context, js *jobStatus, pa
 //   - folder: (OPTIONAL) folder to ingest. If omitted, the entire box will be ingested
 //
 // EXAMPLE: curl -X POST https://dpg-jobs.lib.virginia.edu/script -H "Content-Type: application/json" --data '{"computeID": "lf6f", "name": "createBondUnits", "params": {"orderID": 12288, "src": "/mnt/work/bondpapers", "fileName": "boxes9-12.csv", "box": "9"}}'
-func (svc *ServiceContext) createBondUnits(c *gin.Context, js *jobStatus, params map[string]interface{}) error {
-	svc.logInfo(js, fmt.Sprintf("start script to create units for bond papers"))
+func (svc *ServiceContext) createBondUnits(c *gin.Context, js *jobStatus, params map[string]any) error {
+	svc.logInfo(js, "start script to create units for bond papers")
 	bondRoot, found := params["src"].(string)
 	if found == false {
 		return fmt.Errorf("missing required src param")
@@ -238,8 +238,8 @@ func (svc *ServiceContext) createBondUnits(c *gin.Context, js *jobStatus, params
 //   - folder: (OPTIONAL) folder to ingest. If omitted, the entire box will be ingested
 //
 // EXAMPLE: curl -X POST https://dpg-jobs.lib.virginia.edu/script -H "Content-Type: application/json" --data '{"computeID": "lf6f", "name": "ingestBondImages", "params": {"orderID": 12288, "src": "/mnt/work/bondpapers/Jan 2024 Delivery", "box": "9", "folder": "21"}}'
-func (svc *ServiceContext) ingestBondImages(c *gin.Context, js *jobStatus, params map[string]interface{}) error {
-	svc.logInfo(js, fmt.Sprintf("start script to ingest bond images"))
+func (svc *ServiceContext) ingestBondImages(c *gin.Context, js *jobStatus, params map[string]any) error {
+	svc.logInfo(js, "start script to ingest bond images")
 	bondRoot, found := params["src"].(string)
 	if found == false {
 		return fmt.Errorf("missing required src param")
@@ -437,8 +437,8 @@ func (svc *ServiceContext) ingestBondImages(c *gin.Context, js *jobStatus, param
 //   - folder: (OPTIONAL) which folder to export
 //
 // EXAMPLE: curl -X POST https://dpg-jobs.lib.virginia.edu/script -H "Content-Type: application/json" --data '{"computeID": "lf6f", "name": "generateBondMapping", "params": {"orderID": 12288, "box": "9"}}'
-func (svc *ServiceContext) generateBondMapping(c *gin.Context, js *jobStatus, params map[string]interface{}) error {
-	svc.logInfo(js, fmt.Sprintf("start script to export a bond to tracksys mapping csv"))
+func (svc *ServiceContext) generateBondMapping(c *gin.Context, js *jobStatus, params map[string]any) error {
+	svc.logInfo(js, "start script to export a bond to tracksys mapping csv")
 	rawOrderID, found := params["orderID"].(float64)
 	if found == false {
 		return fmt.Errorf("missing required orderID param")

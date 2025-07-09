@@ -68,11 +68,12 @@ func (svc *ServiceContext) importOrderImages(c *gin.Context) {
 	}
 
 	srcDir := ""
-	if req.From == "archive" {
+	switch req.From {
+	case "archive":
 		srcDir = path.Join(svc.ArchiveDir, req.Target)
-	} else if req.From == "from_fineArts" {
+	case "from_fineArts":
 		srcDir = path.Join(svc.ProcessingDir, "guest_dropoff", req.From, req.Target)
-	} else {
+	default:
 		log.Printf("INFO: invalid from param in import request: %s", req.From)
 		c.String(http.StatusBadRequest, fmt.Sprintf("from %s is not valid", req.From))
 		return
@@ -234,6 +235,8 @@ func (svc *ServiceContext) importImages(js *jobStatus, tgtUnit *unit, srcDir str
 	unitProj, err := svc.getUnitProject(tgtUnit.ID)
 	if err != nil {
 		svc.logError(js, fmt.Sprintf("Unable to load project details: %s", err.Error()))
+	} else {
+		svc.logInfo(js, fmt.Sprintf("Workflow for unit is %s", unitProj.Workflow.Name))
 	}
 
 	// iterate through all of the .tif files in the unit directory
@@ -258,6 +261,7 @@ func (svc *ServiceContext) importImages(js *jobStatus, tgtUnit *unit, srcDir str
 		if err != nil {
 			return err
 		}
+		svc.logInfo(js, fmt.Sprintf("Extracted the following TIF metadata: %+v", *tifMD))
 
 		// See if this masterfile has already been created...
 		newMF, err := svc.loadMasterFile(fi.filename)
@@ -305,7 +309,8 @@ func (svc *ServiceContext) importImages(js *jobStatus, tgtUnit *unit, srcDir str
 
 		// if box/folder set, add location info to the master file. Part of this handling will remove exif metadata tags,
 		// so be sure to do it BEFORE arcive and publish so the data will not be present in either place
-		if tifMD.Box != "" && tifMD.Folder != "" && unitProj.Workflow.name == "Manuscript" {
+		if tifMD.Box != "" && tifMD.Folder != "" && unitProj.Workflow.Name == "Manuscript" {
+			svc.logInfo(js, fmt.Sprintf("Location metadata found: %s/%s", tifMD.Box, tifMD.Folder))
 			if newMF.location() == nil && unitProj != nil && unitProj.ContainerTypeID != nil {
 				svc.logInfo(js, fmt.Sprintf("Location defined for this masterfile: %s/%s", tifMD.Box, tifMD.Folder))
 				loc, err := svc.findOrCreateLocation(js, *tgtUnit.MetadataID, *unitProj.ContainerTypeID, srcDir, tifMD.Box, tifMD.Folder)
@@ -426,7 +431,7 @@ func (svc *ServiceContext) getOrCreateMasterFile(js *jobStatus, srcTifInfo tifIn
 
 	if newMF.ImageTechMeta.ID == 0 || overwrite {
 		if newMF.ImageTechMeta.ID != 0 {
-			svc.logInfo(js, fmt.Sprintf("overwite existing image tech metadata"))
+			svc.logInfo(js, "overwite existing image tech metadata")
 			err = svc.GDB.Delete(&newMF.ImageTechMeta).Error
 			if err != nil {
 				svc.logError(js, fmt.Sprintf("unable to delete existing tech metadata record %d: %s", newMF.ImageTechMeta.ID, err.Error()))
@@ -480,11 +485,11 @@ func extractTifMetadata(tifPath string) (*tifMetadata, error) {
 	}
 
 	type exifData struct {
-		Title       interface{} `json:"Headline"`
-		Description interface{} `json:"Caption-Abstract"`
-		OwnerID     interface{} `json:"OwnerID"`
-		Box         interface{} `json:"Keywords"`
-		Folder      interface{} `json:"ContentLocationName"`
+		Title       any `json:"Headline"`
+		Description any `json:"Caption-Abstract"`
+		OwnerID     any `json:"OwnerID"`
+		Box         any `json:"Keywords"`
+		Folder      any `json:"ContentLocationName"`
 	}
 
 	var parsedExif []exifData
