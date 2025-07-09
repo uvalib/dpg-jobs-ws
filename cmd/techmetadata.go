@@ -21,7 +21,7 @@ func (svc *ServiceContext) createImageTechMetadata(mf *masterFile, mfPath string
 		return err
 	}
 
-	var jsonDataArray []map[string]interface{}
+	var jsonDataArray []map[string]any
 	err = json.Unmarshal(stdout, &jsonDataArray)
 	if err != nil {
 		return err
@@ -97,7 +97,7 @@ func (svc *ServiceContext) createImageTechMetadata(mf *masterFile, mfPath string
 	return nil
 }
 
-func getUInt(data map[string]interface{}, fieldName string) uint {
+func getUInt(data map[string]any, fieldName string) uint {
 	raw := data[fieldName]
 	floatVal, ok := raw.(float64)
 	if ok {
@@ -106,7 +106,7 @@ func getUInt(data map[string]interface{}, fieldName string) uint {
 	return 0
 }
 
-func getFocalLength(data map[string]interface{}) float64 {
+func getFocalLength(data map[string]any) float64 {
 	raw, ok := data["FocalLength"].(string)
 	if ok == false {
 		return 0.0
@@ -120,7 +120,7 @@ func getFocalLength(data map[string]interface{}) float64 {
 	return out
 }
 
-func getDepth(data map[string]interface{}) uint {
+func getDepth(data map[string]any) uint {
 	samplePerPixel, ok := data["SamplesPerPixel"].(float64)
 	if ok == true {
 		bitPerSampleStr, ok := data["BitsPerSample"].(string)
@@ -135,7 +135,7 @@ func getDepth(data map[string]interface{}) uint {
 	return 0
 }
 
-func getDate(data map[string]interface{}, field string) *time.Time {
+func getDate(data map[string]any, field string) *time.Time {
 	// format: 2016:03:14
 	dateStr := fmt.Sprintf("%v", data[field])
 	if dateStr == "" {

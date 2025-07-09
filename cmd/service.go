@@ -272,13 +272,13 @@ func (svc *ServiceContext) sendRequest(verb string, url string, payload *url.Val
 func (svc *ServiceContext) sendASGetRequest(url string) ([]byte, *RequestError) {
 	return svc.sendASRequest("GET", url, nil)
 }
-func (svc *ServiceContext) sendASPostRequest(url string, payload interface{}) ([]byte, *RequestError) {
+func (svc *ServiceContext) sendASPostRequest(url string, payload any) ([]byte, *RequestError) {
 	return svc.sendASRequest("POST", url, payload)
 }
 func (svc *ServiceContext) sendASDeleteRequest(url string) ([]byte, *RequestError) {
 	return svc.sendASRequest("DELETE", url, nil)
 }
-func (svc *ServiceContext) sendASRequest(verb string, url string, payload interface{}) ([]byte, *RequestError) {
+func (svc *ServiceContext) sendASRequest(verb string, url string, payload any) ([]byte, *RequestError) {
 	fullURL := fmt.Sprintf("%s%s", svc.ArchivesSpace.APIURL, url)
 	log.Printf("INFO: archivesspace %s request: %s", verb, fullURL)
 	startTime := time.Now()

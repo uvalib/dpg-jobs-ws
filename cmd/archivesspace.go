@@ -20,7 +20,7 @@ type externalSystem struct {
 	PublicURL string `gorm:"column:public_url"`
 }
 
-type asObjectDetails map[string]interface{}
+type asObjectDetails map[string]any
 
 type asMetadataResponse struct {
 	Title           string `json:"title"`
@@ -205,9 +205,9 @@ func (svc *ServiceContext) getArchivesSpaceMetadata(asURL *asURLInfo, tgtPID str
 	}
 
 	if tgtASObj["dates"] != nil {
-		dates := tgtASObj["dates"].([]interface{})
+		dates := tgtASObj["dates"].([]any)
 		if len(dates) > 0 {
-			tgtDate := dates[0].(map[string]interface{})
+			tgtDate := dates[0].(map[string]any)
 			if tgtDate["expression"] != nil {
 				out.Dates = fmt.Sprintf("%v", tgtDate["expression"])
 			} else if tgtDate["begin"] != nil {
@@ -221,7 +221,7 @@ func (svc *ServiceContext) getArchivesSpaceMetadata(asURL *asURLInfo, tgtPID str
 	if asErr != nil {
 		return nil, fmt.Errorf("unable to get repoisitory %s info: %s", asURL.RepositoryID, asErr.Message)
 	}
-	var repo map[string]interface{}
+	var repo map[string]any
 	json.Unmarshal(resp, &repo)
 	out.Repo = fmt.Sprintf("%v", repo["name"])
 
@@ -240,8 +240,8 @@ func (svc *ServiceContext) getArchivesSpaceMetadata(asURL *asURLInfo, tgtPID str
 	if tgtASObj["ancestors"] != nil {
 		log.Printf("INFO: Record has ancestors; looking up details")
 		ancIface := tgtASObj["ancestors"]
-		ancestors := ancIface.([]interface{})
-		ancestor := ancestors[len(ancestors)-1].(map[string]interface{})
+		ancestors := ancIface.([]any)
+		ancestor := ancestors[len(ancestors)-1].(map[string]any)
 		colBytes, asErr := svc.sendASGetRequest(fmt.Sprintf("%v", ancestor["ref"]))
 		if asErr != nil {
 			log.Printf("WARNING: Unable to get ancestor info: %s", asErr.Message)
@@ -483,19 +483,19 @@ func (svc *ServiceContext) publishToArchivesSpace(c *gin.Context) {
 func (svc *ServiceContext) getDigitalObject(js *jobStatus, tgtObj asObjectDetails, metadataPID string) *asDigitalObject {
 	svc.logInfo(js, fmt.Sprintf("Look for existing digitial object for %s", metadataPID))
 	val2 := tgtObj["instances"]
-	instancesCopy, ok := val2.([]interface{})
+	instancesCopy, ok := val2.([]any)
 	if ok == false {
 		svc.logInfo(js, fmt.Sprintf("No digitial object exists for %s", metadataPID))
 		return nil
 	}
 	for _, instIface := range instancesCopy {
-		inst, ok := instIface.(map[string]interface{})
+		inst, ok := instIface.(map[string]any)
 		if ok == false {
 			svc.logError(js, fmt.Sprintf("Unable to parse AS object instance data %+v", instIface))
 			continue
 		}
 		if dobjIface, ok := inst["digital_object"]; ok {
-			dobj, ok := dobjIface.(map[string]interface{})
+			dobj, ok := dobjIface.(map[string]any)
 			if !ok {
 				continue
 			}
@@ -505,7 +505,7 @@ func (svc *ServiceContext) getDigitalObject(js *jobStatus, tgtObj asObjectDetail
 				svc.logError(js, fmt.Sprintf("Unable to get digital object info: %s", reqErr.Message))
 				continue
 			}
-			var doJSON map[string]interface{}
+			var doJSON map[string]any
 			err := json.Unmarshal(doBytes, &doJSON)
 			if err != nil {
 				svc.logError(js, fmt.Sprintf("Unable to parse digital object %s response: %s", doURL, err.Error()))
@@ -529,14 +529,14 @@ func (svc *ServiceContext) getDigitalObject(js *jobStatus, tgtObj asObjectDetail
 				if fvIface == nil {
 					continue
 				}
-				fv, ok := fvIface.([]interface{})
+				fv, ok := fvIface.([]any)
 				if ok == false {
 					svc.logError(js, fmt.Sprintf("Unable to parse file_versions for digital object %s", doURL))
 					continue
 				}
 
 				tgtVersionIFace := fv[0]
-				tgtVersion, ok := tgtVersionIFace.(map[string]interface{})
+				tgtVersion, ok := tgtVersionIFace.(map[string]any)
 				if ok == false {
 					svc.logError(js, fmt.Sprintf("Unable to parse version for digital object %s", doURL))
 					continue
@@ -603,15 +603,15 @@ func (svc *ServiceContext) createDigitalObject(js *jobStatus, repoID string, tgt
 
 	// Add newly created digital object URI reference as an instance in the target archival object
 	svc.logInfo(js, fmt.Sprintf("Add newly created digital object %d to parent", createJSON.ID))
-	doInst := make(map[string]interface{})
-	doRef := make(map[string]interface{})
+	doInst := make(map[string]any)
+	doRef := make(map[string]any)
 	doRef["ref"] = fmt.Sprintf("/repositories/%s/digital_objects/%d", repoID, createJSON.ID)
 	doInst["instance_type"] = "digital_object"
 	doInst["digital_object"] = doRef
 
 	// get a copy of the instances array, append the instance of the new digital object, then replaces the instances with the new version
 	instIface := tgtObj["instances"]
-	instancesCopy, ok := instIface.([]interface{})
+	instancesCopy, ok := instIface.([]any)
 	if ok == false {
 		return fmt.Errorf("Unable to get instances data from parent object")
 	}

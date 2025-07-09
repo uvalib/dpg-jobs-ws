@@ -18,7 +18,7 @@ import (
 
 // SAMPLE LOCAL CALL
 // curl -X POST http://localhost:8180/script -H "Content-Type: application/json" --data '{"computeID": "lf6f", "name": "createBondLocations", "params": {"fileName": "boxes9-12.csv"}}'
-func (svc *ServiceContext) createBondLocations(c *gin.Context, js *jobStatus, params map[string]interface{}) error {
+func (svc *ServiceContext) createBondLocations(c *gin.Context, js *jobStatus, params map[string]any) error {
 	svc.logInfo(js, "start script to create locations for bond papers")
 	csvFileName, found := params["fileName"].(string)
 	if found == false {

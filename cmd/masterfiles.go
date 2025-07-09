@@ -97,7 +97,7 @@ func (svc *ServiceContext) assignMasterFileComponent(c *gin.Context) {
 	}
 
 	svc.logInfo(js, fmt.Sprintf("Update masterfiles %v to component %d", req.IDs, req.ComponentID))
-	err = svc.GDB.Table("master_files").Where("id IN ?", req.IDs).Updates(map[string]interface{}{"component_id": req.ComponentID}).Error
+	err = svc.GDB.Table("master_files").Where("id IN ?", req.IDs).Updates(map[string]any{"component_id": req.ComponentID}).Error
 	if err != nil {
 		svc.logFatal(js, fmt.Sprintf("Unable to update component: %s", err.Error()))
 		c.String(http.StatusInternalServerError, err.Error())
@@ -154,7 +154,7 @@ func (svc *ServiceContext) assignMasterFileMetadata(c *gin.Context) {
 	}
 
 	svc.logInfo(js, fmt.Sprintf("Update masterfiles %v to metadata %d", req.IDs, req.MetadataID))
-	err = svc.GDB.Table("master_files").Where("id IN ?", req.IDs).Updates(map[string]interface{}{"metadata_id": md.ID}).Error
+	err = svc.GDB.Table("master_files").Where("id IN ?", req.IDs).Updates(map[string]any{"metadata_id": md.ID}).Error
 	if err != nil {
 		svc.logFatal(js, fmt.Sprintf("Unable to update metadata: %s", err.Error()))
 		c.String(http.StatusInternalServerError, err.Error())

@@ -112,9 +112,9 @@ func main() {
 }
 
 type scriptParams struct {
-	ComputeID string                 `json:"computeID"`
-	Name      string                 `json:"name"`
-	Params    map[string]interface{} `json:"params"`
+	ComputeID string         `json:"computeID"`
+	Name      string         `json:"name"`
+	Params    map[string]any `json:"params"`
 }
 
 func (svc *ServiceContext) runScript(c *gin.Context) {
@@ -147,7 +147,7 @@ func (svc *ServiceContext) runScript(c *gin.Context) {
 	}
 
 	log.Printf("INFO: script request %+v", req)
-	scripts := map[string]interface{}{
+	scripts := map[string]any{
 		"createBondLocations": svc.createBondLocations,
 		"createBondUnits":     svc.createBondUnits,
 		"ingestBondImages":    svc.ingestBondImages,
@@ -168,7 +168,7 @@ func (svc *ServiceContext) runScript(c *gin.Context) {
 		return
 	}
 
-	err = tgtScript.(func(*gin.Context, *jobStatus, map[string]interface{}) error)(c, js, req.Params)
+	err = tgtScript.(func(*gin.Context, *jobStatus, map[string]any) error)(c, js, req.Params)
 	if err != nil {
 		svc.logFatal(js, err.Error())
 		c.String(http.StatusBadRequest, err.Error()+"\n")
