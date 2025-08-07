@@ -89,7 +89,8 @@ func (svc *ServiceContext) createBag(js *jobStatus, md *metadata, collectionMD *
 	access := "Consortia"
 	storage := "Standard"
 	if md.PreservationTierID == 2 {
-		storage = "Glacier-VA"
+		// storage = "Glacier-VA"
+		storage = "Glacier-Deep-OH"
 	}
 	svc.logInfo(js, fmt.Sprintf("Create new bag flagged for %s storage", storage))
 	bagDirName := getBagDirectoryName(md)
