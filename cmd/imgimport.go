@@ -25,8 +25,7 @@ type tifMetadata struct {
 	Title       string
 	Description string
 	ComponentID int64
-	Box         string
-	Folder      string
+	Location    string
 }
 
 const maxJP2Batches = 5
@@ -307,27 +306,20 @@ func (svc *ServiceContext) importImages(js *jobStatus, tgtUnit *unit, srcDir str
 			continue
 		}
 
-		// if box/folder set, add location info to the master file. Part of this handling will remove exif metadata tags,
-		// so be sure to do it BEFORE arcive and publish so the data will not be present in either place
-		if tifMD.Box != "" && tifMD.Folder != "" && unitProj.Workflow.Name == "Manuscript" {
-			svc.logInfo(js, fmt.Sprintf("Location metadata found: %s/%s", tifMD.Box, tifMD.Folder))
-			if newMF.location() == nil && unitProj != nil && unitProj.ContainerTypeID != nil {
-				svc.logInfo(js, fmt.Sprintf("Location defined for this masterfile: %s/%s", tifMD.Box, tifMD.Folder))
-				loc, err := svc.findOrCreateLocation(js, *tgtUnit.MetadataID, *unitProj.ContainerTypeID, srcDir, tifMD.Box, tifMD.Folder)
+		// if set, add location info to the master file
+		if tifMD.Location != "" {
+			svc.logInfo(js, fmt.Sprintf("Location metadata found: %s", tifMD.Location))
+			if newMF.location() == nil {
+				svc.logInfo(js, fmt.Sprintf("Create location %s for masterfile %s", tifMD.Location, newMF.Filename))
+				loc, err := svc.findOrCreateLocation(js, *tgtUnit.MetadataID, *unitProj.ContainerTypeID, srcDir, tifMD.Location)
 				if err != nil {
 					svc.logError(js, fmt.Sprintf("Unable to create location for %s: %s", newMF.Filename, err.Error()))
 				} else {
 					err = svc.GDB.Exec("INSERT into master_file_locations (master_file_id, location_id) values (?,?)", newMF.ID, loc.ID).Error
 					if err != nil {
-						svc.logError(js, fmt.Sprintf("Unable to add location %d [%s/%s] to %s: %s", loc.ID, tifMD.Box, tifMD.Folder, newMF.Filename, err.Error()))
+						svc.logError(js, fmt.Sprintf("Unable to add location %d [%s] to %s: %s", loc.ID, tifMD.Location, newMF.Filename, err.Error()))
 					} else {
-						svc.logInfo(js, fmt.Sprintf("Master file location created for %s. Cleaning up temporary exif tags", fi.filename))
-						cmdArray := []string{"-iptc:ContentLocationName=", "-iptc:Keywords=", fi.path}
-						cmd := exec.Command("exiftool", cmdArray...)
-						_, err := cmd.Output()
-						if err != nil {
-							svc.logError(js, fmt.Sprintf("Unable to cleanup temporary exif location data: %s", err.Error()))
-						}
+						svc.logInfo(js, fmt.Sprintf("Master file location created for %s", fi.filename))
 					}
 				}
 			}
@@ -478,7 +470,7 @@ func (svc *ServiceContext) batchIIIFPublish(js *jobStatus, items []jp2Source, ov
 }
 
 func extractTifMetadata(tifPath string) (*tifMetadata, error) {
-	cmdArray := []string{"-json", "-iptc:OwnerID", "-iptc:headline", "-iptc:caption-abstract", "-iptc:ContentLocationName", "-iptc:Keywords", tifPath}
+	cmdArray := []string{"-json", "-iptc:OwnerID", "-iptc:headline", "-iptc:caption-abstract", "-iptc:sub-location", tifPath}
 	stdout, err := exec.Command("exiftool", cmdArray...).Output()
 	if err != nil {
 		return nil, err
@@ -488,8 +480,7 @@ func extractTifMetadata(tifPath string) (*tifMetadata, error) {
 		Title       any `json:"Headline"`
 		Description any `json:"Caption-Abstract"`
 		OwnerID     any `json:"OwnerID"`
-		Box         any `json:"Keywords"`
-		Folder      any `json:"ContentLocationName"`
+		Location    any `json:"sub-location"`
 	}
 
 	var parsedExif []exifData
@@ -510,16 +501,25 @@ func extractTifMetadata(tifPath string) (*tifMetadata, error) {
 	if parsedExif[0].Description != nil {
 		out.Description = fmt.Sprintf("%v", parsedExif[0].Description)
 	}
-	if parsedExif[0].Box != nil {
-		out.Box = fmt.Sprintf("%v", parsedExif[0].Box)
-	}
-	if parsedExif[0].Folder != nil {
-		out.Folder = fmt.Sprintf("%v", parsedExif[0].Folder)
+	if parsedExif[0].Location != nil {
+		out.Location = fmt.Sprintf("%v", parsedExif[0].Location)
 	}
 	return &out, nil
 }
-func (svc *ServiceContext) findOrCreateLocation(js *jobStatus, mdID int64, ctID int64, baseDir, box, folder string) (*location, error) {
-	svc.logInfo(js, fmt.Sprintf("Find or create location based on %s/%s", box, folder))
+func (svc *ServiceContext) findOrCreateLocation(js *jobStatus, mdID int64, ctID int64, baseDir, locationStr string) (*location, error) {
+	svc.logInfo(js, fmt.Sprintf("Find or create location based on %s", locationStr))
+
+	// parse containerID an folderID from location string
+	//    format: [container type] [container id], Folder [folder id]
+	bits := strings.Split(locationStr, ",")
+	containerBits := strings.Split(bits[0], " ")
+	box := strings.TrimSpace(containerBits[len(containerBits)-1])
+	folder := ""
+	if len(bits) > 1 {
+		folderBits := strings.Split(bits[1], " ")
+		folder = strings.TrimSpace(folderBits[len(folderBits)-1])
+	}
+
 	var tgtLoc location
 	err := svc.GDB.Where("metadata_id=?", mdID).Where("container_type_id=?", ctID).
 		Where("container_id=?", box).Where("folder_id=?", folder).
