@@ -459,7 +459,7 @@ func (svc *ServiceContext) getAPTrustStatus(md *metadata) (*apTrustResponse, err
 			})
 		} else {
 			log.Printf("INFO: no aptrust status found for metadata %d; prior submission failed before being sent", md.ID)
-			jsonResp.Count = 1
+			jsonResp.Count = 0
 			jsonResp.Results = make([]apTrustResult, 0)
 		}
 	}
