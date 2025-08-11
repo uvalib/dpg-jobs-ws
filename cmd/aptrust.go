@@ -200,6 +200,8 @@ func (svc *ServiceContext) prepareAPTrustSubmission(mdID int64, resubmit bool) (
 				if statusRec.Status != "Failed" && statusRec.Status != "Canceled" {
 					return nil, fmt.Errorf("submission is already in progress for metadata %d; status %s", md.ID, statusRec.Status)
 				}
+			} else {
+				log.Printf("INFO: aptrust has no record of metadata %d submission, just resubmit", md.ID)
 			}
 		}
 	}
@@ -438,22 +440,28 @@ func (svc *ServiceContext) getAPTrustStatus(md *metadata) (*apTrustResponse, err
 		cmd = exec.Command("apt-cmd", "s3", "list", fmt.Sprintf("--host=%s", svc.APTrust.AWSHost), fmt.Sprintf("--bucket=%s", svc.APTrust.AWSBucket), fmt.Sprintf("--prefix=%s", aptSub.Bag))
 		log.Printf("INFO: s3 list command: %+v", cmd)
 		aptS3Out, err := cmd.CombinedOutput()
-		log.Printf("INFO: s3 list response: %s", aptS3Out)
-		var s3Resp aptS3Response
-		jsonErr := json.Unmarshal(aptS3Out, &s3Resp)
-		if jsonErr != nil {
-			return nil, fmt.Errorf("malformed s3 response: %s", err.Error())
-		}
+		log.Printf("INFO: s3 list response: [%s]", aptS3Out)
+		if len(aptS3Out) > 0 {
+			var s3Resp aptS3Response
+			jsonErr := json.Unmarshal(aptS3Out, &s3Resp)
+			if jsonErr != nil {
+				return nil, fmt.Errorf("malformed s3 response: %s", jsonErr.Error())
+			}
 
-		jsonResp.Count = 1
-		jsonResp.Results = make([]apTrustResult, 0)
-		jsonResp.Results = append(jsonResp.Results, apTrustResult{
-			ETag:          s3Resp.Etag,
-			Name:          s3Resp.Name,
-			StorageOption: s3Resp.Storage,
-			Status:        "Pending",
-			Note:          "Submitted to S3 bucket and awaiting ingest to APTrust",
-		})
+			jsonResp.Count = 1
+			jsonResp.Results = make([]apTrustResult, 0)
+			jsonResp.Results = append(jsonResp.Results, apTrustResult{
+				ETag:          s3Resp.Etag,
+				Name:          s3Resp.Name,
+				StorageOption: s3Resp.Storage,
+				Status:        "Pending",
+				Note:          "Submitted to S3 bucket and awaiting ingest to APTrust",
+			})
+		} else {
+			log.Printf("INFO: no aptrust status found for metadata %d; prior submission failed before being sent", md.ID)
+			jsonResp.Count = 1
+			jsonResp.Results = make([]apTrustResult, 0)
+		}
 	}
 
 	return &jsonResp, nil
