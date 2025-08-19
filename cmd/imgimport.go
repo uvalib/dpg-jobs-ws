@@ -194,7 +194,13 @@ func (svc *ServiceContext) importOrderImages(c *gin.Context) {
 		} else {
 			svc.logInfo(js, fmt.Sprintf("%d masterfiles processed", cnt))
 			tgtUnit.UnitStatus = "done"
-			svc.GDB.Model(&tgtUnit).Select("UnitStatus").Updates(tgtUnit)
+			if req.From == "from_fineArts" && tgtUnit.DateArchived == nil {
+				now := time.Now()
+				tgtUnit.DateArchived = &now
+				svc.GDB.Model(&tgtUnit).Select("UnitStatus", "DateArchived").Updates(tgtUnit)
+			} else {
+				svc.GDB.Model(&tgtUnit).Select("UnitStatus").Updates(tgtUnit)
+			}
 		}
 
 		svc.jobDone(js)
