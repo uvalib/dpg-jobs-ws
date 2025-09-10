@@ -1,6 +1,7 @@
 package main
 
 import (
+	"archive/zip"
 	"fmt"
 	"log"
 	"net/http"
@@ -66,11 +67,12 @@ func (svc *ServiceContext) downloadFromArchive(c *gin.Context) {
 		return
 	}
 
-	// parse the request
+	// parse the request. If deliver is set, the master file(s) will be zipped and sent to digiserv-delivery
 	type dlReq struct {
 		Filename  string   `json:"filename"`
 		Files     []string `json:"files"`
 		ComputeID string   `json:"computeID"`
+		Deliver   bool     `json:"deliver"`
 	}
 	svc.logInfo(js, "Staring process to download master files from the archive...")
 	var req dlReq
@@ -102,7 +104,7 @@ func (svc *ServiceContext) downloadFromArchive(c *gin.Context) {
 
 	if strings.ToLower(req.Filename) == "all" {
 		svc.logInfo(js, fmt.Sprintf("%s requests to download all master files from unit %d", req.ComputeID, unitID))
-		go svc.copyAllFromArchive(js, &tgtUnit, destPath)
+		go svc.copyAllFromArchive(js, &tgtUnit, destPath, req.Deliver)
 		c.String(http.StatusOK, fmt.Sprintf("%d", js.ID))
 		return
 	}
@@ -183,8 +185,10 @@ func (svc *ServiceContext) copyFileFromArchive(js *jobStatus, tgtUnit *unit, fil
 	}
 }
 
-// called as goroutine to copy all from the archive. it may take a long time
-func (svc *ServiceContext) copyAllFromArchive(js *jobStatus, tgtUnit *unit, destDir string) {
+// called as goroutine to copy all from the archive. it may take a long time.
+// Note destDir is: /from_archive/[compute_id]/[unit_id]
+// if deliver is true, after masterfiles are copied, zip the unit dir, sent it to /digiserv-delivery then delete the unit directory
+func (svc *ServiceContext) copyAllFromArchive(js *jobStatus, tgtUnit *unit, destDir string, deliver bool) {
 	// define preliminary archive directory for the images. This will change if the unit is
 	// a reorder or if it is archived in a non-standard location. Non-standard locations are
 	// noted in the staff_notes field after 'Archive: ' and reorders are on a file by file basis.
@@ -225,7 +229,66 @@ func (svc *ServiceContext) copyAllFromArchive(js *jobStatus, tgtUnit *unit, dest
 		}
 	}
 	svc.logInfo(js, fmt.Sprintf("Masterfiles from unit %d copied to %s", tgtUnit.ID, destDir))
+	if deliver {
+		destZip := path.Join(svc.DeliveryDir, fmt.Sprintf("order_%d", tgtUnit.OrderID))
+		svc.logInfo(js, "This unit has been flagged for delivery")
+		err := svc.zipCopiedArchive(js, tgtUnit.ID, destDir, destZip)
+		if err != nil {
+			svc.logFatal(js, fmt.Sprintf("Unable to create deliverable zip: %s", err.Error()))
+			return
+		}
+		svc.logInfo(js, fmt.Sprintf("Cleanup downloaded copy %s", destDir))
+		err = os.RemoveAll(destDir)
+		if err != nil {
+			svc.logError(js, fmt.Sprintf("Unable to create cleanup %s: %s", destDir, err.Error()))
+		}
+	}
 	svc.jobDone(js)
+}
+
+func (svc *ServiceContext) zipCopiedArchive(js *jobStatus, unitID int64, srcDir, zipDir string) error {
+	svc.logInfo(js, fmt.Sprintf("Create delivery directory %s", zipDir))
+	err := ensureDirExists(zipDir, 0755)
+	if err != nil {
+		return fmt.Errorf("unable to create delivery dir %s: %s", zipDir, err.Error())
+	}
+
+	zipFN := path.Join(zipDir, fmt.Sprintf("%d.zip", unitID))
+	svc.logInfo(js, fmt.Sprintf("Create zip file %s", zipFN))
+	os.Remove(zipFN)
+	zipFile, err := os.Create(zipFN)
+	if err != nil {
+		return fmt.Errorf("unable to create zip file: %s", err.Error())
+	}
+	zipWriter := zip.NewWriter(zipFile)
+	defer zipFile.Close()
+	defer zipWriter.Close()
+
+	svc.logInfo(js, fmt.Sprintf("Walk %s and add all files to %s", srcDir, zipFN))
+	err = filepath.Walk(srcDir, func(fullPath string, fi os.FileInfo, err error) error {
+		if err != nil || fi.IsDir() {
+			return nil
+		}
+		ext := filepath.Ext(fi.Name())
+		if ext != ".tif" {
+			return nil
+		}
+
+		svc.logInfo(js, fmt.Sprintf("Add %s to zip", fi.Name()))
+		_, zErr := addFileToZip(zipFN, zipWriter, srcDir, fi.Name())
+		if zErr != nil {
+			return err
+		}
+
+		return nil
+	})
+
+	if err != nil {
+		return fmt.Errorf("unable to traverse %s: %s", srcDir, err.Error())
+	}
+
+	svc.logInfo(js, "Zip complete")
+	return nil
 }
 
 func (svc *ServiceContext) copyArchivedFile(js *jobStatus, unitDir, filename, destDir string) error {
