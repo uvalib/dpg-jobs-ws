@@ -47,6 +47,12 @@ func (svc *ServiceContext) archiveExists(c *gin.Context) {
 	c.String(http.StatusOK, fmt.Sprintf("%s: %d tif files", tgtDir, fileCount))
 }
 
+// Example to create delverable from archive:
+//
+//	curl --request POST  \
+//		--url https://dpg-jobs.lib.virginia.edu/units/30946/copy \
+//		--header 'Content-Type: application/json' \
+//		--data '{"filename": "all", "computeID": "lf6f", "deliver": true}'
 func (svc *ServiceContext) downloadFromArchive(c *gin.Context) {
 	unitID, _ := strconv.ParseInt(c.Param("id"), 10, 64)
 	js, err := svc.createJobStatus("CopyArchivedFilesToProduction", "Unit", unitID)
@@ -90,6 +96,17 @@ func (svc *ServiceContext) downloadFromArchive(c *gin.Context) {
 		svc.logFatal(js, fmt.Sprintf("%s is not a valid computing ID", req.ComputeID))
 		c.String(http.StatusBadRequest, "invalid compute id")
 		return
+	}
+
+	if req.Deliver {
+		svc.logInfo(js, "This is a delivery request; see if the deliverable already exists")
+		zipDir := path.Join(svc.DeliveryDir, fmt.Sprintf("order_%d", tgtUnit.OrderID))
+		zipFN := path.Join(zipDir, fmt.Sprintf("%d.zip", unitID))
+		if pathExists(zipFN) {
+			svc.logInfo(js, fmt.Sprintf("Deliverable %s already exists. Nothing more to do.", zipFN))
+			svc.jobDone(js)
+			return
+		}
 	}
 
 	// setup destination directory to receive downloaded files
@@ -240,7 +257,7 @@ func (svc *ServiceContext) copyAllFromArchive(js *jobStatus, tgtUnit *unit, dest
 		svc.logInfo(js, fmt.Sprintf("Cleanup downloaded copy %s", destDir))
 		err = os.RemoveAll(destDir)
 		if err != nil {
-			svc.logError(js, fmt.Sprintf("Unable to create cleanup %s: %s", destDir, err.Error()))
+			svc.logError(js, fmt.Sprintf("Unable to cleanup %s: %s", destDir, err.Error()))
 		}
 	}
 	svc.jobDone(js)
