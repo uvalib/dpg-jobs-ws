@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os/exec"
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-contrib/gzip"
@@ -19,6 +20,13 @@ func main() {
 	// Get config params and use them to init service context. Any issues are fatal
 	cfg := LoadConfiguration()
 	svc := InitializeService(version, cfg)
+
+	out, err := exec.Command("curl", "--version").CombinedOutput()
+	if err != nil {
+		log.Printf("ERROR: unable to get curl version: %s", err.Error())
+	} else {
+		log.Printf("INFO: curl version output: %s", out)
+	}
 
 	log.Printf("INFO: setup routes...")
 	gin.SetMode(gin.ReleaseMode)
