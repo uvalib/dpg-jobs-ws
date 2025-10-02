@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"path"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -329,8 +330,10 @@ func (svc *ServiceContext) deleteMasterFiles(c *gin.Context) {
 				changeTitle = false
 			}
 
-			mfPg := getMasterFilePageNum(mf.Filename)
-			if mfPg > currPage {
+			mfPg, err := getMasterFilePageNum(mf.Filename)
+			if err != nil {
+				svc.logError(js, fmt.Sprintf("Skipping rename of masterfile with invalid filename %s", mf.Filename))
+			} else if mfPg > currPage {
 				origFN := mf.Filename
 				pageStr := fmt.Sprintf("%04d", currPage)
 				newFN := fmt.Sprintf("%s_%s.tif", unitDir, pageStr)
@@ -407,7 +410,11 @@ func (svc *ServiceContext) addMasterFiles(c *gin.Context) {
 		newPage := -1
 		prevPage := -1
 		for _, fi := range files {
-			pageNum := getMasterFilePageNum(fi.filename)
+			pageNum, err := getMasterFilePageNum(fi.filename)
+			if err != nil {
+				svc.logFatal(js, fmt.Sprintf("Invalid filename %s", fi.filename))
+				return
+			}
 			if newPage == -1 {
 				newPage = pageNum
 				prevPage = newPage
@@ -420,7 +427,11 @@ func (svc *ServiceContext) addMasterFiles(c *gin.Context) {
 			}
 		}
 
-		lastPageNum := getMasterFilePageNum(tgtUnit.MasterFiles[len(tgtUnit.MasterFiles)-1].Filename)
+		lastPageNum, err := getMasterFilePageNum(tgtUnit.MasterFiles[len(tgtUnit.MasterFiles)-1].Filename)
+		if err != nil {
+			svc.logFatal(js, fmt.Sprintf("Invalid last filename %s", tgtUnit.MasterFiles[len(tgtUnit.MasterFiles)-1].Filename))
+			return
+		}
 		if newPage > lastPageNum+1 {
 			svc.logFatal(js, fmt.Sprintf("New master file sequence number gap (from %d to %d)", lastPageNum, newPage))
 			return
@@ -450,7 +461,11 @@ func (svc *ServiceContext) addMasterFiles(c *gin.Context) {
 		for _, tf := range files {
 			// create MF and tech metadata
 			md5 := md5Checksum(tf.path)
-			pgNum := getMasterFilePageNum(tf.filename)
+			pgNum, err := getMasterFilePageNum(tf.filename)
+			if err != nil {
+				svc.logFatal(js, fmt.Sprintf("Invalid new image filename %s", tf.filename))
+				return
+			}
 			newMF := masterFile{Filename: tf.filename, Title: fmt.Sprintf("%d", pgNum), Filesize: tf.size,
 				MD5: md5, UnitID: tgtUnit.ID, ComponentID: componentID, MetadataID: tgtUnit.MetadataID}
 			err = svc.GDB.Create(&newMF).Error
@@ -735,7 +750,10 @@ func (svc *ServiceContext) makeGapForInsertion(js *jobStatus, tgtUnit *unit, tif
 
 		// figure out new filename and rename/re-title
 		origFN := mf.Filename
-		origPageNum := getMasterFilePageNum(origFN)
+		origPageNum, err := getMasterFilePageNum(origFN)
+		if err != nil {
+			return fmt.Errorf("invalid filename for masterfile %d: %s", mf.ID, mf.Filename)
+		}
 		newPageNum := origPageNum + gapSize
 		paddedPageNum := fmt.Sprintf("%04d", newPageNum)
 		newFN := fmt.Sprintf("%s_%s.tif", strings.Split(origFN, "_")[0], paddedPageNum)
@@ -748,7 +766,7 @@ func (svc *ServiceContext) makeGapForInsertion(js *jobStatus, tgtUnit *unit, tif
 		svc.logInfo(js, fmt.Sprintf("Rename %s to %s. Title %s", origFN, newFN, newTitle))
 		mf.Filename = newFN
 		mf.Title = newTitle
-		err := svc.GDB.Model(&mf).Select("Filename", "Title").Updates(mf).Error
+		err = svc.GDB.Model(&mf).Select("Filename", "Title").Updates(mf).Error
 		if err != nil {
 			return err
 		}
@@ -761,4 +779,75 @@ func (svc *ServiceContext) makeGapForInsertion(js *jobStatus, tgtUnit *unit, tif
 		}
 	}
 	return nil
+}
+
+// curl -X POST  http://localhost:8180/masterfiles/2836851/rename -H "Content-Type: application/json" --data '{"filename": "000055434_0003.tif", "title": "2"}'
+func (svc *ServiceContext) renameMasterFile(c *gin.Context) {
+	mfID := c.Param("id")
+	var req struct {
+		NewFilename    string `json:"filename"`
+		NewTitle       string `json:"title"`
+		NewDescription string `json:"description"`
+	}
+	err := c.ShouldBindJSON(&req)
+	if err != nil {
+		log.Printf("INFO: unable to parse rename request: %s", err.Error())
+		c.String(http.StatusBadRequest, err.Error())
+		return
+	}
+	log.Printf("INFO: received request to raname masterfile %s: %+v", mfID, req)
+	var tgtMF masterFile
+	err = svc.GDB.First(&tgtMF, mfID).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			log.Printf("INFO: masterfile %s not found: %s", mfID, err.Error())
+			c.String(http.StatusNotFound, fmt.Sprintf("masterfile %s not found", mfID))
+		} else {
+			log.Printf("ERROR: unable to get masterfile %s: %s", mfID, err.Error())
+			c.String(http.StatusInternalServerError, err.Error())
+		}
+		return
+	}
+
+	fnRegex := regexp.MustCompile(fmt.Sprintf(`^%09d_\d{4,}\.tif$`, tgtMF.UnitID))
+	if fnRegex.MatchString(req.NewFilename) == false {
+		log.Printf("ERROR: request to rename master file %d to invalid filename %s", tgtMF.ID, req.NewFilename)
+		c.String(http.StatusBadRequest, fmt.Sprintf("requested new filename %s is invalid", req.NewFilename))
+		return
+	}
+
+	log.Printf("INFO: update master file record %d", tgtMF.ID)
+	updatedFields := []string{"Filename"}
+	origFileName := tgtMF.Filename
+	tgtMF.Filename = req.NewFilename
+	if req.NewTitle != "" {
+		updatedFields = append(updatedFields, "Title")
+		tgtMF.Title = req.NewTitle
+	}
+	if req.NewDescription != "" {
+		updatedFields = append(updatedFields, "Description")
+		tgtMF.Description = req.NewDescription
+	}
+	err = svc.GDB.Model(&tgtMF).Select(updatedFields).Updates(tgtMF).Error
+	if err != nil {
+		log.Printf("ERROR: raname masterfile %d to %s failed: %s", tgtMF.ID, req.NewFilename, err.Error())
+		c.String(http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	// copy archived file to new name and validate checksums
+	origArchive := path.Join(svc.ArchiveDir, fmt.Sprintf("%09d", tgtMF.UnitID), origFileName)
+	newArchive := path.Join(svc.ArchiveDir, fmt.Sprintf("%09d", tgtMF.UnitID), req.NewFilename)
+	log.Printf("INFO: rename archived file %s -> %s", origArchive, newArchive)
+	err = os.Rename(origArchive, newArchive)
+	if err != nil {
+		log.Printf("ERROR: archive rename failed: %s", err.Error())
+		c.String(http.StatusInternalServerError, err.Error())
+		return
+	}
+	newMD5 := md5Checksum(newArchive)
+	if newMD5 != tgtMF.MD5 {
+		log.Printf("WARNING: md5 checksum for renamed archive %s does not match the original", newArchive)
+	}
+	c.String(http.StatusOK, "renamed")
 }

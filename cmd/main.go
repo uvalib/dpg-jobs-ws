@@ -12,7 +12,7 @@ import (
 )
 
 // Version of the service
-const version = "1.33.2"
+const version = "1.34.0"
 
 func main() {
 	log.Printf("===> DPG backend processing service starting up <===")
@@ -21,6 +21,8 @@ func main() {
 	cfg := LoadConfiguration()
 	svc := InitializeService(version, cfg)
 
+	// dump curl version to logs. v8.14.1  has a bug wherre it will not accept --ftp-pasv which is required
+	// for hathitrust submissions
 	out, err := exec.Command("curl", "--version").CombinedOutput()
 	if err != nil {
 		log.Printf("ERROR: unable to get curl version: %s", err.Error())
@@ -103,6 +105,7 @@ func main() {
 	router.POST("/masterfiles/:id/iiif", svc.updateMasterFileIIIF)
 	router.DELETE("/masterfiles/:id/iiif", svc.deleteMasterFileIIIF)
 	router.POST("/masterfiles/:id/techmeta", svc.updateMasterFileTechMetadata)
+	router.POST("/masterfiles/:id/rename", svc.renameMasterFile)
 
 	router.POST("/units/:id/masterfiles/add", svc.addMasterFiles)
 	router.POST("/units/:id/masterfiles/delete", svc.deleteMasterFiles)

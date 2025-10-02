@@ -368,8 +368,11 @@ func (svc *ServiceContext) qaFilesystem(js *jobStatus, tgtUnit *unit, srcDir str
 	sort.Strings(tifFiles)
 	seq := 0
 	for _, fn := range tifFiles {
-		mfPageNum := getMasterFilePageNum(fn)
-		if seq+1 != mfPageNum {
+		mfPageNum, err := getMasterFilePageNum(fn)
+		if err != nil {
+			hasFailures = true
+			svc.logError(js, fmt.Sprintf("Invalid .tif filename found: %s", fn))
+		} else if seq+1 != mfPageNum {
 			hasFailures = true
 			svc.logError(js, fmt.Sprintf("Out of sequence .tif file found: %s", fn))
 		}

@@ -354,11 +354,14 @@ func sha256Checksum(filename string) string {
 	return ""
 }
 
-func getMasterFilePageNum(filename string) int {
+func getMasterFilePageNum(filename string) (int, error) {
 	noExt := strings.ReplaceAll(filename, ".tif", "")
 	numStr := strings.Split(noExt, "_")[1]
-	num, _ := strconv.ParseInt(numStr, 10, 0)
-	return int(num)
+	num, err := strconv.ParseInt(numStr, 10, 0)
+	if err != nil {
+		return 0, fmt.Errorf("cannot parse page number from invalid masterfile name %s: %s", filename, err.Error())
+	}
+	return int(num), nil
 }
 
 func pathExists(path string) bool {
@@ -455,7 +458,7 @@ type tifInfo struct {
 func (svc *ServiceContext) getTifFiles(js *jobStatus, srcDir string, unitID int64) ([]tifInfo, error) {
 	svc.logInfo(js, fmt.Sprintf("Get all .tif files from %s", srcDir))
 	tifFiles := make([]tifInfo, 0)
-	mfRegex := regexp.MustCompile(fmt.Sprintf(`^%09d_\w{4,}\.tif$`, unitID))
+	mfRegex := regexp.MustCompile(fmt.Sprintf(`^%09d_\d{4,}\.tif$`, unitID))
 	err := filepath.Walk(srcDir, func(fullPath string, entry os.FileInfo, err error) error {
 		if err != nil || entry.IsDir() {
 			return nil
