@@ -2,6 +2,7 @@ package main
 
 import (
 	"archive/zip"
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"io/fs"
@@ -12,11 +13,13 @@ import (
 	"path"
 	"path/filepath"
 	"runtime/debug"
+	"slices"
 	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/go-xmlfmt/xmlfmt"
+	"github.com/jlaffaye/ftp"
 )
 
 type hathitrustStatus struct {
@@ -233,13 +236,13 @@ func (svc *ServiceContext) submitHathiTrustMetadata(c *gin.Context) {
 			uploadFN += fmt.Sprintf("_%s", req.Name)
 		}
 		uploadFN += ".xml"
-		mdFileName := path.Join(svc.ProcessingDir, "hathitrust", uploadFN)
-		svc.logInfo(js, fmt.Sprintf("Write local copy of metadata submission to %s", mdFileName))
-		if pathExists(mdFileName) {
-			svc.logInfo(js, fmt.Sprintf("%s already exists; removing", mdFileName))
-			os.Remove(mdFileName)
+		localMetadataPath := path.Join(svc.ProcessingDir, "hathitrust", uploadFN)
+		svc.logInfo(js, fmt.Sprintf("Write local copy of metadata submission to %s", localMetadataPath))
+		if pathExists(localMetadataPath) {
+			svc.logInfo(js, fmt.Sprintf("%s already exists; removing", localMetadataPath))
+			os.Remove(localMetadataPath)
 		}
-		metadataFile, err := os.Create(mdFileName)
+		metadataFile, err := os.Create(localMetadataPath)
 		if err != nil {
 			svc.logFatal(js, fmt.Sprintf("Unable to create metadaa file: %s", err.Error()))
 			return
@@ -264,15 +267,7 @@ func (svc *ServiceContext) submitHathiTrustMetadata(c *gin.Context) {
 				continue
 			}
 
-			alreadySubmitted := false
-			for _, catKey := range generatedCatKeys {
-				if catKey == tgtMD.CatalogKey {
-					alreadySubmitted = true
-					break
-				}
-			}
-
-			if alreadySubmitted == true {
+			if slices.Contains(generatedCatKeys, tgtMD.CatalogKey) {
 				svc.logInfo(js, fmt.Sprintf("Catalog key %s has already been submitted; skipping", tgtMD.CatalogKey))
 				continue
 			}
@@ -283,31 +278,22 @@ func (svc *ServiceContext) submitHathiTrustMetadata(c *gin.Context) {
 				svc.logError(js, fmt.Sprintf("Unable to retrieve MARC XML for %d: %s", mdID, err.Error()))
 				continue
 			}
-			metadataFile.WriteString(fmt.Sprintf("\n%s", xml))
+			fmt.Fprintf(metadataFile, "\n%s", xml)
 			updatedIDs = append(updatedIDs, tgtMD.ID)
 		}
 		metadataFile.WriteString("\n</collection>")
 		metadataFile.Close()
-		mdSize := getFileSize(mdFileName)
-		svc.logInfo(js, fmt.Sprintf("Metadata for %d records with size %d has been written to %s", len(updatedIDs), mdSize, mdFileName))
+		mdSize := getFileSize(localMetadataPath)
+		svc.logInfo(js, fmt.Sprintf("Metadata for %d records with size %d has been written to %s", len(updatedIDs), mdSize, localMetadataPath))
 
 		if req.Mode == "dev" {
 			// In dev mode, there is nothing more to do. just log the location where the metadata file can be found
 			svc.logInfo(js, "Metadata request is in dev mode. File not submitted, no email sent and status not updated")
 
 		} else if len(updatedIDs) > 0 {
-			uploadDirectory := "submissions"
-			if req.Mode == "test" {
-				uploadDirectory = "testrecs"
-			}
-			svc.logInfo(js, fmt.Sprintf("Upload %s to ftps server %s in directory %s as %s", uploadFN, svc.HathiTrust.FTPS, uploadDirectory, svc.HathiTrust.User))
-
-			// curl --tls-max 1.2 -u ht-uva:ht-uva:PASS -T UVA-2_20240610_order11884.xml --ssl-reqd --ftp-pasv ftp://ftps.cdlib.org/submissions/UVA-2_20240610_order11884.xml
-			userPass := fmt.Sprintf("%s:%s", svc.HathiTrust.User, svc.HathiTrust.Pass)
-			ftpDest := fmt.Sprintf("ftp://%s/%s/%s", svc.HathiTrust.FTPS, uploadDirectory, uploadFN)
-			ftpOut, err := exec.Command("curl", "--tls-max", "1.2", "-u", userPass, "-T", mdFileName, "--ssl-reqd", "--ftp-pasv", ftpDest).CombinedOutput()
-			if err != nil {
-				svc.logFatal(js, fmt.Sprintf("Upload failed: %s", ftpOut))
+			upErr := svc.uploadMetadataToHathiTrust(js, req.Mode, localMetadataPath, uploadFN)
+			if upErr != nil {
+				svc.logFatal(js, fmt.Sprintf("FTPS upload failed: %s", err.Error()))
 				return
 			}
 
@@ -338,6 +324,43 @@ func (svc *ServiceContext) submitHathiTrustMetadata(c *gin.Context) {
 	}()
 
 	c.String(http.StatusOK, "submit request started")
+}
+
+func (svc *ServiceContext) uploadMetadataToHathiTrust(js *jobStatus, mode, srcPath, destName string) error {
+	uploadDirectory := "submissions"
+	if mode == "test" {
+		uploadDirectory = "testrecs"
+	}
+	svc.logInfo(js, fmt.Sprintf("Upload %s to ftps server %s in directory %s as %s", srcPath, svc.HathiTrust.FTPS, uploadDirectory, svc.HathiTrust.User))
+
+	tlsConfig := &tls.Config{
+		InsecureSkipVerify: true,
+		MinVersion:         tls.VersionTLS12,
+		MaxVersion:         tls.VersionTLS12,
+	}
+	ftpdialoption := ftp.DialWithExplicitTLS(tlsConfig)
+	host := fmt.Sprintf("%s:21", svc.HathiTrust.FTPS)
+	c, err := ftp.Dial(host, ftpdialoption)
+	if err != nil {
+		return fmt.Errorf("unable to dial ftps host: %s", err.Error())
+	}
+	err = c.Login(svc.HathiTrust.User, svc.HathiTrust.Pass)
+	if err != nil {
+		return fmt.Errorf("ftps login failed: %s", err.Error())
+	}
+	err = c.ChangeDir(uploadDirectory)
+	if err != nil {
+		return fmt.Errorf("unable to switch to remote directory %s: %s", uploadDirectory, err.Error())
+	}
+	xmlF, _ := os.Open(srcPath)
+	err = c.Stor(destName, xmlF)
+	if err != nil {
+		return fmt.Errorf("ftps upload failed: %s", err.Error())
+	}
+
+	c.Logout()
+	c.Quit()
+	return nil
 }
 
 // curl -X POST  https://dpg-jobs.lib.virginia.edu/hathitrust/package -H "Content-Type: application/json" --data '{"computeID": "lf6f", "records": [108247]}'
