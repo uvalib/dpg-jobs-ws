@@ -137,6 +137,8 @@ func (svc *ServiceContext) requestMetadataPDF(js *jobStatus, unitID int64, mdPID
 	if wErr != nil {
 		return fmt.Errorf("unable to write to %s: %s", pdfFilePath, wErr.Error())
 	}
+	pdfWriter.Flush()
+	pdfFile.Close()
 
 	return nil
 }
