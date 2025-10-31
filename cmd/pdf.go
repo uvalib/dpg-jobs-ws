@@ -36,7 +36,7 @@ func (svc *ServiceContext) getUnitPDFBundle(c *gin.Context) {
 			svc.logError(js, fmt.Sprintf("Unable to delete existing assembly directory %s: %s", assembleDir, err.Error()))
 		}
 	}
-	if err := ensureDirExists(assembleDir, 0755); err != nil {
+	if err := ensureDirExists(assembleDir, 0777); err != nil {
 		svc.logFatal(js, fmt.Sprintf("Unable to create pdf assembly dir: %s", err.Error()))
 		c.String(http.StatusInternalServerError, err.Error())
 		return
@@ -79,7 +79,7 @@ func (svc *ServiceContext) getUnitPDFBundle(c *gin.Context) {
 		}
 
 		dlLink := fmt.Sprintf("https://digiservdelivery.lib.virginia.edu/pdf_%d.zip", unitID)
-		svc.logInfo(js, fmt.Sprintf("Bundle can be downloaded from %s", dlLink))
+		svc.logInfo(js, fmt.Sprintf("Bundle can be downloaded from <a href=\"%s\">%s</a>", dlLink, dlLink))
 		svc.jobDone(js)
 	}()
 
