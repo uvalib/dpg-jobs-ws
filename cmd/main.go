@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"os/exec"
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-contrib/gzip"
@@ -12,7 +11,7 @@ import (
 )
 
 // Version of the service
-const version = "1.34.1"
+const version = "1.34.2"
 
 func main() {
 	log.Printf("===> DPG backend processing service starting up <===")
@@ -20,15 +19,6 @@ func main() {
 	// Get config params and use them to init service context. Any issues are fatal
 	cfg := LoadConfiguration()
 	svc := InitializeService(version, cfg)
-
-	// dump curl version to logs. v8.14.1  has a bug wherre it will not accept --ftp-pasv which is required
-	// for hathitrust submissions
-	out, err := exec.Command("curl", "--version").CombinedOutput()
-	if err != nil {
-		log.Printf("ERROR: unable to get curl version: %s", err.Error())
-	} else {
-		log.Printf("INFO: curl version output: %s", out)
-	}
 
 	log.Printf("INFO: setup routes...")
 	gin.SetMode(gin.ReleaseMode)
@@ -96,6 +86,7 @@ func main() {
 	router.POST("/units/:id/deliverables", svc.createPatronDeliverables)
 	router.POST("/units/:id/finalize", svc.finalizeUnit)
 	router.POST("/units/:id/iiif", svc.publishUnitImagesToIIIF)
+	router.GET("/units/:id/pdf", svc.getUnitPDFBundle)
 
 	router.POST("/units/:id/attach", svc.attachFile)
 	router.GET("/units/:id/attachments/:file", svc.getAttachment)
