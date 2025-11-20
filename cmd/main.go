@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"runtime/debug"
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-contrib/gzip"
@@ -116,6 +117,7 @@ func main() {
 type scriptParams struct {
 	ComputeID string         `json:"computeID"`
 	Name      string         `json:"name"`
+	DevMode   bool           `json:"dev"` // with this set, no job will be created
 	Params    map[string]any `json:"params"`
 }
 
@@ -154,6 +156,7 @@ func (svc *ServiceContext) runScript(c *gin.Context) {
 		"createBondUnits":     svc.createBondUnits,
 		"ingestBondImages":    svc.ingestBondImages,
 		"generateBondMapping": svc.generateBondMapping,
+		"tribuneSetup":        svc.setupTribuneQA,
 	}
 
 	tgtScript := scripts[req.Name]
@@ -163,18 +166,40 @@ func (svc *ServiceContext) runScript(c *gin.Context) {
 		return
 	}
 
-	js, err := svc.createJobStatus(req.Name, "StaffMember", submitUser.ID)
+	var js *jobStatus
+	if req.DevMode {
+		log.Printf("INFO: running %s in dev mode - not using goroutine and no job logs", req.Name)
+		err = tgtScript.(func(*gin.Context, *jobStatus, map[string]any) error)(c, js, req.Params)
+		if err != nil {
+			svc.logFatal(js, err.Error())
+		}
+		c.String(http.StatusOK, fmt.Sprintf("script %s has completed", req.Name))
+		return
+	}
+
+	log.Printf("INFO: create job to run script %s", req.Name)
+	js, err = svc.createJobStatus(fmt.Sprintf("Script %s", req.Name), "StaffMember", submitUser.ID)
 	if err != nil {
-		log.Printf("ERROR: unable to create HathiTrush submission job status: %s", err.Error())
+		log.Printf("ERROR: unable to create script job status: %s", err.Error())
 		c.String(http.StatusInternalServerError, err.Error()+"\n")
 		return
 	}
 
-	err = tgtScript.(func(*gin.Context, *jobStatus, map[string]any) error)(c, js, req.Params)
-	if err != nil {
-		svc.logFatal(js, err.Error())
-		c.String(http.StatusBadRequest, err.Error()+"\n")
-	}
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				log.Printf("ERROR: Panic recovered: %v", r)
+				debug.PrintStack()
+				svc.logFatal(js, fmt.Sprintf("%v", r))
+			}
+		}()
+		err = tgtScript.(func(*gin.Context, *jobStatus, map[string]any) error)(c, js, req.Params)
+		if err != nil {
+			svc.logFatal(js, err.Error())
+		}
+		svc.jobDone(js)
+	}()
+	c.String(http.StatusOK, fmt.Sprintf("%d", js.ID))
 }
 
 // func (svc *ServiceContext) hack(c *gin.Context) {
