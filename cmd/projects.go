@@ -43,11 +43,16 @@ type workflow struct {
 
 type project struct {
 	ID                int64
+	UnitID            int64
 	WorkflowID        int64
 	Workflow          workflow `gorm:"foreignKey:WorkflowID"`
+	CategoryID        int64
+	ContainerTypeID   *int64
+	ItemCondition     uint
+	ConditionNote     string
 	OwnerID           *int64
 	CurrentStepID     *int64
-	ContainerTypeID   *int64
+	AddedAt           *time.Time
 	FinishedAt        *time.Time
 	TotalDurationMins *int64
 	Notes             []*note `gorm:"foreignKey:ProjectID"`

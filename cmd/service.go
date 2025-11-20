@@ -54,7 +54,6 @@ type IIIFContext struct {
 	ManifestURL string
 	StagingDir  string
 	Bucket      string
-	S3Context   context.Context
 	S3Client    *s3.Client
 }
 
