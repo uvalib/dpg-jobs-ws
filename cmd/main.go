@@ -156,6 +156,7 @@ func (svc *ServiceContext) runScript(c *gin.Context) {
 		"createBondUnits":     svc.createBondUnits,
 		"ingestBondImages":    svc.ingestBondImages,
 		"generateBondMapping": svc.generateBondMapping,
+		"tribuneCheck":        svc.validateTribuneMount,
 		"tribuneSetup":        svc.setupTribuneQA,
 	}
 
@@ -167,7 +168,7 @@ func (svc *ServiceContext) runScript(c *gin.Context) {
 	}
 
 	var js *jobStatus
-	if req.DevMode {
+	if req.DevMode || req.Name == "tribuneCheck" {
 		log.Printf("INFO: running %s in dev mode - not using goroutine and no job logs", req.Name)
 		err = tgtScript.(func(*gin.Context, *jobStatus, map[string]any) error)(c, js, req.Params)
 		if err != nil {

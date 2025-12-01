@@ -51,6 +51,36 @@ type mets struct {
 	} `xml:"dmdSec"`
 }
 
+// validateTribuneMount will check the tribune mount
+
+// EXAMPLE:
+//
+//	curl -X POST https://dpg-jobs.lib.virginia.edu/script -H "Content-Type: application/json" \
+//		--data '{"computeID": "lf6f", "name": "tribuneCheck", \
+//		"params": {
+//	   "directory": "/Users/lf6f/dev/tracksys-dev/sandbox/digiserv-production/tribune_data", \
+//	   "lccn": "sn95079521"}}'
+func (svc *ServiceContext) validateTribuneMount(c *gin.Context, js *jobStatus, params map[string]any) error {
+	baseDir := fmt.Sprintf("%s", params["directory"])
+	lccnDir := fmt.Sprintf("%s", params["lccn"])
+	printPath := path.Join(baseDir, lccnDir, "print")
+	svc.logInfo(js, fmt.Sprintf("Check tribune mount %s", printPath))
+
+	allIssues, err := os.ReadDir(printPath)
+	if err != nil {
+		return fmt.Errorf("unable to get %s issues", lccnDir)
+	}
+	issues := make([]string, 0)
+	for _, de := range allIssues {
+		if de.IsDir() {
+			issues = append(issues, de.Name())
+		}
+	}
+
+	svc.logInfo(js, fmt.Sprintf("Mount %s exists. Issues: %s", printPath, strings.Join(issues, ", ")))
+	return nil
+}
+
 // setupTribuneQA will pull imges from the tribune volume info dpg_imaging and setup unit / project
 // params:
 //   - orderID: order units will be attached to
@@ -63,7 +93,7 @@ type mets struct {
 // EXAMPLE:
 //
 //	curl -X POST https://dpg-jobs.lib.virginia.edu/script -H "Content-Type: application/json" \
-//		--data '{"computeID": "lf6f", "name": "tribuneSetup", "dev": true \
+//		--data '{"computeID": "lf6f", "name": "tribuneSetup", "dev": true, \
 //		"params": {"orderID": 12826, \
 //	   "directory": "/Users/lf6f/dev/tracksys-dev/sandbox/digiserv-production/tribune_data", \
 //	   "lccn": "sn95079521", "year": "1950"}}'
