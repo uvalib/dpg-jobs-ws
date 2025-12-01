@@ -65,10 +65,13 @@ func (svc *ServiceContext) validateTribuneMount(c *gin.Context, js *jobStatus, p
 	lccnDir := fmt.Sprintf("%s", params["lccn"])
 	printPath := path.Join(baseDir, lccnDir, "print")
 	svc.logInfo(js, fmt.Sprintf("Check tribune mount %s", printPath))
+	if pathExists(printPath) == false {
+		return fmt.Errorf("%s not found", lccnDir)
+	}
 
 	allIssues, err := os.ReadDir(printPath)
 	if err != nil {
-		return fmt.Errorf("unable to get %s issues", lccnDir)
+		return fmt.Errorf("unable to get %s issues: %s", lccnDir, err.Error())
 	}
 	issues := make([]string, 0)
 	for _, de := range allIssues {
