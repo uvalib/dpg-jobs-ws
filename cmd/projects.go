@@ -52,7 +52,8 @@ type project struct {
 	ConditionNote     string
 	OwnerID           *int64
 	CurrentStepID     *int64
-	AddedAt           *time.Time
+	AddedAt           time.Time
+	StartedAt         *time.Time
 	FinishedAt        *time.Time
 	TotalDurationMins *int64
 	Notes             []*note `gorm:"foreignKey:ProjectID"`

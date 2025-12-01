@@ -194,10 +194,9 @@ func (svc *ServiceContext) setupTribuneQA(c *gin.Context, js *jobStatus, params 
 		if err := svc.GDB.Where("unit_id=?", issueUnit.ID).First(&proj).Error; err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				svc.logInfo(js, fmt.Sprintf("Project for unit %d %s does not exist; create it", issueUnit.ID, dir.Name()))
-				now := time.Now()
 				qaStepID := int64(62)
 				boundID := int64(4)
-				proj.AddedAt = &now
+				proj.AddedAt = time.Now()
 				proj.UnitID = issueUnit.ID
 				proj.WorkflowID = 7             // vendor
 				proj.ItemCondition = 0          // 0=good, 1=bad
@@ -213,8 +212,11 @@ func (svc *ServiceContext) setupTribuneQA(c *gin.Context, js *jobStatus, params 
 				continue
 			}
 		} else {
+			if proj.StartedAt != nil || proj.FinishedAt != nil {
+				svc.logInfo(js, fmt.Sprintf("Project %d exists for %s and it is in progress or finished. Skipping", proj.ID, dir.Name()))
+				continue
+			}
 			svc.logInfo(js, fmt.Sprintf("Use existing project %d for %s", proj.ID, dir.Name()))
-			// TODO check if project is DONE OR IN PROGRESS and skip if it is
 		}
 
 		allFiles, err := os.ReadDir(issueDir)
@@ -244,7 +246,10 @@ func (svc *ServiceContext) setupTribuneQA(c *gin.Context, js *jobStatus, params 
 			destName := fmt.Sprintf("%09d_%04d.tif", issueUnit.ID, pageNum)
 			destPath := path.Join(unitDir, destName)
 
-			// TODO check if file already exists. Skip if it does
+			if pathExists(destPath) {
+				svc.logInfo(js, fmt.Sprintf("%s exists. Skipping", destPath))
+				continue
+			}
 
 			_, err := copyFile(origPath, destPath, 0664)
 			if err != nil {
