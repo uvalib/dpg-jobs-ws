@@ -190,22 +190,22 @@ func (svc *ServiceContext) setupTribuneQA(c *gin.Context, js *jobStatus, params 
 				break
 			}
 		}
-		metsMetadata := fmt.Sprintf("Date Issued: %s, Volume: %s, Issue: %s, Edition: %s", dateIssued, volume, issue, edition)
-		svc.logInfo(js, fmt.Sprintf("Extracted issue metadata [%s]", metsMetadata))
+		specialInstructions := fmt.Sprintf("Date Issued: %s, Volume: %s, Issue: %s, Edition: %s", dateIssued, volume, issue, edition)
+		svc.logInfo(js, fmt.Sprintf("Extracted issue metadata [%s]", specialInstructions))
 
 		svc.logInfo(js, fmt.Sprintf("Get or create unit for issue %s", dir.Name()))
-		si := fmt.Sprintf("Ingest from %s %s", lccnDir, dir.Name())
-		svc.logInfo(js, fmt.Sprintf("special instructions for issue unit: %s", si))
+		staffNotes := fmt.Sprintf("Ingest from %s %s", lccnDir, dir.Name())
+		svc.logInfo(js, fmt.Sprintf("special instructions for issue unit: %s", specialInstructions))
 		var issueUnit unit
-		if err := svc.GDB.Where("order_id=? and special_instructions=?", orderID, si).First(&issueUnit).Error; err != nil {
+		if err := svc.GDB.Where("order_id=? and special_instructions=?", orderID, specialInstructions).First(&issueUnit).Error; err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				svc.logInfo(js, fmt.Sprintf("Unit for %s does not exist; create one", dir.Name()))
 				intendedUse := int64(110)
 				issueUnit.CompleteScan = true
 				issueUnit.IntendedUseID = &intendedUse
-				issueUnit.SpecialInstructions = si
+				issueUnit.SpecialInstructions = specialInstructions
 				issueUnit.MetadataID = &metadataID
-				issueUnit.StaffNotes = metsMetadata
+				issueUnit.StaffNotes = staffNotes
 				issueUnit.OrderID = orderID
 				issueUnit.UnitStatus = "approved"
 				if err := svc.GDB.Create(&issueUnit).Error; err != nil {
@@ -218,8 +218,11 @@ func (svc *ServiceContext) setupTribuneQA(c *gin.Context, js *jobStatus, params 
 				continue
 			}
 		} else {
+			if issueUnit.UnitStatus == "done" {
+				svc.logInfo(js, fmt.Sprintf("Existing unit %d for %s is complete. Skipping", issueUnit.ID, dir.Name()))
+				continue
+			}
 			svc.logInfo(js, fmt.Sprintf("Use existing unit %d for %s", issueUnit.ID, dir.Name()))
-			// TODO check if unit has master files already. if so, skip it
 		}
 
 		svc.logInfo(js, fmt.Sprintf("Get or create project for unit %d for %s", issueUnit.ID, dir.Name()))
@@ -270,8 +273,10 @@ func (svc *ServiceContext) setupTribuneQA(c *gin.Context, js *jobStatus, params 
 		}
 
 		svc.logInfo(js, fmt.Sprintf("move all page images in %s into %s", issueDir, unitDir))
+		sourceImages := make([]string, 0)
 		for seq, tif := range tifFiles {
 			pageNum := seq + 1
+			sourceImages = append(sourceImages, tif.Name())
 			svc.logInfo(js, fmt.Sprintf("process page %d: %s", pageNum, tif.Name()))
 
 			// 1 copy to unit directory in dpg_imaging following normal naming conventions
@@ -290,9 +295,11 @@ func (svc *ServiceContext) setupTribuneQA(c *gin.Context, js *jobStatus, params 
 				continue
 			}
 
-			// 2 set original file name to EXIF header iptc:MasterDocumentID
+			// 2 set original file name to EXIF header iptc:DocumentNotes
+			imgOrigin := fmt.Sprintf("source: %s", tif.Name())
+			svc.logInfo(js, fmt.Sprintf("Set -iptc:DocumentNotes=%s", imgOrigin))
 			cmd := make([]string, 0)
-			cmd = append(cmd, fmt.Sprintf("-iptc:MasterDocumentID=%s", tif.Name()))
+			cmd = append(cmd, fmt.Sprintf("-iptc:DocumentNotes=%s", imgOrigin))
 			cmd = append(cmd, destPath)
 			_, err = exec.Command("exiftool", cmd...).Output()
 			if err != nil {
@@ -304,6 +311,13 @@ func (svc *ServiceContext) setupTribuneQA(c *gin.Context, js *jobStatus, params 
 				dupPath = fmt.Sprintf("%s_exiftool_tmp", destPath)
 				os.Remove(dupPath)
 			}
+		}
+
+		svc.logInfo(js, fmt.Sprintf("Unit %d complete; update Staff Notes to include images %s", issueUnit.ID, strings.Join(sourceImages, ", ")))
+		imagesTxt := fmt.Sprintf("\nImages: %s", strings.Join(sourceImages, ", "))
+		issueUnit.StaffNotes = staffNotes + imagesTxt
+		if err := svc.GDB.Model(&issueUnit).Update("staff_notes", issueUnit.StaffNotes).Error; err != nil {
+			svc.logError(js, fmt.Sprintf("Unable to update staff notes to include images data: %s", err.Error()))
 		}
 	}
 
