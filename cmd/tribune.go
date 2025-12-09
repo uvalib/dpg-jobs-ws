@@ -163,9 +163,8 @@ func (svc *ServiceContext) validateTribuneMount(c *gin.Context, js *jobStatus, p
 //   - orderID: order units will be attached to
 //   - directory: the base directory for the issues
 //   - lccn: the lccn directory where iussues can be found
-//   - year: pull all issues for this year
-//   - month: get issues for this month (optional)
-//   - day: get issues for this day (optional)
+//   - date: a date or date fragment for issues to match;
+//     EX: 195* (all issues from the 1950s), 1951 (all from 1951), 1950-06 (all from june 1950), 1950-06-01
 //
 // EXAMPLE:
 //
@@ -173,7 +172,7 @@ func (svc *ServiceContext) validateTribuneMount(c *gin.Context, js *jobStatus, p
 //		--data '{"computeID": "lf6f", "name": "tribuneSetup", "dev": true, \
 //		"params": {"orderID": 12826, \
 //	   "directory": "/Users/lf6f/dev/tracksys-dev/sandbox/digiserv-production/tribune_data", \
-//	   "lccn": "sn95079521", "year": "1950"}}'
+//	   "lccn": "sn95079521", "date": "1950"}}'
 func (svc *ServiceContext) setupTribuneQA(c *gin.Context, js *jobStatus, params map[string]any) error {
 	// first grab orderID and ensure the order exists
 	orderF, ok := params["orderID"].(float64)
@@ -190,14 +189,9 @@ func (svc *ServiceContext) setupTribuneQA(c *gin.Context, js *jobStatus, params 
 	baseDir := fmt.Sprintf("%s", params["directory"])
 	lccnDir := fmt.Sprintf("%s", params["lccn"])
 	printPath := path.Join(baseDir, lccnDir, "print")
-	year := fmt.Sprintf("%s", params["year"])
-	tgtIssues := year
-	if params["month"] != nil {
-		tgtIssues += fmt.Sprintf("%s", params["month"])
-		if params["day"] != nil {
-			tgtIssues += fmt.Sprintf("%s", params["day"])
-		}
-	}
+	dateParam := fmt.Sprintf("%s", params["date"])
+	tgtIssues := strings.ReplaceAll(dateParam, "-", "") // the dates in the vendor directory have no dashes; EX: 19500603
+	tgtIssues = strings.Replace(tgtIssues, "*", "", 1)  // date can have a single * to indicate decade; ex: 195* for all issues in the '50s
 
 	// validate lccn dir and pick metadata
 	var metadataID int64
@@ -211,7 +205,7 @@ func (svc *ServiceContext) setupTribuneQA(c *gin.Context, js *jobStatus, params 
 		return fmt.Errorf("invalid LCCN %s", lccnDir)
 	}
 
-	svc.logInfo(js, fmt.Sprintf("Setup tribune %s from directory %s into order %d using metadata %d", tgtIssues, printPath, orderID, metadataID))
+	svc.logInfo(js, fmt.Sprintf("Setup tribune issues from '%s', directory %s into order %d using metadata %d", tgtIssues, printPath, orderID, metadataID))
 
 	allIssues, err := os.ReadDir(printPath)
 	if err != nil {
