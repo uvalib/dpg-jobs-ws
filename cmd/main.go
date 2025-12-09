@@ -158,6 +158,7 @@ func (svc *ServiceContext) runScript(c *gin.Context) {
 		"generateBondMapping": svc.generateBondMapping,
 		"tribuneCheck":        svc.validateTribuneMount,
 		"tribuneSetup":        svc.setupTribuneQA,
+		"tribuneFix":          svc.fixTribuneHeaders,
 	}
 
 	tgtScript := scripts[req.Name]
