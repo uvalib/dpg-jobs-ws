@@ -51,8 +51,9 @@ type HathiTrustConfig struct {
 
 // TrackSysConfig contains the configuration data for tracksys endpoints
 type TrackSysConfig struct {
-	API   string
-	Admin string
+	API     string
+	Admin   string
+	Imaging string
 }
 
 // APTrustConfig contains the cpmfiguration params for the APTrust S3 bucket
@@ -115,7 +116,8 @@ func LoadConfiguration() *ServiceConfig {
 
 	// TrackSys
 	flag.StringVar(&cfg.TrackSys.API, "tsapi", "https://tracksys-api-ws.internal.lib.virginia.edu", "URL for TrackSys API")
-	flag.StringVar(&cfg.TrackSys.Admin, "tsadmin", "https://tracksys.lib.virginia.edu/admin", "URL for TrackSys ADMIN interface")
+	flag.StringVar(&cfg.TrackSys.Admin, "tsadmin", "https://tracksys.lib.virginia.edu", "URL for TrackSys ADMIN interface")
+	flag.StringVar(&cfg.TrackSys.Imaging, "tsimaging", "dpg-imaging.lib.virginia.edu/api", "URL for TrackSys imaging API")
 
 	// APTrust
 	flag.StringVar(&cfg.APTrust.AWSHost, "apthost", "s3.amazonaws.com", "APTrust S3 host")
