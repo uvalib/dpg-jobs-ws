@@ -236,6 +236,9 @@ func (svc *ServiceContext) importImages(js *jobStatus, tgtUnit *unit, srcDir str
 		}
 	}
 
+	// FIXME THIS IS NOT NEEDED. -iptc:sub-location has somthing like [container type name] [container id], Folder [folder id]
+	// Just use that.. nop need for this....
+
 	// grab any project info for this unit
 	unitProj, err := svc.getUnitProject(tgtUnit.ID)
 	if err != nil {
@@ -312,11 +315,13 @@ func (svc *ServiceContext) importImages(js *jobStatus, tgtUnit *unit, srcDir str
 			continue
 		}
 
+		// FIXME get container type for project
 		// if set, add location info to the master file
 		if tifMD.Location != "" {
 			svc.logInfo(js, fmt.Sprintf("Location metadata found: %s", tifMD.Location))
 			if newMF.location() == nil {
 				svc.logInfo(js, fmt.Sprintf("Create location %s for masterfile %s", tifMD.Location, newMF.Filename))
+				// FIXME NO NEED FOR *unitProj.ContainerTypeID all info is in  tifMD.Location
 				loc, err := svc.findOrCreateLocation(js, *tgtUnit.MetadataID, *unitProj.ContainerTypeID, srcDir, tifMD.Location)
 				if err != nil {
 					svc.logError(js, fmt.Sprintf("Unable to create location for %s: %s", newMF.Filename, err.Error()))
@@ -512,6 +517,8 @@ func extractTifMetadata(tifPath string) (*tifMetadata, error) {
 	}
 	return &out, nil
 }
+
+// FIXME ctID not needed. just look up based on the container type name in the first part of locationStr
 func (svc *ServiceContext) findOrCreateLocation(js *jobStatus, mdID int64, ctID int64, baseDir, locationStr string) (*location, error) {
 	svc.logInfo(js, fmt.Sprintf("Find or create location based on %s", locationStr))
 
@@ -525,6 +532,20 @@ func (svc *ServiceContext) findOrCreateLocation(js *jobStatus, mdID int64, ctID 
 		folderBits := strings.Split(bits[1], " ")
 		folder = strings.TrimSpace(folderBits[len(folderBits)-1])
 	}
+
+	/* FULL PARSE EXAMPLE:
+	locationStr := "Flat File Drawer 6, Folder 69"
+	bits := strings.Split(locationStr, ",")
+	containerBits := strings.Split(bits[0], " ")
+	box := strings.TrimSpace(containerBits[len(containerBits)-1])
+	containerType := strings.Join(containerBits[0:len(containerBits)-1], " ")
+	folder := ""
+	if len(bits) > 1 {
+		folderBits := strings.Split(bits[1], " ")
+		folder = strings.TrimSpace(folderBits[len(folderBits)-1])
+	}
+	fmt.Printf("%s %s folder %s", containerType, box, folder)
+	*/
 
 	var tgtLoc location
 	err := svc.GDB.Where("metadata_id=?", mdID).Where("container_type_id=?", ctID).

@@ -54,6 +54,7 @@ type TrackSysConfig struct {
 	API     string
 	Admin   string
 	Imaging string
+	JWTKey  string
 }
 
 // APTrustConfig contains the cpmfiguration params for the APTrust S3 bucket
@@ -118,6 +119,7 @@ func LoadConfiguration() *ServiceConfig {
 	flag.StringVar(&cfg.TrackSys.API, "tsapi", "https://tracksys-api-ws.internal.lib.virginia.edu", "URL for TrackSys API")
 	flag.StringVar(&cfg.TrackSys.Admin, "tsadmin", "https://tracksys.lib.virginia.edu", "URL for TrackSys ADMIN interface")
 	flag.StringVar(&cfg.TrackSys.Imaging, "tsimaging", "dpg-imaging.lib.virginia.edu/api", "URL for TrackSys imaging API")
+	flag.StringVar(&cfg.TrackSys.JWTKey, "jwtkey", "", "JWT signature key")
 
 	// APTrust
 	flag.StringVar(&cfg.APTrust.AWSHost, "apthost", "s3.amazonaws.com", "APTrust S3 host")
@@ -189,6 +191,9 @@ func LoadConfiguration() *ServiceConfig {
 	}
 	if cfg.IIIF.StagingDir == "" {
 		log.Fatal("Parameter iiifstaging is required")
+	}
+	if cfg.TrackSys.JWTKey == "" {
+		log.Fatal("Parameter jwtkey is required")
 	}
 
 	log.Printf("[CONFIG] port          = [%d]", cfg.Port)

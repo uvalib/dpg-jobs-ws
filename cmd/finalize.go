@@ -176,6 +176,7 @@ func (svc *ServiceContext) setUnitFatal(js *jobStatus, tgtUnit *unit, errMsg str
 	svc.setUnitStatus(tgtUnit, "error")
 	svc.logFatal(js, errMsg)
 
+	// FIXME use API to see if project exists. If so, call API to FAIL project
 	currProj, err := svc.getUnitProject(tgtUnit.ID)
 	if err != nil {
 		svc.logError(js, fmt.Sprintf("Project lookup failed: %s", err.Error()))
@@ -195,6 +196,7 @@ func (svc *ServiceContext) unitFinishedFinalization(js *jobStatus, tgtUnitID int
 		return fmt.Errorf("error looking up finalized unit: %s", err.Error())
 	}
 
+	// FIXME use API to see if project exists. If so, call API to FAIL project
 	currProj, err := svc.getUnitProject(tgtUnit.ID)
 	if err != nil {
 		return fmt.Errorf("error looking up project: %s", err.Error())

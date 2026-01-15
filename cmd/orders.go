@@ -102,6 +102,7 @@ func (svc *ServiceContext) checkOrderReadyForDelivery(js *jobStatus, orderID int
 				} else {
 					svc.logInfo(js, fmt.Sprintf("   Unit %d COMPLETE", unit.ID))
 					if unit.UnitStatus != "done" {
+						// FIXME if there is a project associated with this unit, it needs to be completed as well
 						unit.UnitStatus = "done"
 						svc.GDB.Model(&unit).Select("UnitStatus").Updates(unit)
 					}

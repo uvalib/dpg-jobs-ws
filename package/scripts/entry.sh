@@ -46,6 +46,7 @@ cd bin; ./dpg-jobs-ws               \
   -tsapi      ${TSAPI}              \
   -tsadmin    ${TSADMIN}            \
   -tsimaging  ${TSIMAGING}          \
+  -jwtkey     $DPG_JWT_KEY          \
   -reindex    ${REINDEX}            \
   -xmlreindex ${XML_REINDEX}        \
   -aptbucket  ${APTRUST_AWS_BUCKET} \
