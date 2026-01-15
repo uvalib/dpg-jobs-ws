@@ -45,6 +45,7 @@ cd bin; ./dpg-jobs-ws               \
   -rcdir      ${RC_DIR}             \
   -tsapi      ${TSAPI}              \
   -tsadmin    ${TSADMIN}            \
+  -tsimaging  ${TSIMAGING}          \
   -reindex    ${REINDEX}            \
   -xmlreindex ${XML_REINDEX}        \
   -aptbucket  ${APTRUST_AWS_BUCKET} \

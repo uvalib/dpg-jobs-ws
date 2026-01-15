@@ -249,6 +249,61 @@ func (svc *ServiceContext) createPatronDeliverables(c *gin.Context) {
 	c.String(http.StatusOK, fmt.Sprintf("%d", js.ID))
 }
 
+func (svc *ServiceContext) updateUnitOCRSettings(c *gin.Context) {
+	unitID, _ := strconv.ParseInt(c.Param("id"), 10, 64)
+	js, err := svc.createJobStatus("UpdateOCRSettings", "Unit", unitID)
+	if err != nil {
+		log.Printf("ERROR: unable to create UpdateOCRSettings job status: %s", err.Error())
+		c.String(http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	var ocrUpdateRequest struct {
+		OCRHintID       int64  `json:"ocrHintID"`
+		OCRLanguageHint string `json:"ocrLangage"`
+		OCRMasterFiles  bool   `json:"ocrMasterFiles"`
+	}
+	err = c.ShouldBindJSON(&ocrUpdateRequest)
+	if err != nil {
+		svc.logFatal(js, fmt.Sprintf("Unable to parse ocr update request: %s", err.Error()))
+		c.String(http.StatusBadRequest, err.Error())
+		return
+	}
+
+	svc.logInfo(js, fmt.Sprintf("Lookup unit %d", unitID))
+	var tgtUnit unit
+	if err := svc.GDB.First(&tgtUnit, unitID).Error; err != nil {
+		svc.logFatal(js, fmt.Sprintf("Unable to load unit %d: %s", unitID, err.Error()))
+		c.String(http.StatusBadRequest, err.Error())
+		return
+	}
+
+	svc.logInfo(js, fmt.Sprintf("Update unit OCR master files flag to %t", ocrUpdateRequest.OCRMasterFiles))
+	tgtUnit.OcrMasterFiles = ocrUpdateRequest.OCRMasterFiles
+	if err := svc.GDB.Model(&tgtUnit).Select("OCRMasterFiles").Updates(tgtUnit).Error; err != nil {
+		svc.logError(js, fmt.Sprintf("Unable to update unit OCR master files flag: %s", err.Error()))
+	}
+
+	if ocrUpdateRequest.OCRHintID > 0 {
+		svc.logInfo(js, fmt.Sprintf("Update unit metadata %d OCR hint to %d", *tgtUnit.MetadataID, ocrUpdateRequest.OCRHintID))
+		tgtMD := metadata{ID: *tgtUnit.MetadataID, OcrHintID: ocrUpdateRequest.OCRHintID}
+		if err := svc.GDB.Model(&tgtMD).Select("ocr_hint_id").Updates(tgtMD).Error; err != nil {
+			svc.logError(js, fmt.Sprintf("Unable to update unit OCR hint: %s", err.Error()))
+		}
+	}
+
+	if ocrUpdateRequest.OCRLanguageHint != "" {
+		svc.logInfo(js, fmt.Sprintf("Update unit metadata %d OCR language hint to %s", *tgtUnit.MetadataID, ocrUpdateRequest.OCRLanguageHint))
+		tgtMD := metadata{ID: *tgtUnit.MetadataID, OcrLanguageHint: ocrUpdateRequest.OCRLanguageHint}
+		err = svc.GDB.Model(&tgtMD).Select("ocr_language_hint").Updates(tgtMD).Error
+		if err != nil {
+			svc.logError(js, fmt.Sprintf("Unable to update OCR Language hint for unit metadata: %s", err.Error()))
+		}
+	}
+	svc.jobDone(js)
+	c.String(http.StatusOK, "updated")
+}
+
 func (svc *ServiceContext) cloneAllMasterFiles(js *jobStatus, srcUnit *unit, destUnit *unit, startPageNum int) (int, error) {
 	svc.logInfo(js, fmt.Sprintf("Cloning all master files from unit %d. Statring page number: %d", srcUnit.ID, startPageNum))
 	pageNum := startPageNum
@@ -403,6 +458,8 @@ func (svc *ServiceContext) unitImagesAvailable(js *jobStatus, tgtUnit *unit, uni
 }
 
 func (svc *ServiceContext) getUnitProject(unitID int64) (*project, error) {
+	// FIXME use API for this
+
 	// use limit(1) and find to avoid errors when project does not exist
 	var currProj project
 	err := svc.GDB.Preload("Workflow").Preload("Notes").Where("unit_id=?", unitID).Limit(1).Find(&currProj).Error
