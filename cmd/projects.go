@@ -94,6 +94,7 @@ func (svc *ServiceContext) projectFinishedFinalization(js *jobStatus, currProj *
 	diff := endTime.Sub(startTime)
 	processingMins := uint(math.Round(diff.Seconds() / 60.0))
 
+	// FIXME remove
 	var activeAssign assignment
 	err := svc.GDB.Where("project_id=?", currProj.ID).Order("assigned_at DESC").First(&activeAssign).Error
 	if err != nil {
@@ -106,6 +107,7 @@ func (svc *ServiceContext) projectFinishedFinalization(js *jobStatus, currProj *
 		return fmt.Errorf("Unable to get updated list masterfiles: %s", err.Error())
 	}
 
+	// FIXME use API to fail
 	svc.logInfo(js, "Validating finalized unit")
 	if tgtUnit.ThrowAway == false {
 		if tgtUnit.DateArchived == nil {
@@ -154,6 +156,7 @@ func (svc *ServiceContext) projectFinishedFinalization(js *jobStatus, currProj *
 	svc.logInfo(js, "Unit finished finalization")
 	svc.setUnitStatus(tgtUnit, "done")
 
+	// FIXME USE API
 	// all validations have passed. the project finalization has successfully completed
 	now := time.Now()
 	currProj.FinishedAt = &now
@@ -193,6 +196,7 @@ func (svc *ServiceContext) projectFinishedFinalization(js *jobStatus, currProj *
 	return nil
 }
 
+// FIXME REMOVE
 func (svc *ServiceContext) addFinalizeFailNote(currProj *project, message string) {
 	newNote := note{ProjectID: currProj.ID, NoteType: 2, Note: message}
 	if currProj.CurrentStepID != nil {
@@ -214,6 +218,7 @@ func (svc *ServiceContext) addFinalizeFailNote(currProj *project, message string
 	}
 }
 
+// FIXME remove
 func (svc *ServiceContext) validationFailed(currProj *project, activeAssign *assignment, reason string) {
 	msg := fmt.Sprintf("<p>Validation of finalization failed: %s</p>", reason)
 	svc.addFinalizeFailNote(currProj, msg)
