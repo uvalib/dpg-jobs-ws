@@ -26,6 +26,7 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/golang-jwt/jwt/v5"
 
 	"github.com/gin-gonic/gin"
 	_ "github.com/go-sql-driver/mysql"
@@ -522,4 +523,34 @@ func (svc *ServiceContext) cleanupWorkDirectories(js *jobStatus, unitID int64) {
 			svc.logError(js, fmt.Sprintf("Unable to move scan directory: %s", err.Error()))
 		}
 	}
+}
+
+type jwtClaims struct {
+	UserID    uint   `json:"userID"`
+	ComputeID string `json:"computeID"`
+	Role      string `json:"role"`
+	FirstName string `json:"firstName"`
+	LastName  string `json:"lastName"`
+	jwt.RegisteredClaims
+}
+
+func (svc *ServiceConfig) mintTemporaryJWT() (string, error) {
+	log.Printf("INFO: mint tenporary JWT")
+	expirationTime := time.Now().Add(5 * time.Minute)
+	claims := jwtClaims{
+		UserID:    0,
+		ComputeID: "dpg-jobs",
+		Role:      "admin",
+		RegisteredClaims: jwt.RegisteredClaims{
+			ExpiresAt: jwt.NewNumericDate(expirationTime),
+			Issuer:    "dpg-jobs",
+		},
+	}
+
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	signedStr, jwtErr := token.SignedString([]byte(svc.TrackSys.JWTKey))
+	if jwtErr != nil {
+		return "", jwtErr
+	}
+	return signedStr, nil
 }

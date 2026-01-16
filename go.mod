@@ -14,6 +14,7 @@ require (
 	github.com/gin-gonic/gin v1.11.0
 	github.com/go-sql-driver/mysql v1.9.3
 	github.com/go-xmlfmt/xmlfmt v1.1.3
+	github.com/golang-jwt/jwt/v5 v5.3.0
 	github.com/jlaffaye/ftp v0.2.0
 	golang.org/x/exp v0.0.0-20260112195511-716be5621a96
 	golang.org/x/image v0.35.0
