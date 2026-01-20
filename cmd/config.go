@@ -214,6 +214,7 @@ func LoadConfiguration() *ServiceConfig {
 	log.Printf("[CONFIG] pdf           = [%s]", cfg.PdfURL)
 	log.Printf("[CONFIG] tsadmin       = [%s]", cfg.TrackSys.Admin)
 	log.Printf("[CONFIG] tsapi         = [%s]", cfg.TrackSys.API)
+	log.Printf("[CONFIG] tsimaging     = [%s]", cfg.TrackSys.Imaging)
 	log.Printf("[CONFIG] asuser        = [%s]", cfg.ArchivesSpace.User)
 	log.Printf("[CONFIG] htftps        = [%s]", cfg.HathiTrust.FTPS)
 	log.Printf("[CONFIG] htuser        = [%s]", cfg.HathiTrust.User)

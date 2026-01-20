@@ -534,9 +534,9 @@ type jwtClaims struct {
 	jwt.RegisteredClaims
 }
 
-func (svc *ServiceConfig) mintTemporaryJWT() (string, error) {
-	log.Printf("INFO: mint tenporary JWT")
-	expirationTime := time.Now().Add(5 * time.Minute)
+func (svc *ServiceContext) mintTemporaryJWT() (string, error) {
+	log.Printf("INFO: mint temporary JWT")
+	expirationTime := time.Now().Add(1 * time.Minute)
 	claims := jwtClaims{
 		UserID:    0,
 		ComputeID: "dpg-jobs",
