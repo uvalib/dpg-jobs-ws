@@ -161,16 +161,23 @@ func (svc *ServiceContext) projectFinishedFinalization(js *jobStatus, projectID 
 	svc.setUnitStatus(tgtUnit, "done")
 
 	// send request to imaging to mark project as finished
-	finalizeReq := struct {
-		ProcessingMins uint `json:"processingMins"`
-	}{
-		ProcessingMins: processingMins,
-	}
-	if err := svc.projectsAPIPost(fmt.Sprintf("projects/%d/done", projectID), finalizeReq); err != nil {
-		svc.logError(js, fmt.Sprintf("Unable fail project %d: %s", projectID, err.Message))
+	if err := svc.finishProject(projectID, processingMins); err != nil {
+		svc.logError(js, err.Error())
 	}
 
 	log.Printf("INFO: project %d finalization minutes: %d", projectID, processingMins)
 	svc.logInfo(js, fmt.Sprintf("Total finalization minutes: %d", processingMins))
+	return nil
+}
+
+func (svc *ServiceContext) finishProject(projectID int64, durationMins uint) error {
+	finalizeReq := struct {
+		ProcessingMins uint `json:"processingMins"`
+	}{
+		ProcessingMins: durationMins,
+	}
+	if err := svc.projectsAPIPost(fmt.Sprintf("projects/%d/done", projectID), finalizeReq); err != nil {
+		return fmt.Errorf("finish project %d failed: %s", projectID, err.Message)
+	}
 	return nil
 }

@@ -102,9 +102,23 @@ func (svc *ServiceContext) checkOrderReadyForDelivery(js *jobStatus, orderID int
 				} else {
 					svc.logInfo(js, fmt.Sprintf("   Unit %d COMPLETE", unit.ID))
 					if unit.UnitStatus != "done" {
-						// FIXME if there is a project associated with this unit, it needs to be completed as well
 						unit.UnitStatus = "done"
 						svc.GDB.Model(&unit).Select("UnitStatus").Updates(unit)
+
+						svc.logInfo(js, fmt.Sprintf("Check if done unit %d has a project", unit.ID))
+						projResp, err := svc.getUnitProject(unit.ID)
+						if err != nil {
+							svc.logError(js, fmt.Sprintf("Project lookup failed: %s", err.Error()))
+						} else {
+							if projResp.Exists {
+								svc.logInfo(js, fmt.Sprintf("Unit %d has project %d; mark it as finished", unit.ID, projResp.ProjectID))
+								if err := svc.finishProject(projResp.ProjectID, 0); err != nil {
+									svc.logError(js, fmt.Sprintf("Finish project %d failed: %s", projResp.ProjectID, err.Error()))
+								}
+							} else {
+								svc.logInfo(js, fmt.Sprintf("Unit %d does not have a project", unit.ID))
+							}
+						}
 					}
 				}
 			} else {
