@@ -456,19 +456,3 @@ func (svc *ServiceContext) unitImagesAvailable(js *jobStatus, tgtUnit *unit, uni
 	}
 	return len(files) == len(tgtUnit.MasterFiles)
 }
-
-func (svc *ServiceContext) getUnitProject(unitID int64) (*project, error) {
-	// FIXME use API for this
-
-	// use limit(1) and find to avoid errors when project does not exist
-	var currProj project
-	err := svc.GDB.Preload("Workflow").Preload("Notes").Where("unit_id=?", unitID).Limit(1).Find(&currProj).Error
-	if err != nil {
-		return nil, err
-	}
-	if currProj.ID == 0 {
-		// no project available
-		return nil, nil
-	}
-	return &currProj, nil
-}

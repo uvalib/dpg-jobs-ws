@@ -9,7 +9,6 @@ import (
 	"path"
 	"slices"
 	"strings"
-	"time"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -294,33 +293,31 @@ func (svc *ServiceContext) setupTribuneQA(c *gin.Context, js *jobStatus, params 
 		}
 
 		svc.logInfo(js, fmt.Sprintf("Get or create project for unit %d for %s", issueUnit.ID, dir.Name()))
-		var proj project
-		if err := svc.GDB.Where("unit_id=?", issueUnit.ID).First(&proj).Error; err != nil {
-			if errors.Is(err, gorm.ErrRecordNotFound) {
-				svc.logInfo(js, fmt.Sprintf("Project for unit %d %s does not exist; create it", issueUnit.ID, dir.Name()))
-				qaStepID := int64(62)
-				boundID := int64(4)
-				proj.AddedAt = time.Now()
-				proj.UnitID = issueUnit.ID
-				proj.WorkflowID = 7             // vendor
-				proj.ItemCondition = 0          // 0=good, 1=bad
-				proj.CategoryID = 5             // special
-				proj.ContainerTypeID = &boundID // bound
-				proj.CurrentStepID = &qaStepID
-				if err := svc.GDB.Create(&proj).Error; err != nil {
-					svc.logError(js, fmt.Sprintf("Create project for %s failed: %s", dir.Name(), err.Error()))
-					continue
-				}
-			} else {
-				svc.logError(js, fmt.Sprintf("Search for existing project for unit %d failed: %s", issueUnit.ID, err.Error()))
+		projResp, err := svc.getUnitProject(issueUnit.ID)
+		if err != nil {
+			svc.logError(js, fmt.Sprintf("Search for existing project for unit %d failed: %s", issueUnit.ID, err.Error()))
+			continue
+		}
+		if projResp.Exists == false {
+			svc.logInfo(js, fmt.Sprintf("Project for unit %d %s does not exist; create it", issueUnit.ID, dir.Name()))
+			createReq := createProjectRequest{
+				UnitID:          issueUnit.ID,
+				WorkflowID:      7, // vendor
+				ContainerTypeID: 4, // bound
+				CategoryID:      5, // special
+				Condition:       0, // 0=good, 1=bad
+			}
+
+			if err := svc.projectsAPIPost("projects/create", createReq); err != nil {
+				svc.logError(js, fmt.Sprintf("Create project for %s failed: %s", dir.Name(), err.Message))
 				continue
 			}
 		} else {
-			if proj.StartedAt != nil || proj.FinishedAt != nil {
-				svc.logInfo(js, fmt.Sprintf("Project %d exists for %s and it is in progress or finished. Skipping", proj.ID, dir.Name()))
+			if projResp.Started || projResp.Finished {
+				svc.logInfo(js, fmt.Sprintf("Project %d exists for %s and it is in progress or finished. Skipping", projResp.ProjectID, dir.Name()))
 				continue
 			}
-			svc.logInfo(js, fmt.Sprintf("Use existing project %d for %s", proj.ID, dir.Name()))
+			svc.logInfo(js, fmt.Sprintf("Use existing project %d for %s", projResp.ProjectID, dir.Name()))
 		}
 
 		allFiles, err := os.ReadDir(issueDir)

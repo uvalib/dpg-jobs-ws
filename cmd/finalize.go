@@ -158,8 +158,7 @@ func (svc *ServiceContext) finalizeUnit(c *gin.Context) {
 		// any project validation failures will fail the finalization job. for units that have no projects,
 		// finalization is done now and will be marked as successful. Note that only the ID is passed in. This
 		// forces the unit to be reloaded to pick up any changes that may have occurred during teh finalize
-		err = svc.unitFinishedFinalization(js, tgtUnit.ID)
-		if err != nil {
+		if err := svc.unitFinishedFinalization(js, tgtUnit.ID); err != nil {
 			svc.setUnitFatal(js, &tgtUnit, err.Error())
 			return
 		}
@@ -176,14 +175,13 @@ func (svc *ServiceContext) setUnitFatal(js *jobStatus, tgtUnit *unit, errMsg str
 	svc.setUnitStatus(tgtUnit, "error")
 	svc.logFatal(js, errMsg)
 
-	// FIXME use API to see if project exists. If so, call API to FAIL project
-	currProj, err := svc.getUnitProject(tgtUnit.ID)
+	projResp, err := svc.getUnitProject(tgtUnit.ID)
 	if err != nil {
 		svc.logError(js, fmt.Sprintf("Project lookup failed: %s", err.Error()))
 		return
 	}
-	if currProj != nil {
-		svc.projectFailedFinalization(js, currProj)
+	if projResp.Exists {
+		svc.projectFailedFinalization(js, projResp.ProjectID)
 	}
 }
 
@@ -196,13 +194,12 @@ func (svc *ServiceContext) unitFinishedFinalization(js *jobStatus, tgtUnitID int
 		return fmt.Errorf("error looking up finalized unit: %s", err.Error())
 	}
 
-	// FIXME use API to see if project exists. If so, call API to FAIL project
-	currProj, err := svc.getUnitProject(tgtUnit.ID)
+	projResp, err := svc.getUnitProject(tgtUnit.ID)
 	if err != nil {
-		return fmt.Errorf("error looking up project: %s", err.Error())
+		return fmt.Errorf("project lookup failed: %s", err.Error())
 	}
 
-	if currProj == nil {
+	if projResp.Exists == false {
 		svc.logInfo(js, "Set unit status to done")
 		svc.setUnitStatus(&tgtUnit, "done")
 		return nil
@@ -210,7 +207,7 @@ func (svc *ServiceContext) unitFinishedFinalization(js *jobStatus, tgtUnitID int
 
 	// a project is associated, walk through some final project validations. any errors will fail finalization.
 	svc.logInfo(js, "Unit is associated with a project; call projectFinishedFinalization")
-	return svc.projectFinishedFinalization(js, currProj, &tgtUnit)
+	return svc.projectFinishedFinalization(js, projResp.ProjectID, &tgtUnit)
 }
 
 func (svc *ServiceContext) setUnitStatus(tgtUnit *unit, status string) {
