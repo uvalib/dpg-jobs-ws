@@ -148,22 +148,9 @@ func (svc *ServiceContext) exportMasterFiles(js *jobStatus, md *metadata, export
 		return fmt.Errorf("Unable to create image assemble dir %s: %s", assembleImagesDir, err.Error())
 	}
 
-	var masterFiles []masterFile
-	err = svc.GDB.Joins("Unit").Where("Unit.metadata_id=? and Unit.intended_use_id=?", md.ID, 110).Find(&masterFiles).Error
-	if err != nil {
-		return err
-	}
+	masterFiles := svc.getBestMasterFiles(js, uint64(md.ID))
 	if len(masterFiles) == 0 {
-		// if that fails, see if this is a the special case where an image is assigned different metadata than the unit.
-		// this is the case for individual images described by XML metadata that are generaly part of a larger collection
-		svc.logInfo(js, fmt.Sprintf("no units directly found for metadata %d; searching master files...", md.ID))
-		err = svc.GDB.Joins("Unit").Where("Unit.intended_use_id=?", 110).Where("master_files.metadata_id=?", md.ID).Find(&masterFiles).Error
-		if err != nil {
-			return err
-		}
-		if len(masterFiles) == 0 {
-			return fmt.Errorf("no masterfiles qualify for export (intended use 110)")
-		}
+		return fmt.Errorf("no masterfiles qualify for export (intended use 110 or 101)")
 	}
 
 	svc.logInfo(js, fmt.Sprintf("%d masterfiles found", len(masterFiles)))
