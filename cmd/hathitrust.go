@@ -68,8 +68,7 @@ type hathiTrustSubmission struct {
 func (svc *ServiceContext) flagOrderForHathiTrust(c *gin.Context) {
 	log.Printf("INFO: received request to init order for submission to hathitrust")
 	var req hathiTrustInitRequest
-	err := c.ShouldBindJSON(&req)
-	if err != nil {
+	if err := c.ShouldBindJSON(&req); err != nil {
 		log.Printf("ERROR: unable to parse hathitrust add request: %s", err.Error())
 		c.String(http.StatusBadRequest, err.Error())
 		return
@@ -96,10 +95,23 @@ func (svc *ServiceContext) flagOrderForHathiTrust(c *gin.Context) {
 	}
 
 	var tgtUnits []unit
-	err = svc.GDB.Where("order_id=? and unit_status != ? and intended_use_id=?", req.OrderID, "canceled", 110).Find(&tgtUnits).Error
-	if err != nil {
+	if err := svc.GDB.Where("order_id=? and unit_status != ? and intended_use_id=?", req.OrderID, "canceled", 110).Find(&tgtUnits).Error; err != nil {
 		svc.logFatal(js, fmt.Sprintf("unable to get units for order %d: %s", req.OrderID, err.Error()))
 		c.String(http.StatusInternalServerError, err.Error())
+		return
+	}
+	if len(tgtUnits) == 0 {
+		svc.logInfo(js, fmt.Sprintf("No intended use 110 units found for order %d; try 101", req.OrderID))
+		if err := svc.GDB.Where("order_id=? and unit_status != ? and intended_use_id=?", req.OrderID, "canceled", 101).Find(&tgtUnits).Error; err != nil {
+			svc.logFatal(js, fmt.Sprintf("unable to get units for order %d: %s", req.OrderID, err.Error()))
+			c.String(http.StatusInternalServerError, err.Error())
+			return
+		}
+	}
+
+	if len(tgtUnits) == 0 {
+		svc.logFatal(js, fmt.Sprintf("No units suitable for HathiTrust submission found for order %d", req.OrderID))
+		c.String(http.StatusBadRequest, "no suitable units found")
 		return
 	}
 
@@ -107,8 +119,7 @@ func (svc *ServiceContext) flagOrderForHathiTrust(c *gin.Context) {
 	flagCnt := 0
 	for _, tgtUnit := range tgtUnits {
 		var mfCnt int64
-		err = svc.GDB.Table("master_files").Where("unit_id=?", tgtUnit.ID).Count(&mfCnt).Error
-		if err != nil {
+		if err := svc.GDB.Table("master_files").Where("unit_id=?", tgtUnit.ID).Count(&mfCnt).Error; err != nil {
 			svc.logError(js, fmt.Sprintf("unable to get master file count for unit %d, it will not be flagged for hathitrust inclusion: %s", tgtUnit.ID, err.Error()))
 			continue
 		}
@@ -118,8 +129,7 @@ func (svc *ServiceContext) flagOrderForHathiTrust(c *gin.Context) {
 		}
 
 		svc.logInfo(js, fmt.Sprintf("[%d] flag metadata %d from unit %d for inclusion in hathitrust", (flagCnt+1), *tgtUnit.MetadataID, tgtUnit.ID))
-		err = svc.flagMetadataForHathiTrust(js, *tgtUnit.MetadataID)
-		if err != nil {
+		if err := svc.flagMetadataForHathiTrust(js, *tgtUnit.MetadataID); err != nil {
 			log.Printf("ERROR: %s", err.Error())
 			continue
 		}

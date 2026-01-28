@@ -203,24 +203,10 @@ func (svc *ServiceContext) createBag(js *jobStatus, md *metadata, collectionMD *
 		bagFiles = append(bagFiles, fmt.Sprintf("%s.xml", md.PID))
 	}
 
-	// first try the normal case: units with matching metadata (images in a collection, book-like items)
 	svc.logInfo(js, "Adding master files to bag")
-	var masterFiles []masterFile
-	err = svc.GDB.Joins("Unit").Where("Unit.metadata_id=? and Unit.intended_use_id=?", md.ID, 110).Find(&masterFiles).Error
-	if err != nil {
-		return "", fmt.Errorf("unable to get master files: %s", err.Error())
-	}
+	masterFiles := svc.getBestMasterFiles(js, uint64(md.ID))
 	if len(masterFiles) == 0 {
-		// if that fails, see if this is a the special case where an image is assigned different metadata than the unit.
-		// this is the case for individual images described by XML metadata that are generaly part of a larger collection
-		svc.logInfo(js, fmt.Sprintf("no units directly found for metadata %d; searching master files...", md.ID))
-		err = svc.GDB.Joins("Unit").Where("Unit.intended_use_id=?", 110).Where("master_files.metadata_id=?", md.ID).Find(&masterFiles).Error
-		if err != nil {
-			return "", fmt.Errorf("unable to get master files: %s", err.Error())
-		}
-		if len(masterFiles) == 0 {
-			return "", fmt.Errorf("no masterfiles qualify for APTrust (intended use 110)")
-		}
+		return "", fmt.Errorf("no masterfiles qualify for APTrust (intended use 110)")
 	}
 
 	svc.logInfo(js, fmt.Sprintf("%d masterfiles found", len(masterFiles)))
