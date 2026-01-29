@@ -97,6 +97,11 @@ func (svc *ServiceContext) submitToAPTrust(c *gin.Context) {
 	if resubmit {
 		log.Printf("INFO: prepare metadata %d for aptrust resubmission", mdID)
 	} else {
+		log.Printf("INFO: validate metadata %d is a candidate aptrust submission", mdID)
+		if err := svc.validateAPTrustSubmissionRequest(uint64(mdID)); err != nil {
+			log.Printf("ERROR: metadata %d is not a candidate for aptrust: %s", mdID, err.Error())
+			return
+		}
 		log.Printf("INFO: prepare metadata %d for aptrust submission", mdID)
 	}
 	tgtMD, err := svc.prepareAPTrustSubmission(mdID, resubmit)
@@ -163,6 +168,97 @@ func (svc *ServiceContext) submitToAPTrust(c *gin.Context) {
 	}()
 
 	c.String(http.StatusOK, fmt.Sprintf("%d", js.ID))
+}
+
+func (svc *ServiceContext) validateAPTrustMetadata(metadataIDs []uint64) error {
+	var mfResp []struct {
+		MetadataID uint64
+		UnitID     uint64
+		Cnt        int
+	}
+
+	// get a list of master file counts for intended use 110 pr 101 units for the target metadataIDs
+	mdQ := "select u.metadata_id as metadata_id, u.id as unit_id, count(mf.id) as cnt from units u "
+	mdQ += " left join master_files mf on mf.unit_id = u.id"
+	mdQ += " where (intended_use_id=110 or intended_use_id=101) AND (unit_status=? OR unit_status=?)"
+	mdQ += " AND u.metadata_id in ? group by u.id"
+	if err := svc.GDB.Raw(mdQ, "approved", "done", metadataIDs).Scan(&mfResp).Error; err != nil {
+		return err
+	}
+
+	mfCnt := 0
+	invalidMetadatIDs := make([]uint64, 0)
+	for _, rec := range mfResp {
+		mfCnt += rec.Cnt
+		if rec.Cnt == 0 {
+			log.Printf("INFO: metadata %d has no valid units/masterfiles", rec.MetadataID)
+			invalidMetadatIDs = append(invalidMetadatIDs, rec.MetadataID)
+		}
+	}
+
+	if mfCnt > 0 {
+		if len(invalidMetadatIDs) == 0 {
+			log.Printf("INFO: %d masterfiles found in valid aptrust submission", mfCnt)
+			return nil
+		}
+		return fmt.Errorf("metadata invalid for aptrust submission: %v", invalidMetadatIDs)
+	}
+
+	log.Printf("INFO: no matching units found for aptrust submission; try masterfiles")
+	mfQ := "select mf.metadata_id as metadata_id, mf.unit_id as unit_id, count(mf.id) as cnt from master_files mf "
+	mfQ += " inner join units u on u.id = mf.unit_id "
+	mfQ += " where (intended_use_id=110 or intended_use_id=101) AND (unit_status=? OR unit_status=?)"
+	mfQ += " AND mf.metadata_id in ?"
+	if err := svc.GDB.Raw(mfQ, "approved", "done", metadataIDs).Scan(&mfResp).Error; err != nil {
+		return err
+	}
+
+	for _, rec := range mfResp {
+		mfCnt += rec.Cnt
+		if rec.Cnt == 0 {
+			log.Printf("INFO: metadata %d has no valid units/masterfiles", rec.MetadataID)
+			invalidMetadatIDs = append(invalidMetadatIDs, rec.MetadataID)
+		}
+	}
+
+	if mfCnt > 0 {
+		if len(invalidMetadatIDs) == 0 {
+			log.Printf("INFO: %d masterfiles found in valid aptrust submission", mfCnt)
+			return nil
+		}
+		return fmt.Errorf("metadata invalid for aptrust submission: %v", invalidMetadatIDs)
+	}
+
+	return fmt.Errorf("invalid for aptrust; no master files found")
+}
+
+func (svc *ServiceContext) validateAPTrustSubmissionRequest(mdID uint64) error {
+	var md metadata
+	if err := svc.GDB.Joins("APTrustSubmission").Joins("PreservationTier").Find(&md, mdID).Error; err != nil {
+		return err
+	}
+
+	if md.PreservationTierID < 2 {
+		return fmt.Errorf("metadata %d has not been flagged for aptrust", md.ID)
+	}
+
+	if md.IsCollection {
+		log.Printf("INFO: metadata %d is a collection; check members for masterfiles suitable for aptrust", mdID)
+		var inCollectionIDs []uint64
+		if err := svc.GDB.Raw("select id from metadata where parent_metadata_id=?", mdID).Scan(&inCollectionIDs).Error; err != nil {
+			return err
+		}
+		if err := svc.validateAPTrustMetadata(inCollectionIDs); err != nil {
+			return fmt.Errorf("collection metadata %d is not suitable for aptrust: %s", mdID, err.Error())
+		}
+	} else {
+		log.Printf("INFO: validate aptrust submission for metadata %d", mdID)
+		idParam := []uint64{mdID}
+		if err := svc.validateAPTrustMetadata(idParam); err != nil {
+			return fmt.Errorf("metadata %d is not suitable for aptrust: %s", mdID, err.Error())
+		}
+	}
+	return nil
 }
 
 func (svc *ServiceContext) prepareAPTrustSubmission(mdID int64, resubmit bool) (*metadata, error) {
