@@ -867,7 +867,7 @@ func (svc *ServiceContext) getBestMasterFiles(js *jobStatus, metadataID uint64) 
 		if len(masterFiles) == 0 {
 			// if that fails, see if this is a the special case where an image is assigned different metadata than the unit.
 			// this is the case for individual images described by XML metadata that are generaly part of a larger collection
-			svc.logInfo(js, fmt.Sprintf("No units directly found for metadata %d; searching master files...", metadataID))
+			svc.logInfo(js, fmt.Sprintf("No intended use %d units directly found for metadata %d; searching master files...", ucID, metadataID))
 			if err := svc.GDB.Joins("Unit").Where("Unit.intended_use_id=?", ucID).Where("master_files.metadata_id=?", metadataID).Find(&masterFiles).Error; err != nil {
 				svc.logError(js, fmt.Sprintf("Error requesting masterfiles with metadata %d and intended use %d: %s", metadataID, ucID, err.Error()))
 				continue
