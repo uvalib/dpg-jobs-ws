@@ -187,21 +187,16 @@ func (svc *ServiceContext) validateAPTrustMetadata(metadataIDs []uint64) error {
 	}
 
 	mfCnt := 0
-	invalidMetadatIDs := make([]uint64, 0)
 	for _, rec := range mfResp {
 		mfCnt += rec.Cnt
 		if rec.Cnt == 0 {
 			log.Printf("INFO: metadata %d has no valid units/masterfiles", rec.MetadataID)
-			invalidMetadatIDs = append(invalidMetadatIDs, rec.MetadataID)
 		}
 	}
 
 	if mfCnt > 0 {
-		if len(invalidMetadatIDs) == 0 {
-			log.Printf("INFO: %d masterfiles found in valid aptrust submission", mfCnt)
-			return nil
-		}
-		return fmt.Errorf("metadata invalid for aptrust submission: %v", invalidMetadatIDs)
+		log.Printf("INFO: %d masterfiles found in valid aptrust submission", mfCnt)
+		return nil
 	}
 
 	log.Printf("INFO: no matching units found for aptrust submission; try masterfiles")
@@ -217,16 +212,12 @@ func (svc *ServiceContext) validateAPTrustMetadata(metadataIDs []uint64) error {
 		mfCnt += rec.Cnt
 		if rec.Cnt == 0 {
 			log.Printf("INFO: metadata %d has no valid units/masterfiles", rec.MetadataID)
-			invalidMetadatIDs = append(invalidMetadatIDs, rec.MetadataID)
 		}
 	}
 
 	if mfCnt > 0 {
-		if len(invalidMetadatIDs) == 0 {
-			log.Printf("INFO: %d masterfiles found in valid aptrust submission", mfCnt)
-			return nil
-		}
-		return fmt.Errorf("metadata invalid for aptrust submission: %v", invalidMetadatIDs)
+		log.Printf("INFO: %d masterfiles found in valid aptrust submission", mfCnt)
+		return nil
 	}
 
 	return fmt.Errorf("invalid for aptrust; no master files found")
