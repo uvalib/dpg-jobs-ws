@@ -272,7 +272,7 @@ func (svc *ServiceContext) updateUnitOCRSettings(c *gin.Context) {
 
 	svc.logInfo(js, fmt.Sprintf("Lookup unit %d", unitID))
 	var tgtUnit unit
-	if err := svc.GDB.First(&tgtUnit, unitID).Error; err != nil {
+	if err := svc.GDB.Preload("Metadata").First(&tgtUnit, unitID).Error; err != nil {
 		svc.logFatal(js, fmt.Sprintf("Unable to load unit %d: %s", unitID, err.Error()))
 		c.String(http.StatusBadRequest, err.Error())
 		return
@@ -284,7 +284,7 @@ func (svc *ServiceContext) updateUnitOCRSettings(c *gin.Context) {
 		svc.logError(js, fmt.Sprintf("Unable to update unit OCR master files flag: %s", err.Error()))
 	}
 
-	if ocrUpdateRequest.OCRHintID > 0 {
+	if ocrUpdateRequest.OCRHintID != tgtUnit.Metadata.OcrHintID {
 		svc.logInfo(js, fmt.Sprintf("Update unit metadata %d OCR hint to %d", *tgtUnit.MetadataID, ocrUpdateRequest.OCRHintID))
 		tgtMD := metadata{ID: *tgtUnit.MetadataID, OcrHintID: ocrUpdateRequest.OCRHintID}
 		if err := svc.GDB.Model(&tgtMD).Select("ocr_hint_id").Updates(tgtMD).Error; err != nil {
@@ -292,7 +292,7 @@ func (svc *ServiceContext) updateUnitOCRSettings(c *gin.Context) {
 		}
 	}
 
-	if ocrUpdateRequest.OCRLanguageHint != "" {
+	if ocrUpdateRequest.OCRLanguageHint != tgtUnit.Metadata.OcrLanguageHint {
 		svc.logInfo(js, fmt.Sprintf("Update unit metadata %d OCR language hint to %s", *tgtUnit.MetadataID, ocrUpdateRequest.OCRLanguageHint))
 		tgtMD := metadata{ID: *tgtUnit.MetadataID, OcrLanguageHint: ocrUpdateRequest.OCRLanguageHint}
 		err = svc.GDB.Model(&tgtMD).Select("ocr_language_hint").Updates(tgtMD).Error
