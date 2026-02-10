@@ -204,6 +204,11 @@ func (svc *ServiceContext) setupTribuneQA(c *gin.Context, js *jobStatus, params 
 		return fmt.Errorf("invalid LCCN %s", lccnDir)
 	}
 
+	var tgtMetadata metadata
+	if err := svc.GDB.First(&tgtMetadata, metadataID).Error; err != nil {
+		return fmt.Errorf("unable to load metadata %d for dir %s: %s", metadataID, lccnDir, err.Error())
+	}
+
 	svc.logInfo(js, fmt.Sprintf("Setup tribune issues from '%s', directory %s into order %d using metadata %d", tgtIssues, printPath, orderID, metadataID))
 
 	allIssues, err := os.ReadDir(printPath)
@@ -302,6 +307,12 @@ func (svc *ServiceContext) setupTribuneQA(c *gin.Context, js *jobStatus, params 
 			svc.logInfo(js, fmt.Sprintf("Project for unit %d %s does not exist; create it", issueUnit.ID, dir.Name()))
 			createReq := createProjectRequest{
 				UnitID:          issueUnit.ID,
+				OrderID:         tribOrder.ID,
+				Title:           tgtMetadata.Title,
+				CallNumber:      tgtMetadata.CallNumber,
+				CustomerID:      int64(tribOrder.CustomerID),
+				AgencyID:        0, // no agency
+				DateDue:         tribOrder.DateDue,
 				WorkflowID:      7, // vendor
 				ContainerTypeID: 4, // bound
 				CategoryID:      5, // special

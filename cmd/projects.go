@@ -21,12 +21,18 @@ type projectLookupResponse struct {
 }
 
 type createProjectRequest struct {
-	UnitID          int64  `json:"unitID"`
-	WorkflowID      int64  `json:"workflowID"`
-	ContainerTypeID int64  `json:"containerTypeID"`
-	CategoryID      int64  `json:"categoryID"`
-	Condition       int64  `json:"condition"`
-	Notes           string `json:"notes"`
+	UnitID          int64     `json:"unitID"`
+	OrderID         int64     `json:"orderID"`
+	Title           string    `json:"title"`
+	CallNumber      string    `json:"callNumber"`
+	WorkflowID      int64     `json:"workflowID"`
+	ContainerTypeID int64     `json:"containerTypeID"`
+	CategoryID      int64     `json:"categoryID"`
+	Condition       int64     `json:"condition"`
+	Notes           string    `json:"notes"`
+	CustomerID      int64     `json:"customerID"`
+	AgencyID        int64     `json:"agencyID"`
+	DateDue         time.Time `json:"dateDue"`
 }
 
 func (svc *ServiceContext) projectsAPIPost(url string, payload any) *RequestError {

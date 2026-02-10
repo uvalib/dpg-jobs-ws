@@ -290,4 +290,5 @@ type order struct {
 	DateFinalizationBegun          *time.Time
 	DateFeeEstimateSentToCustomer  *time.Time
 	UpdatedAt                      time.Time
+	DateDue                        time.Time
 }
