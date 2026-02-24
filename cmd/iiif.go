@@ -113,6 +113,12 @@ func (svc *ServiceContext) iiifExists(iiifInfo iiifContext) (bool, error) {
 	if len(out.Contents) == 0 {
 		return false, nil
 	}
+
+	imgInfo := out.Contents[0]
+	if imgInfo.Size == nil || imgInfo.Size != nil && *imgInfo.Size == 0 {
+		return false, nil
+	}
+
 	return true, nil
 }
 
