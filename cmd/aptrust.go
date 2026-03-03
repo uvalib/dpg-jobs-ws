@@ -666,18 +666,6 @@ func (svc *ServiceContext) submitFindingAidToAPTrust(c *gin.Context) {
 	c.JSON(http.StatusOK, jsonResp)
 }
 
-func (svc *ServiceContext) generateFindingAid(c *gin.Context) {
-	mdID := c.Param("id")
-	log.Printf("INFO: get finding aid for metadata %s", mdID)
-	faResp, err := svc.getFindingAid(mdID)
-	if err != nil {
-		log.Printf("ERROR: %s", err.Error())
-		c.String(http.StatusInternalServerError, err.Error())
-		return
-	}
-	c.String(http.StatusOK, string(faResp.FindingAid))
-}
-
 type findingAidError struct {
 	StatusCode int
 	Message    string

@@ -16,37 +16,6 @@ import (
 	"gorm.io/gorm"
 )
 
-func (svc *ServiceContext) archiveExists(c *gin.Context) {
-	tgtDir := c.Query("dir")
-	if tgtDir == "" {
-		c.String(http.StatusBadRequest, "dir param is required")
-		return
-	}
-	log.Printf("INFO: check if archive [%s] exists", tgtDir)
-	archiveDir := path.Join(svc.ArchiveDir, tgtDir)
-	if pathExists(archiveDir) == false {
-		c.String(http.StatusNotFound, fmt.Sprintf("%s not found", tgtDir))
-		return
-	}
-	fileCount := 0
-	err := filepath.Walk(archiveDir, func(fullPath string, entry os.FileInfo, err error) error {
-		if err != nil || entry.IsDir() {
-			return nil
-		}
-		ext := filepath.Ext(entry.Name())
-		if ext != ".tif" {
-			return nil
-		}
-		fileCount++
-		return nil
-	})
-	if err != nil {
-		c.String(http.StatusInternalServerError, err.Error())
-		return
-	}
-	c.String(http.StatusOK, fmt.Sprintf("%s: %d tif files", tgtDir, fileCount))
-}
-
 // Example to create delverable from archive:
 //
 //	curl --request POST  \

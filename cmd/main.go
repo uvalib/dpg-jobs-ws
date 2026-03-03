@@ -12,7 +12,7 @@ import (
 )
 
 // Version of the service
-const version = "1.35.1"
+const version = "2.0.0"
 
 func main() {
 	log.Printf("===> DPG backend processing service starting up <===")
@@ -39,74 +39,72 @@ func main() {
 
 	router.POST("/script", svc.runScript)
 
-	router.POST("/aptrust", svc.batchAPTrustSubmission)
+	router.POST("/aptrust", svc.authMiddleware, svc.batchAPTrustSubmission)
 
-	router.POST("/audit", svc.auditMasterFiles)
-	router.POST("/audit/fix/jp2", svc.fixFailedJP2Audit)
-	router.POST("/audit/fix/md5", svc.checkMissingMD5Audit)
+	router.POST("/audit", svc.authMiddleware, svc.auditMasterFiles)
+	router.POST("/audit/fix/jp2", svc.authMiddleware, svc.fixFailedJP2Audit)
+	router.POST("/audit/fix/md5", svc.authMiddleware, svc.checkMissingMD5Audit)
 
-	router.POST("/phash", svc.generateMasterFilesPHash)
+	router.POST("/phash", svc.authMiddleware, svc.generateMasterFilesPHash)
 
-	router.POST("/hathitrust/init", svc.flagOrderForHathiTrust)
-	router.POST("/hathitrust/package", svc.createHathiTrustPackage)
-	router.POST("/hathitrust/package/submit", svc.submitHathiTrustPackage)
+	router.POST("/hathitrust/init", svc.authMiddleware, svc.flagOrderForHathiTrust)
+	router.POST("/hathitrust/package", svc.authMiddleware, svc.createHathiTrustPackage)
+	router.POST("/hathitrust/package/submit", svc.authMiddleware, svc.submitHathiTrustPackage)
 	router.GET("/hathitrust/package/submitted", svc.listHathiTrustSubmissions)
-	router.POST("/hathitrust/metadata", svc.submitHathiTrustMetadata)
+	router.POST("/hathitrust/metadata", svc.authMiddleware, svc.submitHathiTrustMetadata)
 
 	router.GET("/archivesspace/lookup", svc.archivesSpaceMiddleware, svc.lookupArchivesSpaceURL)
 	router.GET("/archivesspace/validate", svc.archivesSpaceMiddleware, svc.validateArchivesSpaceURL)
-	router.POST("/archivesspace/publish", svc.archivesSpaceMiddleware, svc.publishToArchivesSpace)
-	router.DELETE("/metadata/:id/archivesspace", svc.archivesSpaceMiddleware, svc.unpublishArchivesSpace)
-	router.GET("/archivesspace/collections/:id/records", svc.archivesSpaceMiddleware, svc.getArchivesSpaceCollectionURIs)
+	router.POST("/archivesspace/publish", svc.authMiddleware, svc.archivesSpaceMiddleware, svc.publishToArchivesSpace)
+	router.DELETE("/metadata/:id/archivesspace", svc.authMiddleware, svc.archivesSpaceMiddleware, svc.unpublishArchivesSpace)
+	router.GET("/archivesspace/collections/:id/records", svc.getArchivesSpaceCollectionURIs)
 
-	router.POST("/collections/:id/add", svc.collectionBulkAdd)
-	router.POST("/collections/:id/export", svc.exportCollection)
+	router.POST("/collections/:id/add", svc.authMiddleware, svc.collectionBulkAdd)
+	router.POST("/collections/:id/export", svc.authMiddleware, svc.exportCollection)
 
 	router.GET("/jobs/:id", svc.getJobStatus)
 
 	router.GET("/metadata/:id/aptrust", svc.apTrustStatusRequest)
-	router.POST("/metadata/:id/aptrust", svc.submitToAPTrust)
-	router.POST("/metadata/:id/baggit", svc.bagCreateRequested)
-	router.GET("/metadata/:id/findingaid", svc.archivesSpaceMiddleware, svc.generateFindingAid)
-	router.POST("/metadata/:id/findingaid/aptrust", svc.archivesSpaceMiddleware, svc.submitFindingAidToAPTrust)
-	router.POST("/metadata/:id/publish", svc.publishToVirgo)
+	router.POST("/metadata/:id/aptrust", svc.authMiddleware, svc.submitToAPTrust)
+	router.POST("/metadata/:id/baggit", svc.authMiddleware, svc.bagCreateRequested)
+	router.POST("/metadata/:id/findingaid/aptrust", svc.authMiddleware, svc.archivesSpaceMiddleware, svc.submitFindingAidToAPTrust)
+	router.POST("/metadata/:id/publish", svc.authMiddleware, svc.publishToVirgo)
 
 	router.GET("/ocr/languages", svc.getOCRLanguages)
-	router.POST("/ocr", svc.handleOCRRequest)
+	router.POST("/ocr", svc.authMiddleware, svc.handleOCRRequest)
 
-	router.POST("/orders/:id/check", svc.checkOrderReady)
-	router.POST("/orders/:id/summary", svc.createOrderSummary)
+	router.POST("/orders/:id/check", svc.authMiddleware, svc.checkOrderReady)
+	router.POST("/orders/:id/summary", svc.authMiddleware, svc.createOrderSummary)
 	router.GET("/orders/:id/summary", svc.viewOrderSummary)
-	router.POST("/orders/:id/email", svc.createOrderEmail)
-	router.POST("/orders/:id/email/send", svc.sendOrderEmail)
-	router.POST("/orders/:id/fees", svc.sendFeesEmail)
-	router.POST("/orders/:id/import", svc.importOrderImages)
+	router.POST("/orders/:id/email", svc.authMiddleware, svc.createOrderEmail)
+	router.POST("/orders/:id/email/send", svc.authMiddleware, svc.sendOrderEmail)
+	router.POST("/orders/:id/fees", svc.authMiddleware, svc.sendFeesEmail)
+	router.POST("/orders/:id/import", svc.authMiddleware, svc.importOrderImages)
 
-	router.GET("/archive/exist", svc.archiveExists)
-	router.POST("/units/:id/copy", svc.downloadFromArchive)
-	router.POST("/units/:id/deliverables", svc.createPatronDeliverables)
-	router.POST("/units/:id/finalize", svc.finalizeUnit)
-	router.POST("/units/:id/iiif", svc.publishUnitImagesToIIIF)
+	router.POST("/units/:id/copy", svc.authMiddleware, svc.downloadFromArchive)
+	router.POST("/units/:id/deliverables", svc.authMiddleware, svc.createPatronDeliverables)
+	router.POST("/units/:id/finalize", svc.authMiddleware, svc.finalizeUnit)
+	router.POST("/units/:id/iiif", svc.authMiddleware, svc.publishUnitImagesToIIIF)
 	router.GET("/units/:id/pdf", svc.getUnitPDFBundle)
-	router.POST("/units/:id/ocr-settings", svc.updateUnitOCRSettings)
+	router.POST("/units/:id/ocr-settings", svc.authMiddleware, svc.updateUnitOCRSettings)
 
-	router.POST("/units/:id/attach", svc.attachFile)
+	router.POST("/units/:id/attach", svc.authMiddleware, svc.attachFile)
 	router.GET("/units/:id/attachments/:file", svc.getAttachment)
-	router.DELETE("/units/:id/attachments/:file", svc.deleteAttachment)
+	router.DELETE("/units/:id/attachments/:file", svc.authMiddleware, svc.deleteAttachment)
 
-	router.POST("/masterfiles/:id/deaccession", svc.deaccessionMasterFile)
-	router.POST("/masterfiles/:id/iiif", svc.updateMasterFileIIIF)
-	router.DELETE("/masterfiles/:id/iiif", svc.deleteMasterFileIIIF)
-	router.POST("/masterfiles/:id/techmeta", svc.updateMasterFileTechMetadata)
-	router.POST("/masterfiles/:id/rename", svc.renameMasterFile)
+	router.POST("/masterfiles/:id/deaccession", svc.authMiddleware, svc.deaccessionMasterFile)
+	router.POST("/masterfiles/:id/iiif", svc.authMiddleware, svc.updateMasterFileIIIF)
+	router.DELETE("/masterfiles/:id/iiif", svc.authMiddleware, svc.deleteMasterFileIIIF)
+	router.POST("/masterfiles/:id/techmeta", svc.authMiddleware, svc.updateMasterFileTechMetadata)
+	router.POST("/masterfiles/:id/rename", svc.authMiddleware, svc.renameMasterFile)
 
-	router.POST("/units/:id/masterfiles/add", svc.addMasterFiles)
-	router.POST("/units/:id/masterfiles/delete", svc.deleteMasterFiles)
-	router.POST("/units/:id/masterfiles/renumber", svc.renumberMasterFiles)
-	router.POST("/units/:id/masterfiles/metadata", svc.assignMasterFileMetadata)
-	router.POST("/units/:id/masterfiles/component", svc.assignMasterFileComponent)
-	router.POST("/units/:id/masterfiles/replace", svc.replaceMasterFiles)
-	router.POST("/units/:id/masterfiles/clone", svc.cloneMasterFiles)
+	router.POST("/units/:id/masterfiles/add", svc.authMiddleware, svc.addMasterFiles)
+	router.POST("/units/:id/masterfiles/delete", svc.authMiddleware, svc.deleteMasterFiles)
+	router.POST("/units/:id/masterfiles/renumber", svc.authMiddleware, svc.renumberMasterFiles)
+	router.POST("/units/:id/masterfiles/metadata", svc.authMiddleware, svc.assignMasterFileMetadata)
+	router.POST("/units/:id/masterfiles/component", svc.authMiddleware, svc.assignMasterFileComponent)
+	router.POST("/units/:id/masterfiles/replace", svc.authMiddleware, svc.replaceMasterFiles)
+	router.POST("/units/:id/masterfiles/clone", svc.authMiddleware, svc.cloneMasterFiles)
 
 	router.POST("/callbacks/:jid/ocr", svc.ocrDoneCallback)
 
