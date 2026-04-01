@@ -185,14 +185,12 @@ func (svc *ServiceContext) getArchivesSpaceMetadata(asURL *asURLInfo, tgtPID str
 		Level:      fmt.Sprintf("%v", tgtASObj["level"]),
 	}
 
-	if out.Level == "collection" || tgtASObj["resource_type"] == "collection" {
-		out.CollectionID = fmt.Sprintf("%v", tgtASObj["id_0"])
-		if tgtASObj["id_1"] != nil {
-			out.CollectionID += fmt.Sprintf(" %v", tgtASObj["id_1"])
-		}
-		if tgtASObj["id_2"] != nil {
-			out.CollectionID += fmt.Sprintf("-%v", tgtASObj["id_2"])
-		}
+	out.CollectionID = fmt.Sprintf("%v", tgtASObj["id_0"])
+	if tgtASObj["id_1"] != nil {
+		out.CollectionID += fmt.Sprintf(" %v", tgtASObj["id_1"])
+	}
+	if tgtASObj["id_2"] != nil {
+		out.CollectionID += fmt.Sprintf("-%v", tgtASObj["id_2"])
 	}
 
 	if tgtASObj["title"] != nil {
