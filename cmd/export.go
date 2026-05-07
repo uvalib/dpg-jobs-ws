@@ -17,23 +17,22 @@ import (
 )
 
 type exporData struct {
-	ID               int64            `json:"id"`
-	PID              string           `json:"pid"`
-	CollectionID     string           `json:"collectionID,omitempty"`
-	Type             string           `json:"type"`
-	Title            string           `json:"title"`
-	CreatorName      string           `json:"creatorName,omitempty"`
-	CatalogKey       string           `json:"catalogKey,omitempty"`
-	CallNumber       string           `json:"callNumber,omitempty"`
-	Barcode          string           `json:"barcode,omitempty"`
-	DescMetadata     string           `json:"descMetadata,omitempty"`
-	Locations        []exportLocation `json:"locations,omitempty"`
-	PreservationTier string           `json:"preservationTier,omitempty"`
-	ExternalSystem   string           `json:"externalSystem,omitempty"`
-	ExternalURI      string           `json:"externalURI,omitempty"`
-	CreatedAt        time.Time        `json:"createdAt"`
-	UpdatedAt        time.Time        `json:"updatedAt,omitempty"`
-	Children         []*exporData     `json:"children,omitempty"`
+	ID             int64            `json:"id"`
+	PID            string           `json:"pid"`
+	CollectionID   string           `json:"collectionID,omitempty"`
+	Type           string           `json:"type"`
+	Title          string           `json:"title"`
+	CreatorName    string           `json:"creatorName,omitempty"`
+	CatalogKey     string           `json:"catalogKey,omitempty"`
+	CallNumber     string           `json:"callNumber,omitempty"`
+	Barcode        string           `json:"barcode,omitempty"`
+	DescMetadata   string           `json:"descMetadata,omitempty"`
+	Locations      []exportLocation `json:"locations,omitempty"`
+	ExternalSystem string           `json:"externalSystem,omitempty"`
+	ExternalURI    string           `json:"externalURI,omitempty"`
+	CreatedAt      time.Time        `json:"createdAt"`
+	UpdatedAt      time.Time        `json:"updatedAt,omitempty"`
+	Children       []*exporData     `json:"children,omitempty"`
 }
 
 type exportLocation struct {
@@ -55,7 +54,7 @@ func (svc *ServiceContext) exportCollection(c *gin.Context) {
 	}
 
 	var collRec metadata
-	err = svc.GDB.Preload("Locations").Preload("PreservationTier").Preload("ExternalSystem").First(&collRec, collectionMetadataID).Error
+	err = svc.GDB.Preload("Locations").Preload("ExternalSystem").First(&collRec, collectionMetadataID).Error
 	if err != nil {
 		svc.logFatal(js, fmt.Sprintf("Get collection %d failed: %s", collectionMetadataID, err.Error()))
 		c.String(http.StatusInternalServerError, err.Error())
@@ -99,7 +98,7 @@ func (svc *ServiceContext) exportCollection(c *gin.Context) {
 
 		svc.logInfo(js, fmt.Sprintf("Load child records for %d to begin export process", collectionMetadataID))
 		var collRecs []metadata
-		err = svc.GDB.Preload("Locations").Preload("PreservationTier").Preload("ExternalSystem").Where("parent_metadata_id=?", collectionMetadataID).Find(&collRecs).Error
+		err = svc.GDB.Preload("Locations").Preload("ExternalSystem").Where("parent_metadata_id=?", collectionMetadataID).Find(&collRecs).Error
 		if err != nil {
 			svc.logFatal(js, fmt.Sprintf("Unable to load child metadata records for collection %d: %s", collectionMetadataID, err.Error()))
 			return
@@ -215,9 +214,6 @@ func metadataToJSON(md *metadata) *exporData {
 	if md.ExternalSystem != nil {
 		out.ExternalSystem = md.ExternalSystem.Name
 		out.ExternalURI = fmt.Sprintf("%s%s", md.ExternalSystem.PublicURL, md.ExternalURI)
-	}
-	if md.PreservationTier != nil {
-		out.PreservationTier = fmt.Sprintf("%s: %s", md.PreservationTier.Name, md.PreservationTier.Description)
 	}
 	if len(md.Locations) > 0 {
 		for _, loc := range md.Locations {

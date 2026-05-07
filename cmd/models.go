@@ -105,23 +105,6 @@ type invoice struct {
 	UpdatedAt   time.Time
 }
 
-// apTrustSubmissionis a TrackSys DB record generated when a metadata record is submitted to APTrust
-type apTrustSubmission struct {
-	ID          int64      `json:"-"`
-	MetadataID  int64      `gorm:"column:metadata_id" json:"-"`
-	Bag         string     `json:"etag"`
-	RequestedAt time.Time  `json:"requestedAt"`
-	SubmittedAt *time.Time `json:"submittedAt"`
-	ProcessedAt *time.Time `json:"processedAt"`
-	Success     bool       `json:"success"`
-}
-
-type preservationTier struct {
-	ID          uint   `json:"id"`
-	Name        string `json:"name"`
-	Description string `json:"description"`
-}
-
 type metadata struct {
 	ID                   int64
 	PID                  string `gorm:"column:pid"`
@@ -143,9 +126,6 @@ type metadata struct {
 	Locations            []location        `gorm:"foreignKey:MetadataID"`
 	HathiTrust           bool              `gorm:"column:hathitrust"`
 	HathiTrustStatus     *hathitrustStatus `gorm:"foreignKey:MetadataID" json:"hathiTrustStatus,omitempty"`
-	PreservationTierID   int64
-	PreservationTier     *preservationTier  `gorm:"foreignKey:PreservationTierID" json:"preservationTier"`
-	APTrustSubmission    *apTrustSubmission `gorm:"foreignKey:MetadataID" json:"apTrustSubmission,omitempty"`
 	CollectionID         string
 	DateDlIngest         *time.Time      `gorm:"column:date_dl_ingest"`
 	DateDlUpdate         *time.Time      `gorm:"column:date_dl_update"`

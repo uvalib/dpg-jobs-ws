@@ -3,7 +3,6 @@ package main
 import (
 	"flag"
 	"log"
-	"os"
 )
 
 // DBConfig wraps up all of the DB configuration
@@ -52,15 +51,15 @@ type HathiTrustConfig struct {
 // TrackSysConfig contains the configuration data for tracksys endpoints
 type TrackSysConfig struct {
 	API     string
-	Admin   string
 	Imaging string
 	JWTKey  string
 }
 
 // APTrustConfig contains the cpmfiguration params for the APTrust S3 bucket
 type APTrustConfig struct {
-	AWSHost   string
-	AWSBucket string
+	SubmitURL   string
+	Environment string
+	ClientID    string
 }
 
 // ServiceConfig defines all of the JRML pool configuration parameters
@@ -117,13 +116,13 @@ func LoadConfiguration() *ServiceConfig {
 
 	// TrackSys
 	flag.StringVar(&cfg.TrackSys.API, "tsapi", "https://tracksys-api-ws.internal.lib.virginia.edu", "URL for TrackSys API")
-	flag.StringVar(&cfg.TrackSys.Admin, "tsadmin", "https://tracksys.lib.virginia.edu", "URL for TrackSys ADMIN interface")
 	flag.StringVar(&cfg.TrackSys.Imaging, "tsimaging", "dpg-imaging.lib.virginia.edu/api", "URL for TrackSys imaging API")
 	flag.StringVar(&cfg.TrackSys.JWTKey, "jwtkey", "", "JWT signature key")
 
 	// APTrust
-	flag.StringVar(&cfg.APTrust.AWSHost, "apthost", "s3.amazonaws.com", "APTrust S3 host")
-	flag.StringVar(&cfg.APTrust.AWSBucket, "aptbucket", "", "APTrust S3 bucket")
+	flag.StringVar(&cfg.APTrust.SubmitURL, "aptsubmit", "", "APTrust submit service URL")
+	flag.StringVar(&cfg.APTrust.Environment, "aptenv", "", "APTrust environment")
+	flag.StringVar(&cfg.APTrust.ClientID, "aptclient", "cid-tracksys-b907027e0f", "APTrust environment")
 
 	// IIIF (buckets:  iiif-assets iiif-assets-staging)
 	flag.StringVar(&cfg.IIIF.ManifestURL, "iiifman", "https://iiifman.lib.virginia.edu", "IIIF manifest URL")
@@ -195,6 +194,12 @@ func LoadConfiguration() *ServiceConfig {
 	if cfg.TrackSys.JWTKey == "" {
 		log.Fatal("Parameter jwtkey is required")
 	}
+	if cfg.APTrust.SubmitURL == "" {
+		log.Fatal("Parameter aptsubmit is required")
+	}
+	if cfg.APTrust.Environment == "" {
+		log.Fatal("Parameter aptenv is required")
+	}
 
 	log.Printf("[CONFIG] port          = [%d]", cfg.Port)
 	log.Printf("[CONFIG] service       = [%s]", cfg.ServiceURL)
@@ -212,7 +217,6 @@ func LoadConfiguration() *ServiceConfig {
 	log.Printf("[CONFIG] xmlreindex    = [%s]", cfg.XMLReindexURL)
 	log.Printf("[CONFIG] ocr           = [%s]", cfg.OcrURL)
 	log.Printf("[CONFIG] pdf           = [%s]", cfg.PdfURL)
-	log.Printf("[CONFIG] tsadmin       = [%s]", cfg.TrackSys.Admin)
 	log.Printf("[CONFIG] tsapi         = [%s]", cfg.TrackSys.API)
 	log.Printf("[CONFIG] tsimaging     = [%s]", cfg.TrackSys.Imaging)
 	log.Printf("[CONFIG] asuser        = [%s]", cfg.ArchivesSpace.User)
@@ -222,9 +226,9 @@ func LoadConfiguration() *ServiceConfig {
 	log.Printf("[CONFIG] rccfg         = [%s]", cfg.HathiTrust.RCloneConfig)
 	log.Printf("[CONFIG] rcremote      = [%s]", cfg.HathiTrust.RCloneRemote)
 	log.Printf("[CONFIG] rcdir         = [%s]", cfg.HathiTrust.RemoteDir)
-	log.Printf("[CONFIG] aptrust_url   = [%s]", os.Getenv("APTRUST_REGISTRY_URL"))
-	log.Printf("[CONFIG] apthost       = [%s]", cfg.APTrust.AWSHost)
-	log.Printf("[CONFIG] aptbucket     = [%s]", cfg.APTrust.AWSBucket)
+	log.Printf("[CONFIG] aptsubmit     = [%s]", cfg.APTrust.SubmitURL)
+	log.Printf("[CONFIG] aptenv        = [%s]", cfg.APTrust.Environment)
+	log.Printf("[CONFIG] aptclient     = [%s]", cfg.APTrust.ClientID)
 
 	if cfg.SMTP.FakeSMTP {
 		log.Printf("[CONFIG] fakesmtp      = [true]")

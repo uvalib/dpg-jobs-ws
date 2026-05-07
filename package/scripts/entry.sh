@@ -49,8 +49,9 @@ cd bin; ./dpg-jobs-ws               \
   -jwtkey     $DPG_JWT_KEY          \
   -reindex    ${REINDEX}            \
   -xmlreindex ${XML_REINDEX}        \
-  -aptbucket  ${APTRUST_AWS_BUCKET} \
-  -apthost    ${APTRUST_AWS_HOST}   \
+  -aptsubmit  ${APTRUST_SUBMIT}     \
+  -aptenv     ${APTRUST_ENV}        \
+  -aptclient  ${APTRUST_CLIENT}     \
   -ocr        ${DPG_OCR}            \
   -pdf        ${DPG_PDF}            \
   -service    ${DPG_SERVICE_URL}    \

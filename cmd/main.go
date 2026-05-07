@@ -12,7 +12,7 @@ import (
 )
 
 // Version of the service
-const version = "2.0.1"
+const version = "2.1.0"
 
 func main() {
 	log.Printf("===> DPG backend processing service starting up <===")
@@ -39,7 +39,7 @@ func main() {
 
 	router.POST("/script", svc.runScript)
 
-	router.POST("/aptrust", svc.authMiddleware, svc.batchAPTrustSubmission)
+	router.POST("/metadata/:id/aptrust", svc.authMiddleware, svc.submitToAPTrust)
 
 	router.POST("/audit", svc.authMiddleware, svc.auditMasterFiles)
 	router.POST("/audit/fix/jp2", svc.authMiddleware, svc.fixFailedJP2Audit)
@@ -64,10 +64,6 @@ func main() {
 
 	router.GET("/jobs/:id", svc.getJobStatus)
 
-	router.GET("/metadata/:id/aptrust", svc.apTrustStatusRequest)
-	router.POST("/metadata/:id/aptrust", svc.authMiddleware, svc.submitToAPTrust)
-	router.POST("/metadata/:id/baggit", svc.authMiddleware, svc.bagCreateRequested)
-	router.POST("/metadata/:id/findingaid/aptrust", svc.authMiddleware, svc.archivesSpaceMiddleware, svc.submitFindingAidToAPTrust)
 	router.POST("/metadata/:id/publish", svc.authMiddleware, svc.publishToVirgo)
 
 	router.GET("/ocr/languages", svc.getOCRLanguages)

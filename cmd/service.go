@@ -5,7 +5,6 @@ import (
 	"bytes"
 	"context"
 	"crypto/md5"
-	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -320,6 +319,35 @@ func (svc *ServiceContext) sendASRequest(verb string, url string, payload any) (
 	return resp, err
 }
 
+func (svc *ServiceContext) sendAPTPostRequest(url string, payload any) ([]byte, *RequestError) {
+	fullURL := fmt.Sprintf("%s%s/%s", svc.APTrust.SubmitURL, url, svc.APTrust.Environment)
+	log.Printf("INFO: aptrust submit request: %s", fullURL)
+	startTime := time.Now()
+
+	var req *http.Request
+	if payload != nil {
+		b, _ := json.Marshal(payload)
+		req, _ = http.NewRequest("POST", fullURL, bytes.NewBuffer(b))
+	} else {
+		req, _ = http.NewRequest("POST", fullURL, nil)
+	}
+	req.Header.Add("Content-type", "application/json")
+	req.Header.Add("Accept", "application/json")
+	rawResp, rawErr := svc.HTTPClient.Do(req)
+	resp, err := handleAPIResponse(url, rawResp, rawErr)
+	elapsedNanoSec := time.Since(startTime)
+	elapsedMS := int64(elapsedNanoSec / time.Millisecond)
+
+	if err != nil {
+		log.Printf("ERROR: Failed response from POST %s - %d:%s. Elapsed Time: %d (ms)",
+			url, err.StatusCode, err.Message, elapsedMS)
+	} else {
+		log.Printf("INFO: Successful response from POST %s. Elapsed Time: %d (ms)", url, elapsedMS)
+		log.Printf("INFO: raw response [%s]", resp)
+	}
+	return resp, err
+}
+
 func handleAPIResponse(logURL string, resp *http.Response, err error) ([]byte, *RequestError) {
 	if err != nil {
 		status := http.StatusBadRequest
@@ -353,15 +381,6 @@ func md5Checksum(filename string) string {
 	}
 	return ""
 }
-func sha256Checksum(filename string) string {
-	if pathExists(filename) {
-		data, _ := os.ReadFile(filename)
-		md5 := fmt.Sprintf("%x", sha256.Sum256(data))
-		return md5
-	}
-	return ""
-}
-
 func getMasterFilePageNum(filename string) (int, error) {
 	noExt := strings.ReplaceAll(filename, ".tif", "")
 	numStr := strings.Split(noExt, "_")[1]
