@@ -326,6 +326,7 @@ func (svc *ServiceContext) sendAPTPostRequest(url string, payload any) ([]byte, 
 
 	var req *http.Request
 	if payload != nil {
+		log.Printf("INFO: request payload %+v", payload)
 		b, _ := json.Marshal(payload)
 		req, _ = http.NewRequest("POST", fullURL, bytes.NewBuffer(b))
 	} else {

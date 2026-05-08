@@ -126,6 +126,7 @@ type metadata struct {
 	Locations            []location        `gorm:"foreignKey:MetadataID"`
 	HathiTrust           bool              `gorm:"column:hathitrust"`
 	HathiTrustStatus     *hathitrustStatus `gorm:"foreignKey:MetadataID" json:"hathiTrustStatus,omitempty"`
+	APTrustSubmissionID  string            `gorm:"column:apt_submission_id" json:"apTrustSubmissionID,omitempty"`
 	CollectionID         string
 	DateDlIngest         *time.Time      `gorm:"column:date_dl_ingest"`
 	DateDlUpdate         *time.Time      `gorm:"column:date_dl_update"`

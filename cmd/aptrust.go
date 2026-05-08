@@ -143,6 +143,23 @@ func (svc *ServiceContext) submitToAPTrust(c *gin.Context) {
 			return
 		}
 
+		svc.logInfo(js, "Add submission ID to all metadata records just submitted")
+		md.APTrustSubmissionID = regResp.SubmissionIdentifier
+		if err := svc.GDB.Model(&md).Update("apt_submission_id", regResp.SubmissionIdentifier).Error; err != nil {
+			svc.logError(js, fmt.Sprintf("Unable to add submission id %s to metadata %d: %s", regResp.SubmissionIdentifier, md.ID, err.Error()))
+		}
+		if md.IsCollection {
+			q := "update metadata set apt_submission_id=? where parent_metadata_id=?"
+			if err := svc.GDB.Exec(q, regResp.SubmissionIdentifier, md.ID).Error; err != nil {
+				svc.logError(js, fmt.Sprintf("Unable to add submission id %s to child metdata records of parent %d: %s", regResp.SubmissionIdentifier, md.ID, err.Error()))
+			}
+		}
+
+		svc.logInfo(js, "Cleanup assembly directories")
+		if err := os.RemoveAll(submitBaseDir); err != nil {
+			svc.logError(js, fmt.Sprintf("Unable to clean up submission directory %s: %s", submitBaseDir, err.Error()))
+		}
+
 		svc.jobDone(js)
 	}()
 
@@ -224,22 +241,13 @@ func (svc *ServiceContext) validateAPTrustMetadata(metadataIDs []int64) error {
 
 func (svc *ServiceContext) buildAPTrustSubmissionDirectory(js *jobStatus, submitBaseDir string, md *metadata) error {
 	svc.logInfo(js, fmt.Sprintf("Build APTrust submission directory for metadata %d", md.ID))
-	var collectionMD *metadata
-	if md.ParentMetadataID > 0 {
-		svc.logInfo(js, fmt.Sprintf("Metadata %d is part of collection %d; load collection record", md.ID, md.ParentMetadataID))
-		if err := svc.GDB.First(&collectionMD, md.ParentMetadataID).Error; err != nil {
-			return fmt.Errorf("unable to load collection record %d:  %s", md.ParentMetadataID, err.Error())
-		}
-	}
-
-	// create the metadata submission directory
 	mdDirName := getSubmissionDirectoryName(md)
 	submitAssembleDir := path.Join(submitBaseDir, mdDirName)
 	if err := ensureDirExists(submitAssembleDir, 0777); err != nil {
 		return fmt.Errorf("unable to create submission directory %s: %s", submitAssembleDir, err.Error())
 	}
 
-	// init a map of checksum => filename
+	// init a map of filename => checksum
 	checksums := make(map[string]string, 0)
 
 	// add aptrust-title.txt with with content being the title of the md record...
@@ -248,7 +256,7 @@ func (svc *ServiceContext) buildAPTrustSubmissionDirectory(js *jobStatus, submit
 		svc.logError(js, fmt.Sprintf("unable to create %s: %s", titlePath, err.Error()))
 	} else {
 		titleMD5 := md5Checksum(titlePath)
-		checksums[titleMD5] = "aptrust-title.txt"
+		checksums["aptrust-title.txt"] = titleMD5
 	}
 
 	// Add metadata record to submission directory...
@@ -279,7 +287,7 @@ func (svc *ServiceContext) buildAPTrustSubmissionDirectory(js *jobStatus, submit
 			return fmt.Errorf("unable to create metadata.json for %s: %s", md.PID, err.Error())
 		}
 		md5 := md5Checksum(mdPath)
-		checksums[md5] = "metadata.json"
+		checksums["metadata.json"] = md5
 	} else {
 		svc.logInfo(js, "Add MODS XML metadata")
 		mods, err := svc.getModsMetadata(md)
@@ -292,16 +300,14 @@ func (svc *ServiceContext) buildAPTrustSubmissionDirectory(js *jobStatus, submit
 			return fmt.Errorf("unable to create %s.xml: %s", md.PID, err.Error())
 		}
 		md5 := md5Checksum(mdPath)
-		checksums[md5] = mdName
+		checksums[mdName] = md5
 	}
 
-	svc.logInfo(js, "Adding master files to submission")
 	masterFiles := svc.getBestMasterFiles(js, uint64(md.ID))
 	if len(masterFiles) == 0 {
 		return fmt.Errorf("no masterfiles qualify for APTrust (intended use 110 or 101)")
 	}
 
-	svc.logInfo(js, fmt.Sprintf("%d masterfiles found", len(masterFiles)))
 	for _, mf := range masterFiles {
 		svc.logInfo(js, fmt.Sprintf("Adding masterfile %s", mf.Filename))
 		archiveFile := path.Join(svc.ArchiveDir, fmt.Sprintf("%09d", mf.UnitID), mf.Filename)
@@ -317,16 +323,17 @@ func (svc *ServiceContext) buildAPTrustSubmissionDirectory(js *jobStatus, submit
 		if md5 != origMD5 {
 			return fmt.Errorf("copy %s MD5 checksum %s does not match original %s", destFile, md5, origMD5)
 		}
-		checksums[md5] = mf.Filename
+		checksums[mf.Filename] = md5
 	}
 
 	md5FileName := path.Join(submitAssembleDir, "manifest-md5.txt")
-	svc.logInfo(js, fmt.Sprintf("Create %s", md5FileName))
-	var md5Data strings.Builder
-	for md5, fn := range checksums {
-		fmt.Fprintf(&md5Data, "%s %s\n", md5, fn)
+	svc.logInfo(js, fmt.Sprintf("Create manifest %s", md5FileName))
+	md5Data := ""
+	for fn, md5 := range checksums {
+		svc.logInfo(js, fmt.Sprintf("Add to manifest MD5: %s, FileName: %s", md5, fn))
+		md5Data += fmt.Sprintf("%s %s\n", md5, fn)
 	}
-	os.WriteFile(md5FileName, []byte(md5Data.String()), 0644)
+	os.WriteFile(md5FileName, []byte(md5Data), 0644)
 
 	svc.logInfo(js, fmt.Sprintf("Submission directory for %d is complete", md.ID))
 	return nil
@@ -334,7 +341,7 @@ func (svc *ServiceContext) buildAPTrustSubmissionDirectory(js *jobStatus, submit
 
 func (svc *ServiceContext) registerSubmission(js *jobStatus, md *metadata) (*submitRegisterResponse, error) {
 	svc.logInfo(js, fmt.Sprintf("Register submission for metadata %d: %s", md.ID, md.Title))
-	req := submitRegisterRequest{ClientIdentifier: svc.APTrust.ClientID, Collection: md.Title}
+	req := submitRegisterRequest{ClientIdentifier: svc.APTrust.ClientID, Collection: md.PID}
 	respBytes, err := svc.sendAPTPostRequest("/register", req)
 	if err != nil {
 		return nil, fmt.Errorf("%d: %s", err.StatusCode, err.Message)
@@ -360,7 +367,7 @@ func (svc *ServiceContext) uploadToAPTrustBucket(js *jobStatus, submissionDir st
 	syncManager := s3sync.New(cfg, s3sync.WithParallel(5))
 
 	// our destination location
-	source := fmt.Sprintf("s3://%s/%s", reg.DepositBucket, path.Join(reg.DepositPath, reg.SubmissionIdentifier))
+	source := fmt.Sprintf("s3://%s/%s", reg.DepositBucket, reg.DepositPath)
 	svc.logInfo(js, fmt.Sprintf("Sync from [%s] -> [%s]", submissionDir, source))
 
 	start := time.Now()
