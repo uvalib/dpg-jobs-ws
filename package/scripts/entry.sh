@@ -44,7 +44,6 @@ cd bin; ./dpg-jobs-ws               \
   -rcremote   ${RC_REMOTE}          \
   -rcdir      ${RC_DIR}             \
   -tsapi      ${TSAPI}              \
-  -tsadmin    ${TSADMIN}            \
   -tsimaging  ${TSIMAGING}          \
   -jwtkey     $DPG_JWT_KEY          \
   -reindex    ${REINDEX}            \
