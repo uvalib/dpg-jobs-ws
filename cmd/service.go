@@ -234,6 +234,51 @@ func (svc *ServiceContext) healthCheck(c *gin.Context) {
 		}
 	}
 
+	// check directory mounts
+	s, err := os.Stat(svc.DeliveryDir)
+	if err != nil {
+		hcMap["deliverydir"] = hcResp{Healthy: false, Message: err.Error()}
+	} else {
+		if strings.Index(s.Mode().String(), "drw") != 0 {
+			hcMap["deliverydir"] = hcResp{Healthy: false, Message: fmt.Sprintf("bad perms %s", s.Mode().String())}
+		} else {
+			hcMap["deliverydir"] = hcResp{Healthy: true}
+		}
+	}
+
+	s, err = os.Stat(svc.ProcessingDir)
+	if err != nil {
+		hcMap["processingdir"] = hcResp{Healthy: false, Message: err.Error()}
+	} else {
+		if strings.Index(s.Mode().String(), "drw") != 0 {
+			hcMap["processingdir"] = hcResp{Healthy: false, Message: fmt.Sprintf("bad perms %s", s.Mode().String())}
+		} else {
+			hcMap["processingdir"] = hcResp{Healthy: true}
+		}
+	}
+
+	s, err = os.Stat(svc.ArchiveDir)
+	if err != nil {
+		hcMap["archivedir"] = hcResp{Healthy: false, Message: err.Error()}
+	} else {
+		if strings.Index(s.Mode().String(), "drw") != 0 {
+			hcMap["archivedir"] = hcResp{Healthy: false, Message: fmt.Sprintf("bad perms %s", s.Mode().String())}
+		} else {
+			hcMap["archivedir"] = hcResp{Healthy: true}
+		}
+	}
+
+	s, err = os.Stat(svc.IIIF.StagingDir)
+	if err != nil {
+		hcMap["iiifdir"] = hcResp{Healthy: false, Message: err.Error()}
+	} else {
+		if strings.Index(s.Mode().String(), "drw") != 0 {
+			hcMap["iiifdir"] = hcResp{Healthy: false, Message: fmt.Sprintf("bad perms %s", s.Mode().String())}
+		} else {
+			hcMap["iiifdir"] = hcResp{Healthy: true}
+		}
+	}
+
 	c.JSON(http.StatusOK, hcMap)
 }
 
