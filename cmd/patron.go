@@ -212,6 +212,10 @@ func (svc *ServiceContext) createPatronDeliverable(js *jobStatus, tgtUnit *unit,
 	if resample > 0 {
 		cmdArray = append(cmdArray, "-resample", fmt.Sprintf("%d", resample))
 	}
+
+	// LIMIT MEMORY USAGE
+	cmdArray = append(cmdArray, "-limit", "memory", "2048MiB", "-limit", "map", "4096MiB")
+
 	cmdArray = append(cmdArray, destPath)
 	cmd := exec.Command("magick", cmdArray...)
 	svc.logInfo(js, fmt.Sprintf("%+v", cmd))
