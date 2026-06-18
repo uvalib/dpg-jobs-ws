@@ -63,6 +63,7 @@ func (svc *ServiceContext) submitToAPTrust(c *gin.Context) {
 		svc.logFatal(js, fmt.Sprintf("Metadata %d is not a candidate for aptrust: %s", md.ID, err.Error()))
 		return
 	}
+	svc.logInfo(js, "Metadata is a acceptable aptrust submission")
 
 	go func() {
 		defer func() {
@@ -106,31 +107,21 @@ func (svc *ServiceContext) submitToAPTrust(c *gin.Context) {
 		}
 
 		bagFolderList := make([]string, 0)
-		if md.IsCollection {
-			svc.logInfo(js, fmt.Sprintf("Metadata %d is a collection; load child record IDs for APTrust submission", md.ID))
-			var inCollectionMD []metadata
-			if err := svc.GDB.Where("parent_metadata_id=?", md.ID).Find(&inCollectionMD).Error; err != nil {
-				svc.logFatal(js, fmt.Sprintf("Unable to load child metadata records for collection %d: %s", md.ID, err.Error()))
-				return
-			}
-
-			svc.logInfo(js, fmt.Sprintf("Collection %d has %d items; submit each", md.ID, len(inCollectionMD)))
-			for _, tgtMD := range inCollectionMD {
-				if err := svc.buildAPTrustSubmissionDirectory(js, submitBaseDir, &tgtMD); err != nil {
-					svc.logError(js, fmt.Sprintf("Metadata %d APTrust submission failed: %s", md.ID, err.Error()))
-				} else {
-					bagFolderList = append(bagFolderList, getSubmissionDirectoryName(&tgtMD))
-				}
-			}
-			svc.logInfo(js, fmt.Sprintf("All items in collection %d submitted; flag collection as submitted", md.ID))
-		} else {
-			if err := svc.buildAPTrustSubmissionDirectory(js, submitBaseDir, &md); err != nil {
-				svc.logFatal(js, err.Error())
-				return
-			}
-			bagFolderList = append(bagFolderList, getSubmissionDirectoryName(&md))
+		svc.logInfo(js, fmt.Sprintf("Load child record IDs from collection %s for APTrust submission", md.PID))
+		var inCollectionMD []metadata
+		if err := svc.GDB.Where("parent_metadata_id=?", md.ID).Find(&inCollectionMD).Error; err != nil {
+			svc.logFatal(js, fmt.Sprintf("Unable to load child metadata records for collection %d: %s", md.ID, err.Error()))
+			return
 		}
 
+		svc.logInfo(js, fmt.Sprintf("Collection %d has %d items; build submission directory for each", md.ID, len(inCollectionMD)))
+		for _, tgtMD := range inCollectionMD {
+			if err := svc.buildAPTrustSubmissionDirectory(js, submitBaseDir, &tgtMD); err != nil {
+				svc.logError(js, fmt.Sprintf("Metadata %d APTrust submission failed: %s", md.ID, err.Error()))
+			} else {
+				bagFolderList = append(bagFolderList, getSubmissionDirectoryName(&tgtMD))
+			}
+		}
 		svc.logInfo(js, "All submission directories have been created")
 
 		if err := svc.uploadToAPTrustBucket(js, submitBaseDir, regResp); err != nil {
@@ -148,11 +139,9 @@ func (svc *ServiceContext) submitToAPTrust(c *gin.Context) {
 		if err := svc.GDB.Model(&md).Update("apt_submission_id", regResp.SubmissionIdentifier).Error; err != nil {
 			svc.logError(js, fmt.Sprintf("Unable to add submission id %s to metadata %d: %s", regResp.SubmissionIdentifier, md.ID, err.Error()))
 		}
-		if md.IsCollection {
-			q := "update metadata set apt_submission_id=? where parent_metadata_id=?"
-			if err := svc.GDB.Exec(q, regResp.SubmissionIdentifier, md.ID).Error; err != nil {
-				svc.logError(js, fmt.Sprintf("Unable to add submission id %s to child metdata records of parent %d: %s", regResp.SubmissionIdentifier, md.ID, err.Error()))
-			}
+		q := "update metadata set apt_submission_id=? where parent_metadata_id=?"
+		if err := svc.GDB.Exec(q, regResp.SubmissionIdentifier, md.ID).Error; err != nil {
+			svc.logError(js, fmt.Sprintf("Unable to add submission id %s to child metdata records of parent %d: %s", regResp.SubmissionIdentifier, md.ID, err.Error()))
 		}
 
 		svc.logInfo(js, "Cleanup assembly directories")
@@ -167,22 +156,21 @@ func (svc *ServiceContext) submitToAPTrust(c *gin.Context) {
 }
 
 func (svc *ServiceContext) validateAPTrustSubmissionRequest(md *metadata) error {
-	if md.IsCollection {
-		log.Printf("INFO: metadata %d is a collection; check members for masterfiles suitable for aptrust", md.ID)
-		var inCollectionIDs []int64
-		if err := svc.GDB.Raw("select id from metadata where parent_metadata_id=?", md.ID).Scan(&inCollectionIDs).Error; err != nil {
-			return err
-		}
-		if err := svc.validateAPTrustMetadata(inCollectionIDs); err != nil {
-			return fmt.Errorf("collection metadata %d is not suitable for aptrust: %s", md.ID, err.Error())
-		}
-	} else {
-		log.Printf("INFO: validate aptrust submission for metadata %d", md.ID)
-		idParam := []int64{md.ID}
-		if err := svc.validateAPTrustMetadata(idParam); err != nil {
-			return fmt.Errorf("metadata %d is not suitable for aptrust: %s", md.ID, err.Error())
-		}
+	// only collections are allowed to be submited
+	if md.IsCollection == false {
+		log.Printf("INFO: metadata %s is not a collection and is suitable for apt submission", md.PID)
+		return fmt.Errorf("only collection records can be submitted")
 	}
+
+	log.Printf("INFO: metadata %d is a collection; check members for masterfiles suitable for aptrust", md.ID)
+	var inCollectionIDs []int64
+	if err := svc.GDB.Raw("select id from metadata where parent_metadata_id=?", md.ID).Scan(&inCollectionIDs).Error; err != nil {
+		return err
+	}
+	if err := svc.validateAPTrustMetadata(inCollectionIDs); err != nil {
+		return fmt.Errorf("collection metadata %d is not suitable for aptrust: %s", md.ID, err.Error())
+	}
+
 	return nil
 }
 
@@ -341,7 +329,7 @@ func (svc *ServiceContext) buildAPTrustSubmissionDirectory(js *jobStatus, submit
 
 func (svc *ServiceContext) registerSubmission(js *jobStatus, md *metadata) (*submitRegisterResponse, error) {
 	svc.logInfo(js, fmt.Sprintf("Register submission for metadata %d: %s", md.ID, md.Title))
-	req := submitRegisterRequest{ClientIdentifier: svc.APTrust.ClientID, Collection: md.PID}
+	req := submitRegisterRequest{ClientIdentifier: svc.APTrust.ClientID, Collection: md.Title}
 	respBytes, err := svc.sendAPTPostRequest("/register", req)
 	if err != nil {
 		return nil, fmt.Errorf("%d: %s", err.StatusCode, err.Message)
