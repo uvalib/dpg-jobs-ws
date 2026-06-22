@@ -16,7 +16,10 @@
   before making use of ImageMagick is highly advised. You can find guidance on
   setting up this policy at https://imagemagick.org/script/security-policy.php,
   and it's important to verify your policy using the validation tool located
-  at https://imagemagick-secevaluator.doyensec.com/.
+  at https://imagemagick-secevaluator.doyensec.com/. We also strongly
+  recommend that all users validate their security assumptions by testing their   configurations after making any policy changes. This helps ensure that the 
+  intended restrictions are functioning as expected in their specific 
+  deployment environment.
 
 
   Open ImageMagick security policy:
@@ -42,7 +45,7 @@
 
   Suppose we do not want users to process MPEG video images, use this policy:
 
-    <policy domain="delegate" rights="none" pattern="mpeg:decode" />
+    <policy domain="module" rights="none" pattern="video" />
 
   Here we do not want users reading images from HTTP:
 
@@ -104,7 +107,7 @@
        cache memory. Images that exceed the area limit are cached to disk. -->
   <!-- <policy domain="resource" name="area" value="16KP"/> -->
   <!-- Set maximum amount of disk space in bytes permitted for use by the pixel
-       cache. When this limit is exceeded, the pixel cache is not be created
+       cache. When this limit is exceeded, the pixel cache is not created
        and an exception is thrown. -->
   <!-- <policy domain="resource" name="disk" value="1GiB"/> -->
   <!-- Set the maximum length of an image sequence.  When this limit is
@@ -140,7 +143,7 @@
   <!-- Indirect reads are not permitted. -->
   <!-- <policy domain="path" rights="none" pattern="@*"/> -->
   <!-- These image types are security risks on read, but write is fine -->
-  <!-- <policy domain="module" rights="write" pattern="{MSL,MVG,PS,SVG,URL,XPS}"/> -->
+  <!-- <policy domain="module" rights="write" pattern="{MSL,MVG,PS,SVG,TXT,URL,XPS}"/> -->
   <!-- This policy sets the number of times to replace content of certain
        memory buffers and temporary files before they are freed or deleted. -->
   <!-- <policy domain="system" name="shred" value="1"/> -->
@@ -150,4 +153,6 @@
   <!-- Set the maximum amount of memory in bytes that are permitted for
        allocation requests. -->
   <!-- <policy domain="system" name="max-memory-request" value="256MiB"/> -->
+  <!-- If the basename of path is a symbolic link, the open fails -->
+  <!-- <policy domain="system" name="symlink" rights="none" pattern="follow"/> -->
 </policymap>

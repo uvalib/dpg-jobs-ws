@@ -22,7 +22,7 @@
     style="normal"
     stretch="normal"
     format="opentype"
-    glyphs="URWGothic-Book.otf"
+    glyphs="URWGothic-Book.ttf"
     />
   <type
     name="AvantGarde-BookOblique"
@@ -33,7 +33,7 @@
     style="oblique"
     stretch="normal"
     format="opentype"
-    glyphs="URWGothic-BookOblique.otf"
+    glyphs="URWGothic-BookOblique.ttf"
     />
   <type
     name="AvantGarde-Demi"
@@ -44,7 +44,7 @@
     style="normal"
     stretch="normal"
     format="opentype"
-    glyphs="URWGothic-Demi.otf"
+    glyphs="URWGothic-Demi.ttf"
     />
   <type
     name="AvantGarde-DemiOblique"
@@ -55,7 +55,7 @@
     style="oblique"
     stretch="normal"
     format="opentype"
-    glyphs="URWGothic-DemiOblique.otf"
+    glyphs="URWGothic-DemiOblique.ttf"
     />
   <type
     name="Bookman-Demi"
@@ -66,7 +66,7 @@
     style="normal"
     stretch="normal"
     format="opentype"
-    glyphs="URWBookman-Demi.otf"
+    glyphs="URWBookman-Demi.ttf"
     />
   <type
     name="Bookman-DemiItalic"
@@ -77,7 +77,7 @@
     style="italic"
     stretch="normal"
     format="opentype"
-    glyphs="URWBookman-DemiItalic.otf"
+    glyphs="URWBookman-DemiItalic.ttf"
     />
   <type
     name="Bookman-Light"
@@ -88,7 +88,7 @@
     style="normal"
     stretch="normal"
     format="opentype"
-    glyphs="URWBookman-Light.otf"
+    glyphs="URWBookman-Light.ttf"
     />
   <type
     name="Bookman-LightItalic"
@@ -99,7 +99,7 @@
     style="italic"
     stretch="normal"
     format="opentype"
-    glyphs="URWBookman-LightItalic.otf"
+    glyphs="URWBookman-LightItalic.ttf"
     />
   <type
     name="Courier"
@@ -110,7 +110,7 @@
     style="normal"
     stretch="normal"
     format="opentype"
-    glyphs="NimbusMonoPS-Regular.otf"
+    glyphs="NimbusMonoPS-Regular.ttf"
     />
   <type
     name="Courier-Bold"
@@ -121,7 +121,7 @@
     style="normal"
     stretch="normal"
     format="opentype"
-    glyphs="NimbusMonoPS-Bold.otf"
+    glyphs="NimbusMonoPS-Bold.ttf"
     />
   <type
     name="Courier-Oblique"
@@ -132,7 +132,7 @@
     style="oblique"
     stretch="normal"
     format="opentype"
-    glyphs="NimbusMonoPS-Italic.otf"
+    glyphs="NimbusMonoPS-Italic.ttf"
     />
   <type
     name="Courier-BoldOblique"
@@ -143,7 +143,7 @@
     style="oblique"
     stretch="normal"
     format="opentype"
-    glyphs="NimbusMonoPS-BoldItalic.otf"
+    glyphs="NimbusMonoPS-BoldItalic.ttf"
     />
   <type
     name="Helvetica"
@@ -154,7 +154,7 @@
     style="normal"
     stretch="normal"
     format="opentype"
-    glyphs="NimbusSans-Regular.otf"
+    glyphs="NimbusSans-Regular.ttf"
     />
   <type
     name="Helvetica-Bold"
@@ -165,7 +165,7 @@
     style="normal"
     stretch="normal"
     format="opentype"
-    glyphs="NimbusSans-Bold.otf"
+    glyphs="NimbusSans-Bold.ttf"
     />
   <type
     name="Helvetica-Oblique"
@@ -176,7 +176,7 @@
     style="italic"
     stretch="normal"
     format="opentype"
-    glyphs="NimbusSans-Italic.otf"
+    glyphs="NimbusSans-Italic.ttf"
     />
   <type
     name="Helvetica-BoldOblique"
@@ -187,7 +187,7 @@
     style="italic"
     stretch="normal"
     format="opentype"
-    glyphs="NimbusSans-BoldItalic.otf"
+    glyphs="NimbusSans-BoldItalic.ttf"
     />
   <type
     name="Helvetica-Narrow"
@@ -198,7 +198,7 @@
     style="normal"
     stretch="condensed"
     format="opentype"
-    glyphs="NimbusSansNarrow-Regular.otf"
+    glyphs="NimbusSansNarrow-Regular.ttf"
     />
   <type
     name="Helvetica-Narrow-Oblique"
@@ -209,7 +209,7 @@
     style="oblique"
     stretch="condensed"
     format="opentype"
-    glyphs="NimbusSansNarrow-Oblique.otf"
+    glyphs="NimbusSansNarrow-Oblique.ttf"
     />
   <type
     name="Helvetica-Narrow-Bold"
@@ -220,7 +220,7 @@
     style="normal"
     stretch="condensed"
     format="opentype"
-    glyphs="NimbusSansNarrow-Bold.otf"
+    glyphs="NimbusSansNarrow-Bold.ttf"
     />
   <type
     name="Helvetica-Narrow-BoldOblique"
@@ -231,7 +231,7 @@
     style="oblique"
     stretch="condensed"
     format="opentype"
-    glyphs="NimbusSansNarrow-BoldOblique.otf"
+    glyphs="NimbusSansNarrow-BoldOblique.ttf"
     />
   <type
     name="NewCenturySchlbk-Roman"
@@ -242,7 +242,7 @@
     style="normal"
     stretch="normal"
     format="opentype"
-    glyphs="C059-Roman.otf"
+    glyphs="C059-Roman.ttf"
     />
   <type
     name="NewCenturySchlbk-Italic"
@@ -253,7 +253,7 @@
     style="italic"
     stretch="normal"
     format="opentype"
-    glyphs="C059-Italic.otf"
+    glyphs="C059-Italic.ttf"
     />
   <type
     name="NewCenturySchlbk-Bold"
@@ -264,7 +264,7 @@
     style="normal"
     stretch="normal"
     format="opentype"
-    glyphs="C059-Bold.otf"
+    glyphs="C059-Bold.ttf"
     />
   <type
     name="NewCenturySchlbk-BoldItalic"
@@ -275,7 +275,7 @@
     style="italic"
     stretch="normal"
     format="opentype"
-    glyphs="C059-BdIta.otf"
+    glyphs="C059-BdIta.ttf"
     />
   <type
     name="Palatino-Roman"
@@ -286,7 +286,7 @@
     style="normal"
     stretch="normal"
     format="opentype"
-    glyphs="P052-Roman.otf"
+    glyphs="P052-Roman.ttf"
     />
   <type
     name="Palatino-Italic"
@@ -297,7 +297,7 @@
     style="italic"
     stretch="normal"
     format="opentype"
-    glyphs="P052-Italic.otf"
+    glyphs="P052-Italic.ttf"
     />
   <type
     name="Palatino-Bold"
@@ -308,7 +308,7 @@
     style="normal"
     stretch="normal"
     format="opentype"
-    glyphs="P052-Bold.otf"
+    glyphs="P052-Bold.ttf"
     />
   <type
     name="Palatino-BoldItalic"
@@ -319,7 +319,7 @@
     style="italic"
     stretch="normal"
     format="opentype"
-    glyphs="P052-BoldItalic.otf"
+    glyphs="P052-BoldItalic.ttf"
     />
   <type
     name="Symbol"
@@ -330,7 +330,7 @@
     style="normal"
     stretch="normal"
     format="opentype"
-    glyphs="StandardSymbolsPS.otf"
+    glyphs="StandardSymbolsPS.ttf"
     version="0.1"
     encoding="AdobeCustom"
     />
@@ -343,7 +343,7 @@
     style="normal"
     stretch="normal"
     format="opentype"
-    glyphs="NimbusRoman-Regular.otf"
+    glyphs="NimbusRoman-Regular.ttf"
     />
   <type
     name="Times-Bold"
@@ -354,7 +354,7 @@
     style="normal"
     stretch="normal"
     format="opentype"
-    glyphs="NimbusRoman-Bold.otf"
+    glyphs="NimbusRoman-Bold.ttf"
     />
   <type
     name="Times-Italic"
@@ -365,7 +365,7 @@
     style="italic"
     stretch="normal"
     format="opentype"
-    glyphs="NimbusRoman-Italic.otf"
+    glyphs="NimbusRoman-Italic.ttf"
     />
   <type
     name="Times-BoldItalic"
@@ -376,6 +376,6 @@
     style="italic"
     stretch="normal"
     format="opentype"
-    glyphs="NimbusRoman-BoldItalic.otf"
+    glyphs="NimbusRoman-BoldItalic.ttf"
     />
 </typemap>
