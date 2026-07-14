@@ -508,33 +508,49 @@ func extractTifMetadata(tifPath string) (*tifMetadata, error) {
 func (svc *ServiceContext) findOrCreateLocation(js *jobStatus, mdID int64, baseDir, locationStr string) (*location, error) {
 	svc.logInfo(js, fmt.Sprintf("Find or create location based on %s", locationStr))
 
-	// parse containerID an folderID from location string
-	//    format: [container type] [container id], Folder [folder id]
-	bits := strings.Split(locationStr, ",")
-	containerBits := strings.Split(bits[0], " ")
-	box := strings.TrimSpace(containerBits[len(containerBits)-1])
-	containerTypeName := strings.Join(containerBits[0:len(containerBits)-1], " ")
-	folder := ""
-	if len(bits) > 1 {
-		folderBits := strings.Split(bits[1], " ")
-		folder = strings.TrimSpace(folderBits[len(folderBits)-1])
+	var containerTypes []containerType
+	if err := svc.GDB.Find(&containerTypes).Error; err != nil {
+		return nil, fmt.Errorf("unable to load container types: %s", err.Error())
 	}
 
-	var ct containerType
-	if err := svc.GDB.Where("Name=?", containerTypeName).First(&ct).Error; err != nil {
-		return nil, err
+	// parse containerID an folderID from location string
+	//    format: [container type] [container id], Folder [folder id]
+	// Note that [container id] and [folder id] could contain spaces
+	bits := strings.Split(locationStr, ", ")
+
+	// find a match for container type in the first part of the location string
+	var folderCT *containerType
+	for _, ct := range containerTypes {
+		// Note: ensure that the containter type name starts the location string. This ensures
+		// container type "Box" will not incorrectly match "Oversize Box"
+		if strings.Index(bits[0], ct.Name) == 0 {
+			folderCT = &ct
+			break
+		}
+	}
+
+	// invalid location string; container type not found
+	if folderCT == nil {
+		return nil, fmt.Errorf("invalid container type specied in location: %s", locationStr)
+	}
+
+	// remove container type from string and the remainder is the box identifier
+	box := strings.TrimSpace(strings.Replace(bits[0], folderCT.Name, "", 1))
+
+	folder := ""
+	if len(bits) > 1 {
+		// strip off 'Folder ' and trim spaces to get folder if
+		folder = strings.TrimSpace(strings.Replace(bits[1], "Folder ", "", 1))
 	}
 
 	var tgtLoc location
-	err := svc.GDB.Where("metadata_id=?", mdID).Where("container_type_id=?", ct.ID).
+	if err := svc.GDB.Where("metadata_id=?", mdID).Where("container_type_id=?", folderCT.ID).
 		Where("container_id=?", box).Where("folder_id=?", folder).
-		First(&tgtLoc).Error
-	if err != nil {
+		First(&tgtLoc).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) == false {
 			return nil, err
 		}
-		tgtLoc = location{MetadataID: mdID, ContainerTypeID: ct.ID,
-			ContainerID: box, FolderID: folder}
+		tgtLoc = location{MetadataID: mdID, ContainerTypeID: folderCT.ID, ContainerID: box, FolderID: folder}
 		notesFile := path.Join(baseDir, "notes.txt")
 		if pathExists(notesFile) {
 			bytes, err := os.ReadFile(notesFile)
@@ -544,8 +560,7 @@ func (svc *ServiceContext) findOrCreateLocation(js *jobStatus, mdID int64, baseD
 				tgtLoc.Notes = string(bytes)
 			}
 		}
-		err = svc.GDB.Create(&tgtLoc).Error
-		if err != nil {
+		if err := svc.GDB.Create(&tgtLoc).Error; err != nil {
 			return nil, err
 		}
 		svc.logInfo(js, fmt.Sprintf("Created location metadata for [%s/%s]", box, folder))
