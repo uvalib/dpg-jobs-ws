@@ -200,7 +200,7 @@ func (svc *ServiceContext) sendFeesEmail(c *gin.Context) {
 		tgtEmail = altEmail
 	}
 	svc.logInfo(js, fmt.Sprintf("Sending fees email to  %s", tgtEmail))
-	req := emailRequest{Subject: fmt.Sprintf("UVA Digital Production Group - Request # %d Estimated Fee", o.ID),
+	req := emailRequest{Subject: fmt.Sprintf("UVA Digital Production Group - Order # %d Estimated Fee", o.ID),
 		To:      []string{tgtEmail},
 		From:    svc.SMTP.Sender,
 		ReplyTo: svc.SMTP.Sender,
