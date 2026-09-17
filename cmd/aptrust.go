@@ -117,7 +117,8 @@ func (svc *ServiceContext) submitToAPTrust(c *gin.Context) {
 		svc.logInfo(js, fmt.Sprintf("Collection %d has %d items; build submission directory for each", md.ID, len(inCollectionMD)))
 		for _, tgtMD := range inCollectionMD {
 			if err := svc.buildAPTrustSubmissionDirectory(js, submitBaseDir, &tgtMD); err != nil {
-				svc.logError(js, fmt.Sprintf("Metadata %d APTrust submission failed: %s", md.ID, err.Error()))
+				svc.logFatal(js, fmt.Sprintf("Metadata %d APTrust submission setup failed: %s", md.ID, err.Error()))
+				return
 			} else {
 				bagFolderList = append(bagFolderList, getSubmissionDirectoryName(&tgtMD))
 			}
