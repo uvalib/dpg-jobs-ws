@@ -38,7 +38,7 @@ type hathitrustStatus struct {
 type hathiTrustRequest struct {
 	ComputeID   string  `json:"computeID"`
 	MetadataIDs []int64 `json:"records"`
-	OrderIDs    []int64 `json:"orders"`
+	OrderID     int64   `json:"order"`
 	Mode        string  `json:"mode"`
 	Name        string  `json:"name"`
 }
@@ -176,9 +176,7 @@ func (svc *ServiceContext) flagMetadataForHathiTrust(js *jobStatus, mdID int64) 
 	return nil
 }
 
-// curl -X POST https://dpg-jobs.lib.virginia.edu/hathitrust/metadata -H "Content-Type: application/json" --data '{"computeID": "lf6f", "mode": "prod", "orders": [11195,11441], "name": "batch20240523"}'
-// curl -X POST https://dpg-jobs.lib.virginia.edu/hathitrust/metadata -H "Content-Type: application/json" --data '{"computeID": "lf6f", "mode": "dev", "orders": [11195,11441], "name": "batch20240523"}'
-// curl -X POST http://localhost:8180/hathitrust/metadata -H "Content-Type: application/json" --data '{"computeID": "lf6f", "mode": "dev", "orders": [11884], "name": "testorder11884"}'
+// curl -X POST http://localhost:8180/hathitrust/metadata -H "Content-Type: application/json" --data '{"computeID": "lf6f", "mode": "dev", "order": 11884, "name": "testorder11884"}'
 func (svc *ServiceContext) submitHathiTrustMetadata(c *gin.Context) {
 	log.Printf("INFO: received hathitrust metadata request")
 	var req hathiTrustRequest
@@ -202,9 +200,14 @@ func (svc *ServiceContext) submitHathiTrustMetadata(c *gin.Context) {
 		return
 	}
 
-	if len(req.MetadataIDs) == 0 && len(req.OrderIDs) == 0 {
-		log.Printf("INFO: hathitrust metadata request requires a list of order or metadata ids")
+	if len(req.MetadataIDs) == 0 && req.OrderID == 0 {
+		log.Printf("INFO: hathitrust metadata request requires an order id or list of metadata ids")
 		c.String(http.StatusBadRequest, "order or metadata id list is required")
+		return
+	}
+	if len(req.MetadataIDs) > 0 && req.OrderID > 0 {
+		log.Printf("INFO: hathitrust metadata request confilict; order and metadata specified")
+		c.String(http.StatusBadRequest, "order and metadata id list spscified")
 		return
 	}
 
@@ -216,17 +219,17 @@ func (svc *ServiceContext) submitHathiTrustMetadata(c *gin.Context) {
 	}
 
 	submissionInfo := fmt.Sprintf("for metadata records %v", req.MetadataIDs)
-	if len(req.OrderIDs) > 0 {
+	if req.OrderID > 0 {
 		// when selecting metadata records from an order to submit, don't pick records that have already been submitted or accepted
 		mdQ := "select u.metadata_id from units u inner join hathitrust_statuses hs on hs.metadata_id = u.metadata_id "
-		mdQ += " where order_id in ? and unit_status != ? and package_status != ? and package_status != ?"
-		err = svc.GDB.Raw(mdQ, req.OrderIDs, "canceled", "submitted", "accepted").Scan(&req.MetadataIDs).Error
+		mdQ += " where order_id = ? and unit_status != ? and package_status != ? and package_status != ?"
+		err = svc.GDB.Raw(mdQ, req.OrderID, "canceled", "submitted", "accepted").Scan(&req.MetadataIDs).Error
 		if err != nil {
-			log.Printf("ERROR: unable to get metadata ids for orders %v: %s", req.OrderIDs, err.Error())
+			log.Printf("ERROR: unable to get metadata ids for order %d: %s", req.OrderID, err.Error())
 			c.String(http.StatusInternalServerError, fmt.Sprintf("uable to get metadata ids for orders: %s", err.Error()))
 			return
 		}
-		submissionInfo = fmt.Sprintf("for orders %v with %d metadata records", req.OrderIDs, len(req.MetadataIDs))
+		submissionInfo = fmt.Sprintf("for order %d with %d metadata records", req.OrderID, len(req.MetadataIDs))
 	}
 
 	svc.logInfo(js, fmt.Sprintf("%s requests %s hathitrust metadata submission %s", req.ComputeID, req.Mode, submissionInfo))
@@ -382,7 +385,7 @@ func (svc *ServiceContext) uploadMetadataToHathiTrust(js *jobStatus, mode, srcPa
 }
 
 // curl -X POST  https://dpg-jobs.lib.virginia.edu/hathitrust/package -H "Content-Type: application/json" --data '{"computeID": "lf6f", "records": [108247]}'
-// curl -X POST  https://dpg-jobs.lib.virginia.edu/hathitrust/package -H "Content-Type: application/json" --data '{"computeID": "lf6f", "orders": [12121]}'
+// curl -X POST  https://dpg-jobs.lib.virginia.edu/hathitrust/package -H "Content-Type: application/json" --data '{"computeID": "lf6f", "order": 12121}'
 func (svc *ServiceContext) createHathiTrustPackage(c *gin.Context) {
 	log.Printf("INFO: received hathitrust package request")
 	var req hathiTrustRequest
@@ -393,9 +396,14 @@ func (svc *ServiceContext) createHathiTrustPackage(c *gin.Context) {
 		return
 	}
 
-	if len(req.MetadataIDs) == 0 && len(req.OrderIDs) == 0 {
-		log.Printf("INFO: hathitrust package request requires order id or metadata ids")
+	if len(req.MetadataIDs) == 0 && req.OrderID == 0 {
+		log.Printf("INFO:hathitrust package request requires an order id or list of metadata ids")
 		c.String(http.StatusBadRequest, "order or metadata id list is required")
+		return
+	}
+	if len(req.MetadataIDs) > 0 && req.OrderID > 0 {
+		log.Printf("INFO: hathitrust package request confilict; order and metadata specified")
+		c.String(http.StatusBadRequest, "order and metadata id list specified")
 		return
 	}
 
@@ -414,14 +422,14 @@ func (svc *ServiceContext) createHathiTrustPackage(c *gin.Context) {
 	}
 
 	submissionInfo := fmt.Sprintf("for metadata records %v", req.MetadataIDs)
-	if len(req.OrderIDs) > 0 {
-		err = svc.GDB.Raw("select metadata_id from units where order_id in ? and unit_status != ?", req.OrderIDs, "canceled").Scan(&req.MetadataIDs).Error
+	if req.OrderID > 0 {
+		err = svc.GDB.Raw("select metadata_id from units where order_id = ? and unit_status != ?", req.OrderID, "canceled").Scan(&req.MetadataIDs).Error
 		if err != nil {
-			log.Printf("ERROR: unable to get metadata ids for orders %v: %s", req.OrderIDs, err.Error())
+			log.Printf("ERROR: unable to get metadata ids for orders %d: %s", req.OrderID, err.Error())
 			c.String(http.StatusInternalServerError, fmt.Sprintf("uable to get metadata ids for orders: %s", err.Error()))
 			return
 		}
-		submissionInfo = fmt.Sprintf("for orders %v with %d metadata records", req.OrderIDs, len(req.MetadataIDs))
+		submissionInfo = fmt.Sprintf("for orders %d with %d metadata records", req.OrderID, len(req.MetadataIDs))
 	}
 
 	svc.logInfo(js, fmt.Sprintf("%s requests hathitrust package generation %s", req.ComputeID, submissionInfo))
