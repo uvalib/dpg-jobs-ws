@@ -47,6 +47,22 @@ func (svc *ServiceContext) sendHathiTrustUploadEmail(submitter *staffMember, fil
 	return nil
 }
 
+func (svc *ServiceContext) sendHathiTrustPackagesSubmittedEmail(submitter *staffMember, submissions []string) error {
+	// content for the email to support@hathitrust.org:
+	// HathiTrust submission from UVA (the email subject)
+	// I've uploaded ## files to DropBox:
+	// X001240405.zip, X031032769.zip, ...
+	req := emailRequest{Subject: "HathiTrust submission from UVA",
+		To:      []string{"support@hathitrust.org"},
+		From:    submitter.Email,
+		ReplyTo: submitter.Email,
+		CC:      submitter.Email,
+	}
+	req.Body = fmt.Sprintf("I've uploaded %d files to DropBox:\n\n", len(submissions))
+	req.Body += strings.Join(submissions, ", ")
+	return svc.sendEmail(&req)
+}
+
 func (svc *ServiceContext) sendPHashResultsEmail(recipient string, phashSummary phashGenerateStats) {
 	log.Printf("INFO: send pHash results email to %s", recipient)
 	req := emailRequest{Subject: "UVA Digital Production Group - pHash Generation Results",

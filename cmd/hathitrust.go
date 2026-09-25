@@ -784,7 +784,7 @@ func (svc *ServiceContext) submitHathiTrustPackage(c *gin.Context) {
 		svc.logInfo(js, "get a list of packages in the submission directory")
 		priorSubmissions, err := svc.getHathiTrustDirectoryContent()
 
-		submitted := 0
+		submitted := make([]string, 0)
 		err = filepath.WalkDir(orderDir, func(filePath string, d fs.DirEntry, err error) error {
 			if d.IsDir() {
 				return nil
@@ -833,7 +833,7 @@ func (svc *ServiceContext) submitHathiTrustPackage(c *gin.Context) {
 				svc.logError(js, fmt.Sprintf("Unable to submit %s: %s:%s", d.Name(), err.Error(), out))
 				return nil
 			}
-			submitted++
+			submitted = append(submitted, d.Name())
 
 			svc.logInfo(js, fmt.Sprintf("update status for %s", tgtBC))
 			var mdRec metadata
@@ -859,7 +859,10 @@ func (svc *ServiceContext) submitHathiTrustPackage(c *gin.Context) {
 			return
 		}
 
-		svc.logInfo(js, fmt.Sprintf("%d packages submitted", submitted))
+		svc.logInfo(js, fmt.Sprintf("%d packages submitted; generate submission email", len(submitted)))
+		if err := svc.sendHathiTrustPackagesSubmittedEmail(submitUser, submitted); err != nil {
+			svc.logError(js, fmt.Sprintf("Unable to send hathitrust submission email: %s", err.Error()))
+		}
 		svc.jobDone(js)
 	}()
 
