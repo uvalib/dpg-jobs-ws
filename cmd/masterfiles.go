@@ -855,12 +855,12 @@ func (svc *ServiceContext) renameMasterFile(c *gin.Context) {
 func (svc *ServiceContext) getBestMasterFiles(js *jobStatus, metadataID uint64) []masterFile {
 	// for the specified metadata ID, get the list of best quality master files. The preferred list will
 	// come from a unit that has inteneded use 'Digitial Collection Building' (110). If none are found,
-	// also accept intended use 'Digital Archive' (101)
-	svc.logInfo(js, fmt.Sprintf("Get the best quality masterfiles (intended use 110 or 101) for metadata %d", metadataID))
+	// also accept intended use 'Digital Archive' (101). The unit may not be a reorder
+	svc.logInfo(js, fmt.Sprintf("Get the best quality masterfiles (non-reorder and intended use 110 or 101) for metadata %d", metadataID))
 	useCases := []uint64{110, 101}
 	var masterFiles []masterFile
 	for _, ucID := range useCases {
-		if err := svc.GDB.Joins("Unit").Where("Unit.metadata_id=? and Unit.intended_use_id=?", metadataID, ucID).Find(&masterFiles).Error; err != nil {
+		if err := svc.GDB.Joins("Unit").Where("Unit.metadata_id=? and Unit.intended_use_id=? and Unit.reorder=?", metadataID, ucID, 0).Find(&masterFiles).Error; err != nil {
 			svc.logError(js, fmt.Sprintf("Error requesting unit masterfiles for metadata %d with intended use %d: %s", metadataID, ucID, err.Error()))
 			continue
 		}
@@ -868,7 +868,7 @@ func (svc *ServiceContext) getBestMasterFiles(js *jobStatus, metadataID uint64) 
 			// if that fails, see if this is a the special case where an image is assigned different metadata than the unit.
 			// this is the case for individual images described by XML metadata that are generaly part of a larger collection
 			svc.logInfo(js, fmt.Sprintf("No intended use %d units directly found for metadata %d; searching master files...", ucID, metadataID))
-			if err := svc.GDB.Joins("Unit").Where("Unit.intended_use_id=?", ucID).Where("master_files.metadata_id=?", metadataID).Find(&masterFiles).Error; err != nil {
+			if err := svc.GDB.Joins("Unit").Where("Unit.intended_use_id=? and Unit.reorder=?", ucID, 0).Where("master_files.metadata_id=?", metadataID).Find(&masterFiles).Error; err != nil {
 				svc.logError(js, fmt.Sprintf("Error requesting masterfiles with metadata %d and intended use %d: %s", metadataID, ucID, err.Error()))
 				continue
 			}

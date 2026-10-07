@@ -182,10 +182,10 @@ func (svc *ServiceContext) validateAPTrustMetadata(metadataIDs []int64) error {
 		Cnt        int
 	}
 
-	// get a list of master file counts for intended use 110 pr 101 units for the target metadataIDs
+	// get a list of master file counts for non-reorder units with intended use 110 or 101 for the target metadataIDs
 	mdQ := "select u.metadata_id as metadata_id, u.id as unit_id, count(mf.id) as cnt from units u "
 	mdQ += " left join master_files mf on mf.unit_id = u.id"
-	mdQ += " where (intended_use_id=110 or intended_use_id=101) AND (unit_status=? OR unit_status=?)"
+	mdQ += " where (intended_use_id=110 or intended_use_id=101) AND reorder=0 AND (unit_status=? OR unit_status=?)"
 	mdQ += " AND u.metadata_id in ? group by u.id"
 	if err := svc.GDB.Raw(mdQ, "approved", "done", metadataIDs).Scan(&mfResp).Error; err != nil {
 		return err
@@ -207,7 +207,7 @@ func (svc *ServiceContext) validateAPTrustMetadata(metadataIDs []int64) error {
 	log.Printf("INFO: no matching units found for aptrust submission; try masterfiles")
 	mfQ := "select mf.metadata_id as metadata_id, mf.unit_id as unit_id, count(mf.id) as cnt from master_files mf "
 	mfQ += " inner join units u on u.id = mf.unit_id "
-	mfQ += " where (intended_use_id=110 or intended_use_id=101) AND (unit_status=? OR unit_status=?)"
+	mfQ += " where (intended_use_id=110 or intended_use_id=101) AND reorder=0 AND (unit_status=? OR unit_status=?)"
 	mfQ += " AND mf.metadata_id in ?"
 	if err := svc.GDB.Raw(mfQ, "approved", "done", metadataIDs).Scan(&mfResp).Error; err != nil {
 		return err
