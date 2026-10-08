@@ -41,6 +41,11 @@ type submitInitiateResponse struct {
 	Updated    time.Time `json:"updated"`
 }
 
+type submissionRec struct {
+	Metadata    metadata
+	MasterFiles []masterFile
+}
+
 func (svc *ServiceContext) submitToAPTrust(c *gin.Context) {
 	mdID := c.Param("id")
 	log.Printf("INFO: request aptrust submission for metadata %s", mdID)
@@ -58,13 +63,6 @@ func (svc *ServiceContext) submitToAPTrust(c *gin.Context) {
 		return
 	}
 
-	svc.logInfo(js, fmt.Sprintf("Validate metadata %d is a candidate aptrust submission", md.ID))
-	if err := svc.validateAPTrustSubmissionRequest(&md); err != nil {
-		svc.logFatal(js, fmt.Sprintf("Metadata %d is not a candidate for aptrust: %s", md.ID, err.Error()))
-		return
-	}
-	svc.logInfo(js, "Metadata is a acceptable aptrust submission")
-
 	go func() {
 		defer func() {
 			if r := recover(); r != nil {
@@ -74,7 +72,15 @@ func (svc *ServiceContext) submitToAPTrust(c *gin.Context) {
 			}
 		}()
 
-		// first, register a new submission. This gets the submission identifer is used as the
+		// first, insure the submission is acceptable and collect necessary submittion detail
+		svc.logInfo(js, fmt.Sprintf("Validate metadata %d is a candidate aptrust submission", md.ID))
+		submissionInfo, err := svc.validateAPTrustSubmissionRequest(js, &md)
+		if err != nil {
+			svc.logFatal(js, err.Error())
+			return
+		}
+
+		// next, register a new submission. This gets the submission identifer is used as the
 		// top-level directory name for assembling the sumission files
 		regResp, err := svc.registerSubmission(js, &md)
 		if err != nil {
@@ -106,21 +112,14 @@ func (svc *ServiceContext) submitToAPTrust(c *gin.Context) {
 			}
 		}
 
+		svc.logInfo(js, fmt.Sprintf("Collection %d has %d items; build submission directory for each", md.ID, len(submissionInfo)))
 		bagFolderList := make([]string, 0)
-		svc.logInfo(js, fmt.Sprintf("Load child record IDs from collection %s for APTrust submission", md.PID))
-		var inCollectionMD []metadata
-		if err := svc.GDB.Where("parent_metadata_id=?", md.ID).Find(&inCollectionMD).Error; err != nil {
-			svc.logFatal(js, fmt.Sprintf("Unable to load child metadata records for collection %d: %s", md.ID, err.Error()))
-			return
-		}
-
-		svc.logInfo(js, fmt.Sprintf("Collection %d has %d items; build submission directory for each", md.ID, len(inCollectionMD)))
-		for _, tgtMD := range inCollectionMD {
-			if err := svc.buildAPTrustSubmissionDirectory(js, submitBaseDir, &tgtMD); err != nil {
+		for _, rec := range submissionInfo {
+			if err := svc.buildAPTrustSubmissionDirectory(js, submitBaseDir, &rec.Metadata, rec.MasterFiles); err != nil {
 				svc.logFatal(js, fmt.Sprintf("Metadata %d APTrust submission setup failed: %s", md.ID, err.Error()))
 				return
 			} else {
-				bagFolderList = append(bagFolderList, getSubmissionDirectoryName(&tgtMD))
+				bagFolderList = append(bagFolderList, getSubmissionDirectoryName(&rec.Metadata))
 			}
 		}
 		svc.logInfo(js, "All submission directories have been created")
@@ -156,79 +155,35 @@ func (svc *ServiceContext) submitToAPTrust(c *gin.Context) {
 	c.String(http.StatusOK, fmt.Sprintf("%d", js.ID))
 }
 
-func (svc *ServiceContext) validateAPTrustSubmissionRequest(md *metadata) error {
-	// only collections are allowed to be submited
+func (svc *ServiceContext) validateAPTrustSubmissionRequest(js *jobStatus, md *metadata) ([]submissionRec, error) {
 	if md.IsCollection == false {
-		log.Printf("INFO: metadata %s is not a collection and is suitable for apt submission", md.PID)
-		return fmt.Errorf("only collection records can be submitted")
+		return nil, fmt.Errorf("only collection records can be submitted")
 	}
 
-	log.Printf("INFO: metadata %d is a collection; check members for masterfiles suitable for aptrust", md.ID)
-	var inCollectionIDs []int64
-	if err := svc.GDB.Raw("select id from metadata where parent_metadata_id=?", md.ID).Scan(&inCollectionIDs).Error; err != nil {
-		return err
-	}
-	if err := svc.validateAPTrustMetadata(inCollectionIDs); err != nil {
-		return fmt.Errorf("collection metadata %d is not suitable for aptrust: %s", md.ID, err.Error())
+	var out []submissionRec
+	svc.logInfo(js, fmt.Sprintf("Load child record IDs from collection %s for APTrust submission", md.PID))
+	var inCollectionMD []metadata
+	if err := svc.GDB.Where("parent_metadata_id=?", md.ID).Find(&inCollectionMD).Error; err != nil {
+		return nil, fmt.Errorf("Unable to load child metadata records for collection %d: %s", md.ID, err.Error())
 	}
 
-	return nil
+	var badMD []uint64
+	for _, md := range inCollectionMD {
+		masterFiles := svc.getBestMasterFiles(js, uint64(md.ID))
+		if len(masterFiles) == 0 {
+			badMD = append(badMD, uint64(md.ID))
+		}
+		out = append(out, submissionRec{Metadata: md, MasterFiles: masterFiles})
+		time.Sleep(100 * time.Millisecond)
+	}
+	if len(badMD) > 0 {
+		return nil, fmt.Errorf("These metadata records have no masterfiles suitable for submission to aptrust: %v", badMD)
+	}
+
+	return out, nil
 }
 
-func (svc *ServiceContext) validateAPTrustMetadata(metadataIDs []int64) error {
-	var mfResp []struct {
-		MetadataID uint64
-		UnitID     uint64
-		Cnt        int
-	}
-
-	// get a list of master file counts for non-reorder units with intended use 110 or 101 for the target metadataIDs
-	mdQ := "select u.metadata_id as metadata_id, u.id as unit_id, count(mf.id) as cnt from units u "
-	mdQ += " left join master_files mf on mf.unit_id = u.id"
-	mdQ += " where (intended_use_id=110 or intended_use_id=101) AND reorder=0 AND (unit_status=? OR unit_status=?)"
-	mdQ += " AND u.metadata_id in ? group by u.id"
-	if err := svc.GDB.Raw(mdQ, "approved", "done", metadataIDs).Scan(&mfResp).Error; err != nil {
-		return err
-	}
-
-	mfCnt := 0
-	for _, rec := range mfResp {
-		mfCnt += rec.Cnt
-		if rec.Cnt == 0 {
-			log.Printf("INFO: metadata %d has no valid units/masterfiles", rec.MetadataID)
-		}
-	}
-
-	if mfCnt > 0 {
-		log.Printf("INFO: %d masterfiles found in valid aptrust submission", mfCnt)
-		return nil
-	}
-
-	log.Printf("INFO: no matching units found for aptrust submission; try masterfiles")
-	mfQ := "select mf.metadata_id as metadata_id, mf.unit_id as unit_id, count(mf.id) as cnt from master_files mf "
-	mfQ += " inner join units u on u.id = mf.unit_id "
-	mfQ += " where (intended_use_id=110 or intended_use_id=101) AND reorder=0 AND (unit_status=? OR unit_status=?)"
-	mfQ += " AND mf.metadata_id in ?"
-	if err := svc.GDB.Raw(mfQ, "approved", "done", metadataIDs).Scan(&mfResp).Error; err != nil {
-		return err
-	}
-
-	for _, rec := range mfResp {
-		mfCnt += rec.Cnt
-		if rec.Cnt == 0 {
-			log.Printf("INFO: metadata %d has no valid units/masterfiles", rec.MetadataID)
-		}
-	}
-
-	if mfCnt > 0 {
-		log.Printf("INFO: %d masterfiles found in valid aptrust submission", mfCnt)
-		return nil
-	}
-
-	return fmt.Errorf("invalid for aptrust; no master files found")
-}
-
-func (svc *ServiceContext) buildAPTrustSubmissionDirectory(js *jobStatus, submitBaseDir string, md *metadata) error {
+func (svc *ServiceContext) buildAPTrustSubmissionDirectory(js *jobStatus, submitBaseDir string, md *metadata, masterFiles []masterFile) error {
 	svc.logInfo(js, fmt.Sprintf("Build APTrust submission directory for metadata %d", md.ID))
 	mdDirName := getSubmissionDirectoryName(md)
 	submitAssembleDir := path.Join(submitBaseDir, mdDirName)
@@ -290,11 +245,6 @@ func (svc *ServiceContext) buildAPTrustSubmissionDirectory(js *jobStatus, submit
 		}
 		md5 := md5Checksum(mdPath)
 		checksums[mdName] = md5
-	}
-
-	masterFiles := svc.getBestMasterFiles(js, uint64(md.ID))
-	if len(masterFiles) == 0 {
-		return fmt.Errorf("no masterfiles qualify for APTrust (intended use 110 or 101)")
 	}
 
 	for _, mf := range masterFiles {
