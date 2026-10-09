@@ -321,9 +321,22 @@ func (svc *ServiceContext) buildAPTrustSubmissionDirectory(js *jobStatus, submit
 		svc.logInfo(js, fmt.Sprintf("Adding masterfile %s", mf.Filename))
 		archiveFile := path.Join(svc.ArchiveDir, fmt.Sprintf("%09d", mf.UnitID), mf.Filename)
 		destFile := path.Join(submitAssembleDir, mf.Filename)
-		if pathExists(archiveFile) == false {
+		exists := pathExists(archiveFile)
+		if exists == false {
+			svc.logInfo(js, fmt.Sprintf("%s not found; check for non-standard storage location", archiveFile))
+			if strings.Contains(mf.Filename, "ARCH") || strings.Contains(mf.Filename, "AVRN") || strings.Contains(mf.Filename, "VRC") {
+				if strings.Contains(mf.Filename, "_") {
+					overrideDir := strings.Split(mf.Filename, "_")[0]
+					archiveFile = path.Join(svc.ArchiveDir, overrideDir, mf.Filename)
+					exists = pathExists(archiveFile)
+				}
+			}
+		}
+
+		if exists == false {
 			return fmt.Errorf("%s not found", archiveFile)
 		}
+
 		origMD5 := md5Checksum(archiveFile)
 		md5, err := copyFile(archiveFile, destFile, 0744)
 		if err != nil {
